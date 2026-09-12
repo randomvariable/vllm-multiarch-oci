@@ -1,0 +1,14 @@
+docs/how-to/build-locally-on-spark.md
+  h_15da545fc8cfbe 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ea1542fbba8bff9769b24bee8cab45a991058d40",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
