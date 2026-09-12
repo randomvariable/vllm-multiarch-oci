@@ -30,6 +30,8 @@ def _pinned_source_repository_impl(ctx):
 
     for patch in ctx.attr.patches:
         patch_path = ctx.path(patch)
+        # External commands do not register file reads with Bazel.
+        ctx.watch(patch_path)
         result = ctx.execute(["sha256sum", patch_path])
         if result.return_code:
             fail("hashing %s failed: %s" % (patch, result.stderr))
