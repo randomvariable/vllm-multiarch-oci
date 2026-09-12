@@ -2,7 +2,7 @@
 
 Use this guide to run the build actions on a DGX Spark instead of submitting them to NativeLink. No remote service or remote credentials are required.
 
-**Important:** The local command configuration has been analysed, but a complete local Spark build has not been verified. The current actions contain worker-specific compiler paths. A stock DGX OS installation is not automatically a compatible build host.
+**Important:** The local command configuration has been analysed, but a complete local Spark build has not been verified. The current actions contain worker-specific compiler paths. A stock DGX OS installation is not automatically a compatible build host. The maintainers build through CI; this path is community-maintained, and reports or fixes are welcome.
 
 ## Prerequisites
 
