@@ -1,0 +1,13 @@
+diff --git a/csrc/spinloop.cpp b/csrc/spinloop.cpp
+index 3a382d10c..00227bb73 100644
+--- a/csrc/spinloop.cpp
++++ b/csrc/spinloop.cpp
+@@ -19,7 +19,7 @@
+ #define CPU_SUPPORT_NONE 0
+ #define CPU_SUPPORT_MONITORX 1
+ 
+-#define MWAITX_DEFAULT_TIMEOUT_CYCLES 1000000
++#define MWAITX_DEFAULT_TIMEOUT_CYCLES 1000001
+ 
+ typedef struct {
+   unsigned int cpu_support;

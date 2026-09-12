@@ -1,0 +1,4 @@
+exports_files([
+    "rules_python_raw_wheel.patch",
+    "vllm_spinloop_timeout.patch",
+])

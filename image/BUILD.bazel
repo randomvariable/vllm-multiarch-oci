@@ -1,0 +1,107 @@
+# SPDX-License-Identifier: Apache-2.0
+"""Runtime-system layer for the GLM53 CUDA image."""
+
+load("@runtime_deps//:requirements.bzl", "all_whl_requirements_by_package")
+load("//bazel:venv_layer.bzl", "venv_layer")
+load("//bazel:vllm_image.bzl", "vllm_image")
+
+package(default_visibility = ["//visibility:public"])
+
+# The imported CUDA image owns CUDA, cuDNN, and their NVIDIA package closure.
+# This layer only supplies host tools that vLLM or the B12X runtime requires.
+filegroup(
+    name = "runtime_apt",
+    srcs = ["@glm53_runtime_apt//:flat"],
+)
+
+_EXCLUDED_RUNTIME_WHEELS = [
+    "cuda_toolkit",
+    "flashinfer_cubin",
+    "flashinfer_python",
+    "nvidia_cublas",
+    "nvidia_cuda_cccl",
+    "nvidia_cuda_crt",
+    "nvidia_cuda_cupti",
+    "nvidia_cuda_nvcc",
+    "nvidia_cuda_nvdisasm",
+    "nvidia_cuda_nvrtc",
+    "nvidia_cuda_runtime",
+    "nvidia_cudnn_cu13",
+    "nvidia_cufft",
+    "nvidia_cufile",
+    "nvidia_curand",
+    "nvidia_cusolver",
+    "nvidia_cusparse",
+    "nvidia_nccl_cu13",
+    "nvidia_cusparselt_cu13",
+    "nvidia_nvjitlink",
+    "nvidia_nvshmem_cu13",
+    "nvidia_nvtx",
+    "nvidia_nvvm",
+    "torch",
+    "torchaudio",
+    "torchvision",
+    "xgrammar",
+]
+
+_REPLACED_RUNTIME_WHEELS = [
+    "nvidia_cudnn_cu13",
+    "nvidia_nccl_cu13",
+]
+
+_RUNTIME_WHEELS = [
+    "@runtime_deps//{}:raw_whl".format(name)
+    for name in all_whl_requirements_by_package
+    if name not in _EXCLUDED_RUNTIME_WHEELS + _REPLACED_RUNTIME_WHEELS
+]
+
+venv_layer(
+    name = "runtime_venv",
+    python = "@python_3_12//:python3",
+    python_runtime = "@python_3_12//:files",
+    nccl = "//components/nccl:sdk",
+    include_launchers = True,
+    include_nccl = True,
+    include_python = True,
+    runtime_wheels = _RUNTIME_WHEELS,
+    source_wheels = [
+        "//components:torch",
+        "//components:torchvision",
+        "//components:torchaudio",
+        "//components:flashinfer_python",
+        "//components:flashinfer_jit_cache",
+        "//components:deepgemm",
+        "//components:b12x",
+        "//components:xgrammar",
+        "//components:exllamav3",
+        "//components:lmcache",
+        "//components:instanttensor",
+    ],
+    output = "runtime-venv.tar",
+)
+
+# Keep the stable interpreter and dependency closure below the vLLM package.
+# A native vLLM edit now reassembles only this small overlay layer.
+venv_layer(
+    name = "vllm_venv",
+    python = "@python_3_12//:python3",
+    python_runtime = "@python_3_12//:files",
+    nccl = "//components/nccl:sdk",
+    source_wheels = ["//components:vllm"],
+    output = "vllm-venv.tar",
+)
+
+vllm_image(
+    name = "glm53_0906",
+    base = "@cuda_1331_cudnn_devel_ubuntu2604_linux_arm64//:cuda_1331_cudnn_devel_ubuntu2604_linux_arm64",
+    apt_layer = ":runtime_apt",
+    # PyTorch links against cuSPARSELt, which NVIDIA's CUDA devel image omits.
+    cuda_layer = "@cuda_sbsa//:cusparselt.tar",
+    venv_layers = [
+        ":runtime_venv",
+        ":vllm_venv",
+    ],
+    repository = "local/vllm",
+    tag = "glm53-flash-nvfp4-head-0906",
+    vllm_version = "0.26.1rc0+glm53.flash.nvfp4.head.0906",
+)

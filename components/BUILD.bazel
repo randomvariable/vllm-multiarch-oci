@@ -1,0 +1,351 @@
+# SPDX-License-Identifier: Apache-2.0
+
+load("//bazel:cuda_wheel.bzl", "cuda_wheel")
+load("//bazel:vllm_wheel.bzl", "vllm_preflight", "vllm_wheel")
+
+package(default_visibility = ["//visibility:public"])
+
+_HOST_WHEELS = [
+    "@host_deps//setuptools:whl",
+    "@host_deps//wheel:whl",
+    "@host_deps//packaging:whl",
+    "@host_deps//numpy:whl",
+    "@host_deps//pyyaml:whl",
+    "@host_deps//typing_extensions:whl",
+]
+
+_TORCH_BUILD_WHEELS = _HOST_WHEELS + [
+    "@host_deps//cmake:whl",
+    "@host_deps//ninja:whl",
+    "@host_deps//jinja2:whl",
+    "@host_deps//markupsafe:whl",
+    "@host_deps//requests:whl",
+    "@host_deps//six:whl",
+]
+
+_SCIKIT_BUILD_WHEELS = _HOST_WHEELS + [
+    "@runtime_deps//apache_tvm_ffi:whl",
+    "@host_deps//cmake:whl",
+    "@host_deps//scikit_build_core:whl",
+    "@host_deps//pathspec:whl",
+]
+
+_VLLM_BUILD_WHEELS = _TORCH_BUILD_WHEELS + [
+    "@host_deps//setuptools_scm:whl",
+    "@host_deps//setuptools_rust:whl",
+    "@host_deps//semantic_version:whl",
+    "@host_deps//vcs_versioning:whl",
+]
+
+_VLLM_CMAKE_SOURCES = {
+    "cutlass": "@glm53_0906_vllm_cmake_cutlass//:source.tar",
+    "deepgemm": "@glm53_0906_vllm_cmake_deepgemm//:source.tar",
+    "flash_attn": "@glm53_0906_vllm_cmake_flash_attn//:source.tar",
+    "flashkda": "@glm53_0906_vllm_cmake_flashkda//:source.tar",
+    "flashmla": "@glm53_0906_vllm_cmake_flashmla//:source.tar",
+    "msa": "@glm53_0906_vllm_cmake_msa//:source.tar",
+    "qutlass": "@glm53_0906_vllm_cmake_qutlass//:source.tar",
+    "tml_fa4": "@glm53_0906_vllm_cmake_tml_fa4//:source.tar",
+    "triton": "@glm53_0906_vllm_cmake_triton//:source.tar",
+}
+
+_VLLM_CARGO_VENDOR = "@glm53_0906_vllm//:cargo-vendor.tar"
+
+_LMCACHE_BUILD_WHEELS = _TORCH_BUILD_WHEELS + [
+    "@host_deps//setuptools_scm:whl",
+    "@host_deps//vcs_versioning:whl",
+]
+
+_FLASHINFER_BUILD_WHEELS = _HOST_WHEELS + [
+    "@runtime_deps//apache_tvm_ffi:whl",
+    "@runtime_deps//filelock:whl",
+    "@runtime_deps//nvidia_ml_py:whl",
+    "@runtime_deps//requests:whl",
+    "@runtime_deps//tqdm:whl",
+    "@host_deps//certifi:whl",
+    "@host_deps//charset_normalizer:whl",
+    "@host_deps//idna:whl",
+    "@host_deps//jinja2:whl",
+    "@host_deps//markupsafe:whl",
+    "@host_deps//ninja:whl",
+    "@host_deps//urllib3:whl",
+]
+
+filegroup(
+    name = "exllamav3_source",
+    srcs = ["@glm53_0906_exllamav3//:source.tar"],
+)
+
+cuda_wheel(
+    name = "flashinfer_python",
+    src = "@glm53_0906_flashinfer//:source.tar",
+    cuda = "@cuda_sbsa//:toolkit.tar",
+    python = "@python_3_12//:python3",
+    build = "//bazel:build_flashinfer_wheel.py",
+    env = {
+        "FLASHINFER_CUDA_ARCH_LIST": "12.1f",
+    },
+    host_wheels = _FLASHINFER_BUILD_WHEELS,
+    output = "flashinfer_python-0.6.18-py3-none-any.whl",
+    cpu = 20,
+    memory = 32768,
+)
+
+cuda_wheel(
+    name = "flashinfer_jit_cache",
+    src = "@glm53_0906_flashinfer//:source.tar",
+    cuda = "@cuda_sbsa//:toolkit.tar",
+    python = "@python_3_12//:python3",
+    build = "//bazel:build_flashinfer_jit_cache_wheel.py",
+    deps = [
+        ":flashinfer_python",
+        ":torch",
+    ],
+    env = {
+        "FLASHINFER_CUDA_ARCH_LIST": "12.1f",
+        "FLASHINFER_DISABLE_VERSION_CHECK": "1",
+    },
+    host_wheels = _FLASHINFER_BUILD_WHEELS,
+    nccl = "//components/nccl:sdk",
+    output = "flashinfer_jit_cache-0.6.18-cp39-abi3-manylinux_2_28_aarch64.whl",
+    cpu = 20,
+    memory = 65536,
+)
+
+cuda_wheel(
+    name = "torch",
+    src = "@glm53_0906_torch//:source.tar",
+    cuda = "@cuda_sbsa//:toolkit.tar",
+    python = "@python_3_12//:python3",
+    build = "//bazel:build_torch_wheel.py",
+    env = {
+        "BUILD_CAFFE2": "0",
+        "BUILD_TEST": "0",
+        "CMAKE_CUDA_ARCHITECTURES": "121a",
+        "PYTORCH_BUILD_NUMBER": "1",
+        "PYTORCH_BUILD_VERSION": "2.13.0",
+        "TORCH_CUDA_ARCH_LIST": "12.1a",
+        "USE_CUDA": "1",
+        "USE_CUDNN": "1",
+        "USE_CUFILE": "0",
+        "USE_CUSPARSELT": "1",
+        "USE_DISTRIBUTED": "1",
+        "USE_NCCL": "1",
+        "USE_SYSTEM_NCCL": "1",
+    },
+    host_wheels = _TORCH_BUILD_WHEELS,
+    nccl = "//components/nccl:sdk",
+    output = "torch-2.13.0-cp312-cp312-linux_aarch64.whl",
+    cpu = 20,
+    memory = 32768,
+)
+
+vllm_wheel(
+    name = "vllm",
+    src = "@glm53_0906_vllm//:source.tar",
+    cuda = "@cuda_sbsa//:toolkit.tar",
+    python = "@python_3_12//:python3",
+    build = "//bazel:build_vllm_wheel.py",
+    deps = [
+        ":b12x",
+        ":deepgemm",
+        ":torch",
+        ":xgrammar",
+    ],
+    env = {
+        "CMAKE_CUDA_ARCHITECTURES": "121a",
+        "TORCH_CUDA_ARCH_LIST": "12.1a",
+        "VLLM_MAIN_CUDA_VERSION": "13.3",
+        "VLLM_REQUIRE_RUST_FRONTEND": "1",
+        "VLLM_RS_BUILD_VERSION": "0.26.1rc0+glm53.flash.nvfp4.head.0906",
+        "VLLM_DISABLED_KERNELS": "MarlinFP8ScaledMMLinearKernel",
+        "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_VLLM_RUST_FRONTEND_BUILD": "0.26.1rc0+glm53.flash.nvfp4.head.0906",
+        "VLLM_TARGET_DEVICE": "cuda",
+        "VLLM_VERSION_OVERRIDE": "0.26.1rc0+glm53.flash.nvfp4.head.0906",
+    },
+    host_wheels = _VLLM_BUILD_WHEELS,
+    nccl = "//components/nccl:sdk",
+    cuda_architecture = "121a",
+    cargo_vendor = _VLLM_CARGO_VENDOR,
+    cmake_sources = _VLLM_CMAKE_SOURCES,
+    # Wheel filenames use PEP 440 normalization, which canonicalizes 0906 to 906.
+    output = "vllm-0.26.1rc0+glm53.flash.nvfp4.head.906-cp312-cp312-linux_aarch64.whl",
+    cpu = 20,
+    memory = 65536,
+)
+
+# Builds only the native archive. Use this boundary to retain completed native
+# work when a later wheel packaging or image assembly action fails.
+filegroup(
+    name = "vllm_native_extensions",
+    srcs = [":vllm"],
+    output_group = "native_extensions",
+)
+
+filegroup(
+    name = "vllm_compiler_cache_stats",
+    srcs = [":vllm"],
+    output_group = "compiler_cache_stats",
+)
+
+vllm_preflight(
+    name = "vllm_preflight",
+    src = "@glm53_0906_vllm//:source.tar",
+    source_identity = "@glm53_0906_vllm//:source.identity.json",
+    cuda = "@cuda_sbsa//:toolkit.tar",
+    python = "@python_3_12//:python3",
+    deps = [
+        ":b12x",
+        ":deepgemm",
+        ":torch",
+        ":xgrammar",
+    ],
+    env = {
+        "CMAKE_CUDA_ARCHITECTURES": "121a",
+        "TORCH_CUDA_ARCH_LIST": "12.1a",
+        "VLLM_MAIN_CUDA_VERSION": "13.3",
+        "VLLM_REQUIRE_RUST_FRONTEND": "1",
+        "VLLM_RS_BUILD_VERSION": "0.26.1rc0+glm53.flash.nvfp4.head.0906",
+        "VLLM_DISABLED_KERNELS": "MarlinFP8ScaledMMLinearKernel",
+        "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_VLLM_RUST_FRONTEND_BUILD": "0.26.1rc0+glm53.flash.nvfp4.head.0906",
+        "VLLM_TARGET_DEVICE": "cuda",
+        "VLLM_VERSION_OVERRIDE": "0.26.1rc0+glm53.flash.nvfp4.head.0906",
+    },
+    host_wheels = _VLLM_BUILD_WHEELS,
+    nccl = "//components/nccl:sdk",
+    cuda_architecture = "121a",
+    cargo_vendor = _VLLM_CARGO_VENDOR,
+    cmake_sources = _VLLM_CMAKE_SOURCES,
+    output = "vllm-preflight.json",
+)
+
+cuda_wheel(
+    name = "torchvision",
+    src = "@glm53_0906_torchvision//:source.tar",
+    cuda = "@cuda_sbsa//:toolkit.tar",
+    python = "@python_3_12//:python3",
+    build = "//bazel:build_source_wheel.py",
+    deps = [":torch"],
+    env = {
+        "FORCE_CUDA": "1",
+        "PYTORCH_VERSION": "2.13.0",
+        "TORCH_CUDA_ARCH_LIST": "12.1a",
+    },
+    host_wheels = _TORCH_BUILD_WHEELS,
+    nccl = "//components/nccl:sdk",
+    output = "torchvision-0.28.0-cp312-cp312-linux_aarch64.whl",
+    cpu = 20,
+    memory = 32768,
+)
+
+cuda_wheel(
+    name = "torchaudio",
+    src = "@glm53_0906_torchaudio//:source.tar",
+    cuda = "@cuda_sbsa//:toolkit.tar",
+    python = "@python_3_12//:python3",
+    build = "//bazel:build_source_wheel.py",
+    deps = [":torch"],
+    env = {
+        "PYTORCH_VERSION": "2.13.0",
+        "TORCH_CUDA_ARCH_LIST": "12.1a",
+    },
+    host_wheels = _TORCH_BUILD_WHEELS,
+    nccl = "//components/nccl:sdk",
+    output = "torchaudio-2.11.0-cp312-cp312-linux_aarch64.whl",
+    cpu = 20,
+    memory = 32768,
+)
+
+cuda_wheel(
+    name = "deepgemm",
+    src = "@glm53_0906_deepgemm//:source.tar",
+    cuda = "@cuda_sbsa//:toolkit.tar",
+    python = "@python_3_12//:python3",
+    build = "//bazel:build_source_wheel.py",
+    env = {
+        "DG_FORCE_BUILD": "1",
+        "DG_USE_LOCAL_VERSION": "0",
+        "TORCH_CUDA_ARCH_LIST": "12.1a",
+    },
+    deps = [":torch"],
+    host_wheels = _HOST_WHEELS,
+    nccl = "//components/nccl:sdk",
+    output = "deep_gemm-2.5.0-cp312-cp312-linux_aarch64.whl",
+    cpu = 20,
+    memory = 32768,
+)
+
+cuda_wheel(
+    name = "b12x",
+    src = "@glm53_0906_b12x//:source.tar",
+    cuda = "@cuda_sbsa//:toolkit.tar",
+    python = "@python_3_12//:python3",
+    build = "//bazel:build_source_wheel.py",
+    env = {"TORCH_CUDA_ARCH_LIST": "12.1a"},
+    host_wheels = _HOST_WHEELS,
+    output = "b12x-1.3.0-py3-none-any.whl",
+    cpu = 20,
+    memory = 32768,
+)
+
+cuda_wheel(
+    name = "xgrammar",
+    src = "@glm53_0906_xgrammar//:source.tar",
+    cuda = "@cuda_sbsa//:toolkit.tar",
+    python = "@python_3_12//:python3",
+    build = "//bazel:build_source_wheel.py",
+    host_wheels = _SCIKIT_BUILD_WHEELS,
+    output = "xgrammar-0.2.5-cp312-cp312-linux_aarch64.whl",
+    cpu = 20,
+    memory = 32768,
+)
+
+cuda_wheel(
+    name = "exllamav3",
+    src = ":exllamav3_source",
+    cuda = "@cuda_sbsa//:toolkit.tar",
+    python = "@python_3_12//:python3",
+    build = "//bazel:build_exllamav3_wheel.py",
+    deps = [":torch"],
+    env = {
+        "TORCH_CUDA_ARCH_LIST": "12.1a",
+    },
+    host_wheels = _TORCH_BUILD_WHEELS,
+    nccl = "//components/nccl:sdk",
+    output = "exllamav3-0.0.43-cp312-cp312-linux_aarch64.whl",
+    cpu = 20,
+    memory = 32768,
+)
+
+cuda_wheel(
+    name = "lmcache",
+    src = "@glm53_0906_lmcache//:source.tar",
+    cuda = "@cuda_sbsa//:toolkit.tar",
+    python = "@python_3_12//:python3",
+    build = "//bazel:build_source_wheel.py",
+    deps = [":torch"],
+    env = {
+        "BUILD_WITH_CUDA": "1",
+        "LMCACHE_CUDA_MAJOR": "13",
+        "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_LMCACHE": "0.5.3.dev3",
+        "TORCH_CUDA_ARCH_LIST": "12.1a",
+    },
+    host_wheels = _LMCACHE_BUILD_WHEELS,
+    nccl = "//components/nccl:sdk",
+    output = "lmcache-0.5.3.dev3-cp312-cp312-linux_aarch64.whl",
+    cpu = 20,
+    memory = 32768,
+)
+
+cuda_wheel(
+    name = "instanttensor",
+    src = "@glm53_0906_instanttensor//:source.tar",
+    cuda = "@cuda_sbsa//:toolkit.tar",
+    python = "@python_3_12//:python3",
+    build = "//bazel:build_source_wheel.py",
+    deps = [":torch"],
+    host_wheels = _HOST_WHEELS,
+    output = "instanttensor-0.1.9-cp312-cp312-linux_aarch64.whl",
+    cpu = 20,
+    memory = 32768,
+)

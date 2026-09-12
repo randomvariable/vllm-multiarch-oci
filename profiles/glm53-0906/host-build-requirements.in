@@ -1,0 +1,16 @@
+# Build-only Python packages required by component build backends.
+cmake>=3.26.1,<4
+ninja
+setuptools>=77.0.3,<81
+setuptools-scm>=8
+setuptools-rust>=1.9
+scikit-build-core>=0.10
+packaging>=24.2
+pybind11
+numpy
+pyyaml
+wheel
+jinja2
+requests
+six
+typing-extensions>=4.15.0

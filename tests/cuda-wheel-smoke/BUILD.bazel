@@ -1,0 +1,173 @@
+# SPDX-License-Identifier: Apache-2.0
+
+load("//bazel:cuda_wheel.bzl", "cuda_wheel")
+
+genrule(
+    name = "src",
+    srcs = [
+        "build.py",
+        "host.cpp",
+        "kernel.cu",
+        "pyproject.toml",
+        "smoke.h",
+    ],
+    outs = ["source.tar"],
+    cmd = "mkdir -p $(@D)/src && cp $(location :build.py) $(@D)/src/build.py && cp $(location :host.cpp) $(@D)/src/host.cpp && cp $(location :kernel.cu) $(@D)/src/kernel.cu && cp $(location :pyproject.toml) $(@D)/src/pyproject.toml && cp $(location :smoke.h) $(@D)/src/smoke.h && tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner -C $(@D)/src -cf $@ build.py host.cpp kernel.cu pyproject.toml smoke.h",
+)
+
+genrule(
+    name = "src_semantic",
+    srcs = [
+        "build.py",
+        "host-semantic.cpp",
+        "kernel.cu",
+        "pyproject.toml",
+        "smoke.h",
+    ],
+    outs = ["source-semantic.tar"],
+    cmd = "mkdir -p $(@D)/src && cp $(location :build.py) $(@D)/src/build.py && cp $(location :host-semantic.cpp) $(@D)/src/host.cpp && cp $(location :kernel.cu) $(@D)/src/kernel.cu && cp $(location :pyproject.toml) $(@D)/src/pyproject.toml && cp $(location :smoke.h) $(@D)/src/smoke.h && tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner -C $(@D)/src -cf $@ build.py host.cpp kernel.cu pyproject.toml smoke.h",
+)
+
+genrule(
+    name = "src_header",
+    srcs = [
+        "build.py",
+        "host.cpp",
+        "kernel.cu",
+        "pyproject.toml",
+        "smoke-header.cpp",
+    ],
+    outs = ["source-header.tar"],
+    cmd = "mkdir -p $(@D)/src && cp $(location :build.py) $(@D)/src/build.py && cp $(location :host.cpp) $(@D)/src/host.cpp && cp $(location :kernel.cu) $(@D)/src/kernel.cu && cp $(location :pyproject.toml) $(@D)/src/pyproject.toml && cp $(location :smoke-header.cpp) $(@D)/src/smoke.h && tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner -C $(@D)/src -cf $@ build.py host.cpp kernel.cu pyproject.toml smoke.h",
+)
+
+cuda_wheel(
+    name = "wheel",
+    src = ":src",
+    cuda = "@cuda_sbsa//:toolkit.tar",
+    python = "@python_3_12//:python3",
+    build = "build.py",
+    host_wheels = ["@host_deps//setuptools:whl"],
+    output = "cuda_wheel_smoke-0.0.1-py3-none-any.whl",
+    cpu = 1,
+    memory = 1024,
+    env = {
+        "CCACHE_SMOKE_FLAGS": "-DCCACHE_SMOKE_OPTION=0",
+    },
+)
+
+cuda_wheel(
+    name = "wheel_failure",
+    src = ":src",
+    cuda = "@cuda_sbsa//:toolkit.tar",
+    python = "@python_3_12//:python3",
+    build = "build.py",
+    host_wheels = ["@host_deps//setuptools:whl"],
+    output = "cuda_wheel_smoke_failure-0.0.1-py3-none-any.whl",
+    cpu = 1,
+    memory = 1024,
+    env = {
+        "CCACHE_SMOKE_EVIDENCE": "failure",
+        "CCACHE_SMOKE_FAIL_AFTER_COMPILE": "1",
+        "CCACHE_SMOKE_FLAGS": "-DCCACHE_SMOKE_OPTION=0",
+    },
+)
+
+cuda_wheel(
+    name = "wheel_retry",
+    src = ":src",
+    cuda = "@cuda_sbsa//:toolkit.tar",
+    python = "@python_3_12//:python3",
+    build = "build.py",
+    host_wheels = ["@host_deps//setuptools:whl"],
+    output = "cuda_wheel_smoke_retry-0.0.1-py3-none-any.whl",
+    cpu = 1,
+    memory = 1024,
+    env = {
+        "CCACHE_SMOKE_EVIDENCE": "retry",
+        "CCACHE_SMOKE_FLAGS": "-DCCACHE_SMOKE_OPTION=0",
+    },
+)
+
+cuda_wheel(
+    name = "wheel_worker_a",
+    src = ":src",
+    cuda = "@cuda_sbsa//:toolkit.tar",
+    python = "@python_3_12//:python3",
+    build = "build.py",
+    host_wheels = ["@host_deps//setuptools:whl"],
+    output = "cuda_wheel_smoke_worker_a-0.0.1-py3-none-any.whl",
+    cpu = 1,
+    memory = 1024,
+    env = {
+        "CCACHE_SMOKE_EVIDENCE": "worker-a",
+        "CCACHE_SMOKE_FLAGS": "-DCCACHE_SMOKE_OPTION=0",
+    },
+)
+
+cuda_wheel(
+    name = "wheel_worker_b",
+    src = ":src",
+    cuda = "@cuda_sbsa//:toolkit.tar",
+    python = "@python_3_12//:python3",
+    build = "build.py",
+    host_wheels = ["@host_deps//setuptools:whl"],
+    output = "cuda_wheel_smoke_worker_b-0.0.1-py3-none-any.whl",
+    cpu = 1,
+    memory = 1024,
+    env = {
+        "CCACHE_SMOKE_EVIDENCE": "worker-b",
+        "CCACHE_SMOKE_FLAGS": "-DCCACHE_SMOKE_OPTION=0",
+    },
+)
+
+cuda_wheel(
+    name = "wheel_semantic",
+    src = ":src_semantic",
+    cuda = "@cuda_sbsa//:toolkit.tar",
+    python = "@python_3_12//:python3",
+    build = "build.py",
+    host_wheels = ["@host_deps//setuptools:whl"],
+    output = "cuda_wheel_smoke_semantic-0.0.1-py3-none-any.whl",
+    cpu = 1,
+    memory = 1024,
+    env = {
+        "CCACHE_SMOKE_EVIDENCE": "semantic",
+        "CCACHE_SMOKE_EXPECTED": "12",
+        "CCACHE_SMOKE_FLAGS": "-DCCACHE_SMOKE_OPTION=0",
+    },
+)
+
+cuda_wheel(
+    name = "wheel_header",
+    src = ":src_header",
+    cuda = "@cuda_sbsa//:toolkit.tar",
+    python = "@python_3_12//:python3",
+    build = "build.py",
+    host_wheels = ["@host_deps//setuptools:whl"],
+    output = "cuda_wheel_smoke_header-0.0.1-py3-none-any.whl",
+    cpu = 1,
+    memory = 1024,
+    env = {
+        "CCACHE_SMOKE_EVIDENCE": "header",
+        "CCACHE_SMOKE_EXPECTED": "13",
+        "CCACHE_SMOKE_FLAGS": "-DCCACHE_SMOKE_OPTION=0",
+    },
+)
+
+cuda_wheel(
+    name = "wheel_option",
+    src = ":src",
+    cuda = "@cuda_sbsa//:toolkit.tar",
+    python = "@python_3_12//:python3",
+    build = "build.py",
+    host_wheels = ["@host_deps//setuptools:whl"],
+    output = "cuda_wheel_smoke_option-0.0.1-py3-none-any.whl",
+    cpu = 1,
+    memory = 1024,
+    env = {
+        "CCACHE_SMOKE_EVIDENCE": "option",
+        "CCACHE_SMOKE_EXPECTED": "13",
+        "CCACHE_SMOKE_FLAGS": "-DCCACHE_SMOKE_OPTION=1",
+    },
+)

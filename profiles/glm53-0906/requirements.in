@@ -1,0 +1,24 @@
+--extra-index-url https://flashinfer.ai/whl/
+
+# vLLM runtime requirements not built from this profile's pinned source trees.
+-r ../../third_party/vllm-common-requirements.txt
+
+apache-tvm-ffi==0.1.11
+cuda-python==13.3.1
+cuda-tile>=1.4.0
+cupy-cuda13x
+fastsafetensors>=0.3.3
+humming-kernels[cu13]==0.1.12
+nccl4py>=0.3.1
+nvidia-cudnn-frontend>=1.25.0
+nvidia-cutlass-dsl[cu13]==4.6.2
+nvidia-ml-py
+nvtx==0.2.15
+quack-kernels==0.6.4
+tilelang==0.1.12
+tokenspeed-mla==0.1.8
+torchcodec>=0.14
+
+# Source-built wheels installed by venv_layer, excluded from Bazel's PyPI hub.
+# torch, torchvision, torchaudio, flashinfer-python, flashinfer-cubin, xgrammar,
+# deepgemm, b12x, vllm, exllamav3, lmcache, instanttensor

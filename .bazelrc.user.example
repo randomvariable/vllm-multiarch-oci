@@ -1,0 +1,4 @@
+# Copy to .bazelrc.user and set these values for NativeLink remote execution.
+# build:remote-aarch64 --remote_executor=grpcs://nativelink.example:443
+# build:remote-aarch64 --remote_cache=grpcs://nativelink.example:443
+# build:remote-aarch64 --remote_header=x-buildbuddy-api-key=REPLACE_ME

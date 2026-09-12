@@ -1,0 +1,7 @@
+.bazel-cache/
+.bazelrc.user
+bazel-*
+.build-evidence/
+# Private execution records are not public project documentation.
+/specs/recoverable-incremental-builds/
+__pycache__/

@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: Apache-2.0
+
+load("@container_structure_test//:defs.bzl", "container_structure_test")
+
+container_structure_test(
+    name = "glm53_0906_contract",
+    configs = ["glm53-0906.yaml"],
+    driver = "docker",
+    image = "//image:glm53_0906",
+    platform = "linux/arm64",
+)

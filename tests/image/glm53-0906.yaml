@@ -1,0 +1,29 @@
+schemaVersion: 2.0.0
+
+metadataTest:
+  entrypoint: ["/opt/venv/bin/vllm"]
+  workdir: "/root"
+  envVars:
+    - key: "CUDA_HOME"
+      value: "/usr/local/cuda"
+    - key: "PATH"
+      value: "/opt/venv/bin:/usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+fileExistenceTests:
+  - name: "hermetic Python launcher"
+    path: "/opt/venv/bin/python"
+    shouldExist: true
+    permissions: "-rwxr-xr-x"
+  - name: "vLLM launcher"
+    path: "/opt/venv/bin/vllm"
+    shouldExist: true
+    permissions: "-rwxr-xr-x"
+  - name: "vLLM wheel package"
+    path: "/opt/venv/lib/python3.12/site-packages/vllm/__init__.py"
+    shouldExist: true
+  - name: "profile-pinned NCCL"
+    path: "/opt/nccl/lib/libnccl.so.2.30.4"
+    shouldExist: true
+  - name: "CUDA 13 cuSPARSELt runtime"
+    path: "/usr/local/cuda/lib64/libcusparseLt.so.0"
+    shouldExist: true

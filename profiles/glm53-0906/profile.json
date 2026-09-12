@@ -1,0 +1,125 @@
+{
+  "name": "glm53-0906",
+  "image": {
+    "repository": "local/vllm",
+    "tag": "glm53-flash-nvfp4-head-0906",
+    "vllm_build_version": "0.26.1rc0+glm53.flash.nvfp4.head.0906"
+  },
+  "cuda_arch": {
+    "torch": "12.1a",
+    "flashinfer": "12.1f"
+  },
+  "sources": {
+    "vllm": {
+      "remote": "https://github.com/local-inference-lab/vllm.git",
+      "commit": "2a979314dc97b03173a0a76fc15664ec924db32b",
+      "recursive_init_submodules": true,
+      "cargo_vendor": true
+    },
+    "vllm_cmake_cutlass": {
+      "remote": "https://github.com/nvidia/cutlass.git",
+      "commit": "v4.4.2",
+      "recursive_init_submodules": false
+    },
+    "vllm_cmake_deepgemm": {
+      "remote": "https://github.com/deepseek-ai/DeepGEMM.git",
+      "commit": "8b1392b978f5a03c828dd1711090d7fb50958b8a",
+      "recursive_init_submodules": true
+    },
+    "vllm_cmake_qutlass": {
+      "remote": "https://github.com/IST-DASLab/qutlass.git",
+      "commit": "e74319e3405ce6d71965732880f5dc1f52371f64",
+      "recursive_init_submodules": true
+    },
+    "vllm_cmake_triton": {
+      "remote": "https://github.com/triton-lang/triton.git",
+      "commit": "v3.5.1",
+      "recursive_init_submodules": false
+    },
+    "vllm_cmake_msa": {
+      "remote": "https://github.com/vllm-project/MSA.git",
+      "commit": "087c161814d4d9c735b46c21212a09e5f8eb92fa",
+      "recursive_init_submodules": true
+    },
+    "vllm_cmake_flashmla": {
+      "remote": "https://github.com/vllm-project/FlashMLA.git",
+      "commit": "a8f794d1251cbfd88a5011445dd5582289c727e4",
+      "recursive_init_submodules": false
+    },
+    "vllm_cmake_flashkda": {
+      "remote": "https://github.com/vllm-project/FlashKDA.git",
+      "commit": "3b225bf26bb8e218928a1fe14751cb48cf31d11b",
+      "recursive_init_submodules": true
+    },
+    "vllm_cmake_tml_fa4": {
+      "remote": "https://github.com/vllm-project/tml-fa4.git",
+      "commit": "b206834606ed5b5f21f8eed6b0683f528ea9cf7d",
+      "recursive_init_submodules": false
+    },
+    "vllm_cmake_flash_attn": {
+      "remote": "https://github.com/vllm-project/flash-attention.git",
+      "commit": "f3e1a4f74c99145c0717709860bf765de1703779",
+      "recursive_init_submodules": true
+    },
+    "b12x": {
+      "remote": "https://github.com/local-inference-lab/b12x.git",
+      "commit": "3eb57addb57b86360e9164467a4459ab964bfcac",
+      "recursive_init_submodules": true
+    },
+    "nccl": {
+      "remote": "https://github.com/local-inference-lab/nccl-canonical.git",
+      "commit": "dfab7c1ace32da250ba97757879429c341b7bcf9",
+      "recursive_init_submodules": true
+    },
+    "flashinfer": {
+      "remote": "https://github.com/voipmonitor/flashinfer.git",
+      "commit": "1ac6942776b383c6b03c7a5805a22e72a3e3349f",
+      "recursive_init_submodules": true
+    },
+    "cutlass": {
+      "remote": "https://github.com/NVIDIA/cutlass.git",
+      "commit": "e6233cbac5d7c7a865c19c91cd684ceece19513c",
+      "recursive_init_submodules": true
+    },
+    "deepgemm": {
+      "remote": "https://github.com/deepseek-ai/DeepGEMM.git",
+      "commit": "a6b593d2826719dcf4892609af7b84ee23aaf32a",
+      "recursive_init_submodules": true
+    },
+    "xgrammar": {
+      "remote": "https://github.com/mlc-ai/xgrammar.git",
+      "commit": "2ea71da4ccb997a06928c9fb69b99f330da56697",
+      "recursive_init_submodules": true
+    },
+    "exllamav3": {
+      "remote": "https://github.com/brandonmmusic-max/exllamav3.git",
+      "commit": "704aefd743b390af4bd0fb429d1906f9b964c7d8",
+      "recursive_init_submodules": true
+    },
+    "lmcache": {
+      "remote": "https://github.com/local-inference-lab/LMCache.git",
+      "commit": "9cebd405d0caf4bebe01d694b5a8bf4e3e354314",
+      "recursive_init_submodules": true
+    },
+    "instanttensor": {
+      "remote": "https://github.com/voipmonitor/InstantTensor.git",
+      "commit": "49b4010afc1cae0441e71fe0b0bffc24fa05e932",
+      "recursive_init_submodules": true
+    },
+    "torch": {
+      "remote": "https://github.com/pytorch/pytorch.git",
+      "commit": "cf30153c4c131c8164ee7798e5022d810682e2cb",
+      "recursive_init_submodules": true
+    },
+    "torchvision": {
+      "remote": "https://github.com/pytorch/vision.git",
+      "commit": "8fb87713a24951e639c494b0f2a8a81b5f8e33a6",
+      "recursive_init_submodules": true
+    },
+    "torchaudio": {
+      "remote": "https://github.com/pytorch/audio.git",
+      "commit": "34c52a67e8941bbd8e6adaca0eb0b9eabec11d78",
+      "recursive_init_submodules": true
+    }
+  }
+}

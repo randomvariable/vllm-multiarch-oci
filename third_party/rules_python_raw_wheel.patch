@@ -1,0 +1,28 @@
+diff --git a/python/private/pypi/pkg_aliases.bzl b/python/private/pypi/pkg_aliases.bzl
+--- a/python/private/pypi/pkg_aliases.bzl
++++ b/python/private/pypi/pkg_aliases.bzl
+@@ -101,6 +101,7 @@ def pkg_aliases(
+     target_names = {
+         PY_LIBRARY_PUBLIC_LABEL: PY_LIBRARY_IMPL_LABEL if group_name else PY_LIBRARY_PUBLIC_LABEL,
+         WHEEL_FILE_PUBLIC_LABEL: WHEEL_FILE_IMPL_LABEL if group_name else WHEEL_FILE_PUBLIC_LABEL,
++        "raw_whl": "raw_whl",
+         DATA_LABEL: DATA_LABEL,
+         DIST_INFO_LABEL: DIST_INFO_LABEL,
+         EXTRACTED_WHEEL_FILES: EXTRACTED_WHEEL_FILES,
+diff --git a/python/private/pypi/whl_library_targets.bzl b/python/private/pypi/whl_library_targets.bzl
+--- a/python/private/pypi/whl_library_targets.bzl
++++ b/python/private/pypi/whl_library_targets.bzl
+@@ -315,6 +315,12 @@ def whl_library_targets(
+         whl_file_label = WHEEL_FILE_PUBLIC_LABEL
+         impl_vis = ["//visibility:public"]
+ 
++    native.filegroup(
++        name = "raw_whl",
++        srcs = [name],
++        visibility = ["//visibility:public"],
++    )
++
+     if hasattr(native, "filegroup"):
+         native.filegroup(
+             name = whl_file_label,
+             srcs = [name],

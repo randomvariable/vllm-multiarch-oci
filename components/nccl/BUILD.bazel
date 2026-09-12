@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: Apache-2.0
+
+load("//bazel:nccl.bzl", "nccl_lib")
+
+package(default_visibility = ["//visibility:public"])
+
+nccl_lib(
+    name = "libnccl",
+    src = "@glm53_0906_nccl//:source.tar",
+    cuda = "@cuda_sbsa//:toolkit.tar",
+    commit = "dfab7c1ace32da250ba97757879429c341b7bcf9",
+    cuda_arch = "121a",
+    python = "@python_3_12//:python3",
+    python_runtime = "@python_3_12//:files",
+    target_compatible_with = ["@platforms//cpu:aarch64"],
+)
+
+filegroup(
+    name = "sdk",
+    srcs = [":libnccl"],
+    output_group = "sdk",
+)

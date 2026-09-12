@@ -1,0 +1,85 @@
+# SPDX-License-Identifier: Apache-2.0
+
+load("@bazel_skylib//rules:common_settings.bzl", "string_flag")
+load("@rules_cc//cc/toolchains:cc_toolchain.bzl", "cc_toolchain")
+load("//bazel:remote_cc_toolchain.bzl", "remote_linux_aarch64_cc_toolchain_config")
+
+string_flag(
+    name = "cuda_arch",
+    build_setting_default = "121a",
+    visibility = ["//visibility:public"],
+)
+
+platform(
+    name = "spark_arm64_sm121",
+    constraint_values = [
+        "@platforms//cpu:aarch64",
+        "@platforms//os:linux",
+    ],
+    flags = ["--//platforms:cuda_arch=121a"],
+    visibility = ["//visibility:public"],
+)
+
+platform(
+    name = "blackwell_x86_64_sm120",
+    constraint_values = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
+    flags = ["--//platforms:cuda_arch=120"],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "empty",
+    srcs = [],
+)
+
+# The NativeLink worker image supplies this complete GCC 15 cross toolchain.
+# Its absolute paths deliberately describe worker tools, so no client compiler
+# files or include-path metadata leak into remote action inputs.
+remote_linux_aarch64_cc_toolchain_config(
+    name = "remote_linux_aarch64_cc_toolchain_config",
+)
+
+cc_toolchain(
+    name = "remote_linux_aarch64_cc_compiler",
+    all_files = ":empty",
+    ar_files = ":empty",
+    as_files = ":empty",
+    compiler_files = ":empty",
+    dwp_files = ":empty",
+    linker_files = ":empty",
+    objcopy_files = ":empty",
+    strip_files = ":empty",
+    supports_param_files = 1,
+    toolchain_config = ":remote_linux_aarch64_cc_toolchain_config",
+    toolchain_identifier = "remote-linux-aarch64-gcc-15",
+)
+
+toolchain(
+    name = "remote_linux_aarch64_cc_toolchain",
+    exec_compatible_with = [
+        "@platforms//cpu:aarch64",
+        "@platforms//os:linux",
+    ],
+    target_compatible_with = [
+        "@platforms//cpu:aarch64",
+        "@platforms//os:linux",
+    ],
+    toolchain = ":remote_linux_aarch64_cc_compiler",
+    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "cuda_sm121",
+    flag_values = {":cuda_arch": "121a"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "cuda_sm120",
+    flag_values = {":cuda_arch": "120"},
+    visibility = ["//visibility:public"],
+)
