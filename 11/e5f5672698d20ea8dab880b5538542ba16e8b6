@@ -1,0 +1,18 @@
+MODULE.bazel.lock
+  h_15da545fc8cfbe 279
+bazel/sources.bzl
+  h_15da545fc8cfbe 33-34
+docs/how-to/measure-incremental-builds.md
+  h_15da545fc8cfbe 18,20,23,26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "11e5f5672698d20ea8dab880b5538542ba16e8b6",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
