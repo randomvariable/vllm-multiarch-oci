@@ -18,7 +18,13 @@ GCC_SYSROOT_ATTR = attr.label(
 # Budget per concurrent nvcc or g++ invocation. The CUDA translation units in
 # these wheels are the memory-hungry ones, so the job count is clamped to keep
 # a fully parallel build inside the action's declared memory reservation.
-_MEBIBYTES_PER_JOB = 3072
+#
+# 3GiB per job drove the worker cgroup to its 64GiB ceiling: memory.current sat
+# at 43-45GiB with 20 jobs while memory.peak reached 64.0GiB and
+# memory.events recorded 2434 reclaim events (no OOM kill). Reclaim at the
+# limit evicts the page cache the NFS-backed ccache reads through, so the
+# budget leaves headroom rather than spending it on compilers.
+_MEBIBYTES_PER_JOB = 4096
 
 def compile_jobs(attr):
     """Return the compile parallelism an action's declared reservation affords.
