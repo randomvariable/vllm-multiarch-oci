@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Build an upstream Python CUDA extension as a content-addressed wheel action."""
 
-load("//bazel:compiler_cache.bzl", "CCACHE_ATTR", "GCC_SYSROOT_ATTR", "compile_jobs")
+load("//bazel:compiler_cache.bzl", "CCACHE_ATTR", "GCC_SYSROOT_ATTR", "MEMORY_PER_JOB_ATTR", "compile_jobs")
 
 def _cuda_wheel_impl(ctx):
     output = ctx.actions.declare_file(ctx.attr.output)
@@ -82,6 +82,7 @@ cuda_wheel = rule(
         "max_jobs": attr.int(default = 64),
         "cpu": attr.int(default = 20),
         "memory": attr.int(default = 32768),
+        "memory_per_job": MEMORY_PER_JOB_ATTR,
         "_driver": attr.label(
             default = Label("//bazel:cuda_wheel_action.py"),
             allow_single_file = True,

@@ -15,16 +15,15 @@ GCC_SYSROOT_ATTR = attr.label(
     allow_single_file = True,
 )
 
-# Budget per concurrent nvcc or g++ invocation. The CUDA translation units in
-# these wheels are the memory-hungry ones, so the job count is clamped to keep
-# a fully parallel build inside the action's declared memory reservation.
-_MEBIBYTES_PER_JOB = 4096
+# Default budget per concurrent nvcc or g++ invocation. A target whose
+# translation units are larger overrides it with memory_per_job.
+MEBIBYTES_PER_JOB = 4096
 
 # The action shares its cgroup with the nativelink agent, the extracted
-# toolchains, and the page cache the NFS-backed ccache reads through. A
-# 64GiB action on a 64GiB worker left nothing for any of them: both workers
-# were OOMKilled (exit 137) compiling FlashInfer's AOT kernels with 16 jobs.
+# toolchains, and the page cache the NFS-backed ccache reads through.
 _WORKER_RESERVE_MEBIBYTES = 8192
+
+MEMORY_PER_JOB_ATTR = attr.int(default = MEBIBYTES_PER_JOB)
 
 def compile_jobs(attr):
     """Return the compile parallelism an action's declared reservation affords.
@@ -32,6 +31,11 @@ def compile_jobs(attr):
     Actions reserve 20 CPUs on the remote worker. Compiling with a fixed four
     jobs left that reservation idle and made every cache-cold wheel build
     roughly five times longer than the hardware required.
+
+    The worker is OOMKilled rather than throttled when the sum of the
+    concurrent compilers exceeds its 64GiB cgroup, so the budget is a hard
+    divisor rather than a hint.
     """
     budget = attr.memory - _WORKER_RESERVE_MEBIBYTES
-    return max(1, min(attr.max_jobs, attr.cpu, budget // _MEBIBYTES_PER_JOB))
+    per_job = attr.memory_per_job or MEBIBYTES_PER_JOB
+    return max(1, min(attr.max_jobs, attr.cpu, budget // per_job))
