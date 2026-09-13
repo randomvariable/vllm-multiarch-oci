@@ -6,7 +6,7 @@ package(default_visibility = ["//visibility:public"])
 
 nccl_lib(
     name = "libnccl",
-    src = "@glm53_0906_nccl//:source.tar",
+    src = "@vllmb12x_nccl//:source.tar",
     cuda = "@cuda_sbsa//:toolkit.tar",
     commit = "dfab7c1ace32da250ba97757879429c341b7bcf9",
     cuda_arch = "121a",

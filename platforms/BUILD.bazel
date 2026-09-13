@@ -39,7 +39,7 @@ filegroup(
 # libraries. CUDA build rules consume this label rather than worker paths.
 filegroup(
     name = "gcc_15_sysroot",
-    srcs = ["@glm53_gcc_15_sysroot//:flat"],
+    srcs = ["@gcc_15_sysroot//:flat"],
     visibility = ["//visibility:public"],
 )
 

@@ -33,6 +33,15 @@ fileExistenceTests:
   - name: "CUDA 13 cuSPARSELt runtime"
     path: "/opt/cusparselt/lib/libcusparseLt.so.0"
     shouldExist: true
+  - name: "B12X build provenance lock"
+    path: "/opt/vllmb12x/sources.lock.json"
+    shouldExist: true
+  - name: "B12X source identities"
+    path: "/opt/vllmb12x/source-identity/vllm.json"
+    shouldExist: true
+  - name: "liburing runtime"
+    path: "/usr/lib/aarch64-linux-gnu/liburing.so.2"
+    shouldExist: true
 
 commandTests:
   # Torch links cuDNN, cuBLAS, cuSPARSELt and NCCL, so a successful import is
@@ -43,3 +52,9 @@ commandTests:
       - "-c"
       - "import torch; print('cudnn', torch.backends.cudnn.version())"
     expectedOutput: ["cudnn 9[0-9]+"]
+  - name: "B12X source lock identifies the selected vLLM revision"
+    command: "/opt/venv/bin/python"
+    args:
+      - "-c"
+      - "import json; lock = json.load(open('/opt/vllmb12x/sources.lock.json')); assert lock['profile']['name'] == 'vllmb12x'; print(lock['profile']['sources']['vllm']['commit'])"
+    expectedOutput: ["[0-9a-f]{40}"]

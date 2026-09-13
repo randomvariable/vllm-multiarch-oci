@@ -60,13 +60,14 @@ apt.sources_list(
     ],
 )
 apt.install(
-    dependency_set = "glm53_runtime_apt",
+    dependency_set = "runtime_apt",
     packages = [
         "ca-certificates:arm64",
         # GDAKI's wrappers dynamically load libibverbs. Keep its ABI library
         # and the Mellanox provider plugin in the image.
         "ibverbs-providers:arm64",
         "libibverbs1:arm64",
+        "liburing2:arm64",
         "libnuma1:arm64",
         "pciutils:arm64",
         "python3:arm64",
@@ -80,19 +81,20 @@ apt.install(
 # Native actions receive this complete compiler and libc tree as a declared
 # input. It must not depend on GCC files preinstalled on a worker.
 apt.install(
-    dependency_set = "glm53_gcc_15_sysroot",
+    dependency_set = "gcc_15_sysroot",
     packages = [
         "g++:arm64",
         # Compile NCCL's net_ib and GDAKI transports against the same pinned
         # RDMA userspace ABI shipped in the runtime image.
         "libibverbs-dev:arm64",
+        "liburing-dev:arm64",
     ],
     suites = [
         "resolute",
         "resolute-security",
     ],
 )
-use_repo(apt, "glm53_gcc_15_sysroot", "glm53_runtime_apt")
+use_repo(apt, "gcc_15_sysroot", "runtime_apt")
 
 # Bazel caches whole actions, so one changed source recompiles a component from
 # scratch. vLLM's incremental-build guide recovers per-file reuse through a
@@ -105,7 +107,7 @@ use_repo(cuda, "cuda_sbsa")
 
 sources = use_extension("//bazel:sources.bzl", "profile_sources")
 sources.profile(
-    manifest = "//profiles/glm53-0906:profile.json",
+    manifest = "//profiles/vllmb12x:profile.json",
     # Keep the Spark thermal scheduling control as a declared source input.
     # Its hash becomes part of source.identity.json.
     vllm_patches = [
@@ -114,28 +116,28 @@ sources.profile(
 )
 use_repo(
     sources,
-    "glm53_0906_b12x",
-    "glm53_0906_cutlass",
-    "glm53_0906_deepgemm",
-    "glm53_0906_exllamav3",
-    "glm53_0906_flashinfer",
-    "glm53_0906_instanttensor",
-    "glm53_0906_lmcache",
-    "glm53_0906_nccl",
-    "glm53_0906_torch",
-    "glm53_0906_torchaudio",
-    "glm53_0906_torchvision",
-    "glm53_0906_vllm",
-    "glm53_0906_vllm_cmake_cutlass",
-    "glm53_0906_vllm_cmake_deepgemm",
-    "glm53_0906_vllm_cmake_flash_attn",
-    "glm53_0906_vllm_cmake_flashkda",
-    "glm53_0906_vllm_cmake_flashmla",
-    "glm53_0906_vllm_cmake_msa",
-    "glm53_0906_vllm_cmake_qutlass",
-    "glm53_0906_vllm_cmake_tml_fa4",
-    "glm53_0906_vllm_cmake_triton",
-    "glm53_0906_xgrammar",
+    "vllmb12x_b12x",
+    "vllmb12x_cutlass",
+    "vllmb12x_deepgemm",
+    "vllmb12x_exllamav3",
+    "vllmb12x_flashinfer",
+    "vllmb12x_instanttensor",
+    "vllmb12x_lmcache",
+    "vllmb12x_nccl",
+    "vllmb12x_torch",
+    "vllmb12x_torchaudio",
+    "vllmb12x_torchvision",
+    "vllmb12x_vllm",
+    "vllmb12x_vllm_cmake_cutlass",
+    "vllmb12x_vllm_cmake_deepgemm",
+    "vllmb12x_vllm_cmake_flash_attn",
+    "vllmb12x_vllm_cmake_flashkda",
+    "vllmb12x_vllm_cmake_flashmla",
+    "vllmb12x_vllm_cmake_msa",
+    "vllmb12x_vllm_cmake_qutlass",
+    "vllmb12x_vllm_cmake_tml_fa4",
+    "vllmb12x_vllm_cmake_triton",
+    "vllmb12x_xgrammar",
 )
 
 rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
@@ -186,7 +188,7 @@ pip.parse(
     ],
     hub_name = "host_deps",
     python_version = "3.12",
-    requirements_lock = "//profiles/glm53-0906:host-build-requirements.lock",
+    requirements_lock = "//profiles/vllmb12x:host-build-requirements.lock",
 )
 pip.parse(
     download_only = True,
@@ -202,7 +204,7 @@ pip.parse(
     ],
     hub_name = "runtime_deps",
     python_version = "3.12",
-    requirements_lock = "//profiles/glm53-0906:requirements.lock",
+    requirements_lock = "//profiles/vllmb12x:requirements.lock",
 )
 use_repo(pip, "host_deps", "runtime_deps")
 

@@ -1,0 +1,168 @@
+---
+# The cluster-side CronJob invokes this incoming PipelineRun. PAC parameters
+# provide every endpoint, credential name, execution property, and storage
+# class so this public repository contains no private infrastructure values.
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  name: vllmb12x-nightly
+  annotations:
+    pipelinesascode.tekton.dev/on-event: "[incoming]"
+    pipelinesascode.tekton.dev/on-target-branch: "[main]"
+    pipelinesascode.tekton.dev/max-keep-runs: "3"
+    pipelinesascode.tekton.dev/task: "git-clone"
+spec:
+  timeouts:
+    pipeline: 8h0m0s
+  params:
+    - {name: repo_url, value: "{{ repo_url }}"}
+    - {name: revision, value: "{{ revision }}"}
+    - {name: remote_cache, value: "{{ bazel_remote_cache }}"}
+    - {name: remote_executor, value: "{{ bazel_remote_executor }}"}
+    - {name: remote_isa, value: "{{ bazel_remote_isa }}"}
+    - {name: remote_os_family, value: "{{ bazel_remote_os_family }}"}
+    - {name: remote_container_image, value: "{{ bazel_remote_container_image }}"}
+    - {name: remote_gpu, value: "{{ bazel_remote_gpu }}"}
+    - {name: remote_cpu_count, value: "{{ bazel_remote_cpu_count }}"}
+    - {name: image_repository, value: "{{ image_repository }}"}
+    - {name: publisher_lease, value: "{{ publisher_lease }}"}
+    - {name: publisher_namespace, value: "{{ publisher_namespace }}"}
+    - {name: publisher_token_secret, value: "{{ publisher_token_secret }}"}
+  taskRunTemplate:
+    serviceAccountName: "{{ service_account }}"
+    podTemplate:
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      imagePullSecrets: [{name: "{{ pull_secret }}"}]
+      securityContext: {fsGroup: 65532}
+  workspaces:
+    - name: source
+      volumeClaimTemplate:
+        spec:
+          storageClassName: "{{ storage_class }}"
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 20Gi
+  pipelineSpec:
+    params:
+      - {name: repo_url, type: string}
+      - {name: revision, type: string}
+      - {name: remote_cache, type: string}
+      - {name: remote_executor, type: string}
+      - {name: remote_isa, type: string}
+      - {name: remote_os_family, type: string}
+      - {name: remote_container_image, type: string}
+      - {name: remote_gpu, type: string}
+      - {name: remote_cpu_count, type: string}
+      - {name: image_repository, type: string}
+      - {name: publisher_lease, type: string}
+      - {name: publisher_namespace, type: string}
+      - {name: publisher_token_secret, type: string}
+    workspaces:
+      - name: source
+    tasks:
+      - name: clone
+        taskRef:
+          name: git-clone
+        params:
+          - {name: url, value: $(params.repo_url)}
+          - {name: revision, value: $(params.revision)}
+          - {name: depth, value: "1"}
+          - {name: deleteExisting, value: "true"}
+        workspaces:
+          - {name: output, workspace: source}
+      - name: build-test-and-publish
+        runAfter: [clone]
+        timeout: 8h0m0s
+        workspaces:
+          - {name: source, workspace: source}
+        taskSpec:
+          params:
+            - {name: remote_cache, type: string}
+            - {name: remote_executor, type: string}
+            - {name: remote_isa, type: string}
+            - {name: remote_os_family, type: string}
+            - {name: remote_container_image, type: string}
+            - {name: remote_gpu, type: string}
+            - {name: remote_cpu_count, type: string}
+            - {name: image_repository, type: string}
+            - {name: publisher_lease, type: string}
+            - {name: publisher_namespace, type: string}
+            - {name: publisher_token_secret, type: string}
+          workspaces:
+            - name: source
+          results:
+            - name: image_ref
+          steps:
+            - name: build-test-and-publish
+              image: gcr.io/bazel-public/bazel@sha256:e59bd66f8daf69f02dbfc18dbd72f0ecfe7926bbda95a5c9eb62433d83b8bd02
+              workingDir: $(workspaces.source.path)
+              securityContext: {runAsUser: 0, runAsGroup: 0}
+              env:
+                - {name: HOME, value: /tekton/home}
+                - {name: DOCKER_CONFIG, value: /tekton/docker}
+                - {name: GITHUB_TOKEN_FILE, value: /tekton/github/token}
+              computeResources:
+                requests: {cpu: "4", memory: 8Gi}
+                limits: {memory: 24Gi}
+              script: |
+                #!/usr/bin/env bash
+                set -euo pipefail
+
+                apt-get update
+                apt-get install --no-install-recommends --yes ca-certificates curl kubernetes-client
+                rm -rf /var/lib/apt/lists/*
+
+                git config --global --add safe.directory "$PWD"
+                BUILD_REVISION="$(git rev-parse HEAD)"
+                cat > .bazelrc.user <<EOF
+                build --remote_cache=$(params.remote_cache)
+                build --remote_timeout=21600
+                build --remote_cache_compression
+                build --remote_upload_local_results=true
+                build:remote-aarch64 --remote_executor=$(params.remote_executor)
+                build:remote-aarch64 --remote_default_exec_properties=ISA=$(params.remote_isa)
+                build:remote-aarch64 --remote_default_exec_properties=OSFamily=$(params.remote_os_family)
+                build:remote-aarch64 --remote_default_exec_properties=container-image=$(params.remote_container_image)
+                build:remote-aarch64 --remote_default_exec_properties=gpu=$(params.remote_gpu)
+                build:remote-aarch64 --remote_default_exec_properties=cpu_count=$(params.remote_cpu_count)
+                EOF
+
+                bazel build //image:vllmb12x --config=remote-aarch64 --disk_cache=
+                bazel test //tests/image:vllmb12x_contract --config=remote-aarch64 --disk_cache= --test_output=errors
+
+                mkdir -p "$DOCKER_CONFIG"
+                TOKEN="$(cat "$GITHUB_TOKEN_FILE")"
+                printf '{"auths":{"ghcr.io":{"auth":"%s"}}}\n' \
+                  "$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)" > "$DOCKER_CONFIG/config.json"
+                RESULT=/tmp/publish-result.json
+                python3 scripts/publish-vllmb12x.py \
+                  --repository "$(params.image_repository)" \
+                  --build-revision "$BUILD_REVISION" \
+                  --lease-name "$(params.publisher_lease)" \
+                  --namespace "$(params.publisher_namespace)" \
+                  --bazel-arg=--config=remote-aarch64 \
+                  --bazel-arg=--disk_cache= \
+                  --result-file "$RESULT"
+                REF="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["reference"])' "$RESULT")"
+                printf '%s' "$REF" > "$(results.image_ref.path)"
+              volumeMounts:
+                - {name: github-token, mountPath: /tekton/github, readOnly: true}
+          volumes:
+            - name: github-token
+              secret:
+                secretName: $(params.publisher_token_secret)
+                items: [{key: token, path: token}]
+        params:
+          - {name: remote_cache, value: $(params.remote_cache)}
+          - {name: remote_executor, value: $(params.remote_executor)}
+          - {name: remote_isa, value: $(params.remote_isa)}
+          - {name: remote_os_family, value: $(params.remote_os_family)}
+          - {name: remote_container_image, value: $(params.remote_container_image)}
+          - {name: remote_gpu, value: $(params.remote_gpu)}
+          - {name: remote_cpu_count, value: $(params.remote_cpu_count)}
+          - {name: image_repository, value: $(params.image_repository)}
+          - {name: publisher_lease, value: $(params.publisher_lease)}
+          - {name: publisher_namespace, value: $(params.publisher_namespace)}
+          - {name: publisher_token_secret, value: $(params.publisher_token_secret)}

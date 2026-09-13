@@ -3,9 +3,9 @@
 load("@container_structure_test//:defs.bzl", "container_structure_test")
 
 container_structure_test(
-    name = "glm53_0906_contract",
-    configs = ["glm53-0906.yaml"],
+    name = "vllmb12x_contract",
+    configs = ["vllmb12x.yaml"],
     driver = "docker",
-    image = "//image:glm53_0906",
+    image = "//image:vllmb12x",
     platform = "linux/arm64",
 )

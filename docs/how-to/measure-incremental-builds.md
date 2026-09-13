@@ -20,10 +20,10 @@ Place the patch under `third_party/`, export it in `third_party/BUILD.bazel`, an
 Materialize the patched source archive and confirm the declared identity:
 
 ```bash
-just bazel build @@+profile_sources+glm53_0906_vllm//:source.tar
+just bazel build @@+profile_sources+vllmb12x_vllm//:source.tar
 ```
 
-Inspect `external/+profile_sources+glm53_0906_vllm/source.identity.json` under the directory reported by `just bazel info output_base`. Confirm your patch hash and read the patched source there. The repository rule watches declared patch files, so editing a patch invalidates the source archive on the next command that needs it. Analysis-only commands do not fetch it; check identity through a command that materializes the archive.
+Inspect `external/+profile_sources+vllmb12x_vllm/source.identity.json` under the directory reported by `just bazel info output_base`. Confirm your patch hash and read the patched source there. The repository rule watches declared patch files, so editing a patch invalidates the source archive on the next command that needs it. Analysis-only commands do not fetch it; check identity through a command that materializes the archive.
 
 ### Step 3: Capture the Full Build
 

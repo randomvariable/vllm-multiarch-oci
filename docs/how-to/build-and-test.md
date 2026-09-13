@@ -28,7 +28,7 @@ Compile dependencies and assemble the image:
 just build
 ```
 
-On a compatible host, success produces `bazel-bin/image/glm53_0906`. Allow hours for a cold build. The command does not push or start the image.
+On a compatible host, success produces `bazel-bin/image/vllmb12x`. Allow hours for a cold build. The command does not push or start the image.
 
 ### Step 3: Check the Structure
 
@@ -48,7 +48,7 @@ Import the image into Docker:
 just load
 ```
 
-The loader uses `local/vllm:glm53-flash-nvfp4-head-0906`. It does not start a container or model server.
+The loader uses `randomvariable/vllm-b12x-multi:<build version>`. It does not start a container or model server.
 
 ## Related Practices
 

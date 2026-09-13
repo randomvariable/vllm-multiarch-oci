@@ -19,6 +19,14 @@ def _pinned_source_repository_impl(ctx):
     if result.return_code:
         fail("git clone failed for %s: %s" % (ctx.attr.remote, result.stderr))
 
+    # `git clone` fetches the remote's advertised default branch, not every
+    # detached commit the profile can lock. Fetch the exact object explicitly
+    # before checkout so an otherwise reachable CMake source pin works even
+    # when it is outside that branch's history.
+    result = ctx.execute(["git", "-C", source, "fetch", "--depth=1", "origin", ctx.attr.commit])
+    if result.return_code:
+        fail("git fetch failed for %s: %s" % (ctx.attr.commit, result.stderr))
+
     result = ctx.execute(["git", "-C", source, "checkout", "--detach", ctx.attr.commit])
     if result.return_code:
         fail("git checkout failed for %s: %s" % (ctx.attr.commit, result.stderr))

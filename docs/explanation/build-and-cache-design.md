@@ -42,4 +42,4 @@ A source edit can reuse most compiler results while still paying for environment
 ---
 
 **Last Updated:** September 2026
-**Version Compatibility:** Checked-in `glm53-0906` build
+**Version Compatibility:** Checked-in `vllmb12x` build

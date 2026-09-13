@@ -1,0 +1,9 @@
+advisors:
+  - name: default
+    tools:
+      - read
+      - ast_grep
+      - glob
+      - grep
+      - hub
+      - recall

@@ -2,6 +2,7 @@
 
 load("//bazel:cuda_wheel.bzl", "cuda_wheel")
 load("//bazel:vllm_wheel.bzl", "vllm_preflight", "vllm_wheel")
+load("//profiles/vllmb12x:version.bzl", "VLLM_BUILD_VERSION")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -38,18 +39,24 @@ _VLLM_BUILD_WHEELS = _TORCH_BUILD_WHEELS + [
 ]
 
 _VLLM_CMAKE_SOURCES = {
-    "cutlass": "@glm53_0906_vllm_cmake_cutlass//:source.tar",
-    "deepgemm": "@glm53_0906_vllm_cmake_deepgemm//:source.tar",
-    "flash_attn": "@glm53_0906_vllm_cmake_flash_attn//:source.tar",
-    "flashkda": "@glm53_0906_vllm_cmake_flashkda//:source.tar",
-    "flashmla": "@glm53_0906_vllm_cmake_flashmla//:source.tar",
-    "msa": "@glm53_0906_vllm_cmake_msa//:source.tar",
-    "qutlass": "@glm53_0906_vllm_cmake_qutlass//:source.tar",
-    "tml_fa4": "@glm53_0906_vllm_cmake_tml_fa4//:source.tar",
-    "triton": "@glm53_0906_vllm_cmake_triton//:source.tar",
+    "cutlass": "@vllmb12x_vllm_cmake_cutlass//:source.tar",
+    "deepgemm": "@vllmb12x_vllm_cmake_deepgemm//:source.tar",
+    "flash_attn": "@vllmb12x_vllm_cmake_flash_attn//:source.tar",
+    "flashkda": "@vllmb12x_vllm_cmake_flashkda//:source.tar",
+    "flashmla": "@vllmb12x_vllm_cmake_flashmla//:source.tar",
+    "msa": "@vllmb12x_vllm_cmake_msa//:source.tar",
+    "qutlass": "@vllmb12x_vllm_cmake_qutlass//:source.tar",
+    "tml_fa4": "@vllmb12x_vllm_cmake_tml_fa4//:source.tar",
+    "triton": "@vllmb12x_vllm_cmake_triton//:source.tar",
 }
 
-_VLLM_CARGO_VENDOR = "@glm53_0906_vllm//:cargo-vendor.tar"
+_VLLM_CARGO_VENDOR = "@vllmb12x_vllm//:cargo-vendor.tar"
+
+# PEP 440 normalization leaves this version alone: the public part carries no
+# redundant zeros and every local segment is alphanumeric, because the commit
+# segment always starts with `g`. So one constant is both the build version and
+# the wheel filename's version field.
+_VLLM_WHEEL = "vllm-%s-cp312-cp312-linux_aarch64.whl" % VLLM_BUILD_VERSION
 
 _LMCACHE_BUILD_WHEELS = _TORCH_BUILD_WHEELS + [
     "@host_deps//setuptools_scm:whl",
@@ -73,12 +80,12 @@ _FLASHINFER_BUILD_WHEELS = _HOST_WHEELS + [
 
 filegroup(
     name = "exllamav3_source",
-    srcs = ["@glm53_0906_exllamav3//:source.tar"],
+    srcs = ["@vllmb12x_exllamav3//:source.tar"],
 )
 
 cuda_wheel(
     name = "flashinfer_python",
-    src = "@glm53_0906_flashinfer//:source.tar",
+    src = "@vllmb12x_flashinfer//:source.tar",
     cuda = "@cuda_sbsa//:toolkit.tar",
     python = "@python_3_12//:python3",
     build = "//bazel:build_flashinfer_wheel.py",
@@ -93,7 +100,7 @@ cuda_wheel(
 
 cuda_wheel(
     name = "flashinfer_jit_cache",
-    src = "@glm53_0906_flashinfer//:source.tar",
+    src = "@vllmb12x_flashinfer//:source.tar",
     cuda = "@cuda_sbsa//:toolkit.tar",
     python = "@python_3_12//:python3",
     build = "//bazel:build_flashinfer_jit_cache_wheel.py",
@@ -114,7 +121,7 @@ cuda_wheel(
 
 cuda_wheel(
     name = "torch",
-    src = "@glm53_0906_torch//:source.tar",
+    src = "@vllmb12x_torch//:source.tar",
     cuda = "@cuda_sbsa//:toolkit.tar",
     python = "@python_3_12//:python3",
     build = "//bazel:build_torch_wheel.py",
@@ -142,7 +149,7 @@ cuda_wheel(
 
 vllm_wheel(
     name = "vllm",
-    src = "@glm53_0906_vllm//:source.tar",
+    src = "@vllmb12x_vllm//:source.tar",
     cuda = "@cuda_sbsa//:toolkit.tar",
     python = "@python_3_12//:python3",
     build = "//bazel:build_vllm_wheel.py",
@@ -157,19 +164,18 @@ vllm_wheel(
         "TORCH_CUDA_ARCH_LIST": "12.1a",
         "VLLM_MAIN_CUDA_VERSION": "13.3",
         "VLLM_REQUIRE_RUST_FRONTEND": "1",
-        "VLLM_RS_BUILD_VERSION": "0.26.1rc0+glm53.flash.nvfp4.head.0906",
+        "VLLM_RS_BUILD_VERSION": VLLM_BUILD_VERSION,
         "VLLM_DISABLED_KERNELS": "MarlinFP8ScaledMMLinearKernel",
-        "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_VLLM_RUST_FRONTEND_BUILD": "0.26.1rc0+glm53.flash.nvfp4.head.0906",
+        "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_VLLM_RUST_FRONTEND_BUILD": VLLM_BUILD_VERSION,
         "VLLM_TARGET_DEVICE": "cuda",
-        "VLLM_VERSION_OVERRIDE": "0.26.1rc0+glm53.flash.nvfp4.head.0906",
+        "VLLM_VERSION_OVERRIDE": VLLM_BUILD_VERSION,
     },
     host_wheels = _VLLM_BUILD_WHEELS,
     nccl = "//components/nccl:sdk",
     cuda_architecture = "121a",
     cargo_vendor = _VLLM_CARGO_VENDOR,
     cmake_sources = _VLLM_CMAKE_SOURCES,
-    # Wheel filenames use PEP 440 normalization, which canonicalizes 0906 to 906.
-    output = "vllm-0.26.1rc0+glm53.flash.nvfp4.head.906-cp312-cp312-linux_aarch64.whl",
+    output = _VLLM_WHEEL,
     cpu = 20,
     memory = 65536,
 )
@@ -190,8 +196,8 @@ filegroup(
 
 vllm_preflight(
     name = "vllm_preflight",
-    src = "@glm53_0906_vllm//:source.tar",
-    source_identity = "@glm53_0906_vllm//:source.identity.json",
+    src = "@vllmb12x_vllm//:source.tar",
+    source_identity = "@vllmb12x_vllm//:source.identity.json",
     cuda = "@cuda_sbsa//:toolkit.tar",
     python = "@python_3_12//:python3",
     deps = [
@@ -205,11 +211,11 @@ vllm_preflight(
         "TORCH_CUDA_ARCH_LIST": "12.1a",
         "VLLM_MAIN_CUDA_VERSION": "13.3",
         "VLLM_REQUIRE_RUST_FRONTEND": "1",
-        "VLLM_RS_BUILD_VERSION": "0.26.1rc0+glm53.flash.nvfp4.head.0906",
+        "VLLM_RS_BUILD_VERSION": VLLM_BUILD_VERSION,
         "VLLM_DISABLED_KERNELS": "MarlinFP8ScaledMMLinearKernel",
-        "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_VLLM_RUST_FRONTEND_BUILD": "0.26.1rc0+glm53.flash.nvfp4.head.0906",
+        "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_VLLM_RUST_FRONTEND_BUILD": VLLM_BUILD_VERSION,
         "VLLM_TARGET_DEVICE": "cuda",
-        "VLLM_VERSION_OVERRIDE": "0.26.1rc0+glm53.flash.nvfp4.head.0906",
+        "VLLM_VERSION_OVERRIDE": VLLM_BUILD_VERSION,
     },
     host_wheels = _VLLM_BUILD_WHEELS,
     nccl = "//components/nccl:sdk",
@@ -221,7 +227,7 @@ vllm_preflight(
 
 cuda_wheel(
     name = "torchvision",
-    src = "@glm53_0906_torchvision//:source.tar",
+    src = "@vllmb12x_torchvision//:source.tar",
     cuda = "@cuda_sbsa//:toolkit.tar",
     python = "@python_3_12//:python3",
     build = "//bazel:build_source_wheel.py",
@@ -240,7 +246,7 @@ cuda_wheel(
 
 cuda_wheel(
     name = "torchaudio",
-    src = "@glm53_0906_torchaudio//:source.tar",
+    src = "@vllmb12x_torchaudio//:source.tar",
     cuda = "@cuda_sbsa//:toolkit.tar",
     python = "@python_3_12//:python3",
     build = "//bazel:build_source_wheel.py",
@@ -258,7 +264,7 @@ cuda_wheel(
 
 cuda_wheel(
     name = "deepgemm",
-    src = "@glm53_0906_deepgemm//:source.tar",
+    src = "@vllmb12x_deepgemm//:source.tar",
     cuda = "@cuda_sbsa//:toolkit.tar",
     python = "@python_3_12//:python3",
     build = "//bazel:build_source_wheel.py",
@@ -277,7 +283,7 @@ cuda_wheel(
 
 cuda_wheel(
     name = "b12x",
-    src = "@glm53_0906_b12x//:source.tar",
+    src = "@vllmb12x_b12x//:source.tar",
     cuda = "@cuda_sbsa//:toolkit.tar",
     python = "@python_3_12//:python3",
     build = "//bazel:build_source_wheel.py",
@@ -290,7 +296,7 @@ cuda_wheel(
 
 cuda_wheel(
     name = "xgrammar",
-    src = "@glm53_0906_xgrammar//:source.tar",
+    src = "@vllmb12x_xgrammar//:source.tar",
     cuda = "@cuda_sbsa//:toolkit.tar",
     python = "@python_3_12//:python3",
     build = "//bazel:build_source_wheel.py",
@@ -319,7 +325,7 @@ cuda_wheel(
 
 cuda_wheel(
     name = "lmcache",
-    src = "@glm53_0906_lmcache//:source.tar",
+    src = "@vllmb12x_lmcache//:source.tar",
     cuda = "@cuda_sbsa//:toolkit.tar",
     python = "@python_3_12//:python3",
     build = "//bazel:build_source_wheel.py",
@@ -339,7 +345,7 @@ cuda_wheel(
 
 cuda_wheel(
     name = "instanttensor",
-    src = "@glm53_0906_instanttensor//:source.tar",
+    src = "@vllmb12x_instanttensor//:source.tar",
     cuda = "@cuda_sbsa//:toolkit.tar",
     python = "@python_3_12//:python3",
     build = "//bazel:build_source_wheel.py",

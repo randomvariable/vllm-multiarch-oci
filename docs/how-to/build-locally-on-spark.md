@@ -46,7 +46,7 @@ Expect exit zero. The actions create `/ccache/objects` and `/ccache/toolchains`.
 Ignore all Bazel rc files, select the ARM64 platform explicitly, and force local execution:
 
 ```bash
-bazel --ignore_all_rc_files build //image:glm53_0906 --platforms=//platforms:spark_arm64_sm121 --extra_execution_platforms=//platforms:spark_arm64_sm121 --spawn_strategy=local --disk_cache=.bazel-cache --incompatible_strict_action_env --nobuild
+bazel --ignore_all_rc_files build //image:vllmb12x --platforms=//platforms:spark_arm64_sm121 --extra_execution_platforms=//platforms:spark_arm64_sm121 --spawn_strategy=local --disk_cache=.bazel-cache --incompatible_strict_action_env --nobuild
 ```
 
 Expect successful analysis with zero build actions. This bypasses `.bazelrc.user` and the NativeLink configuration entirely. Analysis alone does not verify host executables or their ABI compatibility.
@@ -56,21 +56,21 @@ Expect successful analysis with zero build actions. This bypasses `.bazelrc.user
 Use the same configuration without `--nobuild`:
 
 ```bash
-bazel --ignore_all_rc_files build //image:glm53_0906 --platforms=//platforms:spark_arm64_sm121 --extra_execution_platforms=//platforms:spark_arm64_sm121 --spawn_strategy=local --disk_cache=.bazel-cache --incompatible_strict_action_env
+bazel --ignore_all_rc_files build //image:vllmb12x --platforms=//platforms:spark_arm64_sm121 --extra_execution_platforms=//platforms:spark_arm64_sm121 --spawn_strategy=local --disk_cache=.bazel-cache --incompatible_strict_action_env
 ```
 
-On a compatible host, a successful build produces `bazel-bin/image/glm53_0906`. Allow hours for the first source build and at least six hours in any command supervisor. Local execution permits writes to persistent `/ccache` but does not provide sandbox isolation. The remote-worker timings are not local Spark performance predictions.
+On a compatible host, a successful build produces `bazel-bin/image/vllmb12x`. Allow hours for the first source build and at least six hours in any command supervisor. Local execution permits writes to persistent `/ccache` but does not provide sandbox isolation. The remote-worker timings are not local Spark performance predictions.
 
 ### Step 5: Test and Load Locally
 
 Run the structure contract and then load the image using only local actions:
 
 ```bash
-bazel --ignore_all_rc_files test //tests/image:glm53_0906_contract --platforms=//platforms:spark_arm64_sm121 --extra_execution_platforms=//platforms:spark_arm64_sm121 --spawn_strategy=local --disk_cache=.bazel-cache --incompatible_strict_action_env --test_output=errors
-bazel --ignore_all_rc_files run //image:glm53_0906_load --platforms=//platforms:spark_arm64_sm121 --extra_execution_platforms=//platforms:spark_arm64_sm121 --spawn_strategy=local --disk_cache=.bazel-cache --incompatible_strict_action_env
+bazel --ignore_all_rc_files test //tests/image:vllmb12x_contract --platforms=//platforms:spark_arm64_sm121 --extra_execution_platforms=//platforms:spark_arm64_sm121 --spawn_strategy=local --disk_cache=.bazel-cache --incompatible_strict_action_env --test_output=errors
+bazel --ignore_all_rc_files run //image:vllmb12x_load --platforms=//platforms:spark_arm64_sm121 --extra_execution_platforms=//platforms:spark_arm64_sm121 --spawn_strategy=local --disk_cache=.bazel-cache --incompatible_strict_action_env
 ```
 
-Expect a passing structure contract and the local tag `local/vllm:glm53-flash-nvfp4-head-0906`. Neither command starts a model server. The contract does not exercise GPU inference.
+Expect a passing structure contract and the local tag `randomvariable/vllm-b12x-multi:<build version>`. Neither command starts a model server. The contract does not exercise GPU inference.
 
 ## Related Practices
 

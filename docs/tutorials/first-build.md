@@ -26,10 +26,10 @@ The list includes `analyze`, `build`, `test`, `load`, and `bazel`.
 Query the image target through the local Bazel helper:
 
 ```bash
-just bazel query //image:glm53_0906
+just bazel query //image:vllmb12x
 ```
 
-The result includes `//image:glm53_0906`.
+The result includes `//image:vllmb12x`.
 
 ### Step 3: Analyse the Image
 
