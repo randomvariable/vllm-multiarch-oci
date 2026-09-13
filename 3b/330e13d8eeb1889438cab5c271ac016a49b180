@@ -1,0 +1,22 @@
+profiles/vllmb12x/BUILD.bazel
+  h_15da545fc8cfbe 2-5
+profiles/vllmb12x/host-build-requirements.lock
+  h_15da545fc8cfbe 2,201,209,321,389,394,406,481,485,489,498,504,508,512,516,528
+profiles/vllmb12x/profile.json
+  h_15da545fc8cfbe 2,6,57
+profiles/vllmb12x/requirements.lock
+  h_15da545fc8cfbe 2,131,149,201,323,327,378,674,679,784,808,836,840,861,873,1080,1085,1392,1399,1502,1631,1641,1659,1663,1766,1778,1824,1879,2043,2068,2145,2240,2275,2330,2385,2389,2404,2416,2422,2431,2457,2470,2521,2533,2623,2629,2634,2772,2802,2807,3022,3035,3199,3281,3373,3377,3516,3523,3851,3912,4015,4020,4030,4045,4129,4137,4157,4162,4257,4262,4271,4308,4524,4712
+profiles/vllmb12x/version.bzl
+  h_15da545fc8cfbe 1-13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "3b330e13d8eeb1889438cab5c271ac016a49b180",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
