@@ -68,6 +68,12 @@ apt.install(
         "ibverbs-providers:arm64",
         "libibverbs1:arm64",
         "liburing2:arm64",
+        # b12x compiles its PLE reader inside the container on first use
+        # (b12x/loader/_native.py) and enables the io_uring path only when
+        # pkg-config reports liburing. Without the headers and pkgconf here,
+        # disk-backed PLE fails at the first forward pass.
+        "liburing-dev:arm64",
+        "pkgconf:arm64",
         "libnuma1:arm64",
         "pciutils:arm64",
         "python3:arm64",

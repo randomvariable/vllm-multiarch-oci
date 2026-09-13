@@ -11,6 +11,21 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from action_lib import extract, install_wheels, work_root, write_tar
 
+# The launchers put the venv on PYTHONPATH, and a PYTHONPATH entry is an
+# ordinary sys.path directory: CPython never processes the .pth files in it.
+# Wheels that publish their real package root through a .pth therefore stay
+# unimportable -- nvidia-cutlass-dsl ships dsl_packages that way, so
+# `import cutlass` failed even though the files were installed. Importing
+# this module during interpreter startup turns the directory into a site
+# directory, which runs every .pth it contains.
+_SITECUSTOMIZE = '''\
+"""Make the PYTHONPATH-mounted venv a site directory so .pth files run."""
+
+import site
+
+site.addsitedir("/opt/venv/lib/python3.12/site-packages")
+'''
+
 
 def main() -> None:
     parser = argparse.ArgumentParser()
@@ -53,6 +68,7 @@ def main() -> None:
         ):
             shutil.copy2(source, destination)
             os.chmod(destination, 0o755)
+        (site / "sitecustomize.py").write_text(_SITECUSTOMIZE)
 
     write_tar(execroot / args.output, root)
 
