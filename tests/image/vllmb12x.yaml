@@ -51,6 +51,9 @@ fileExistenceTests:
   - name: "pkg-config"
     path: "/usr/bin/pkg-config"
     shouldExist: true
+  - name: "RDMA verbs development headers"
+    path: "/usr/include/infiniband/verbs.h"
+    shouldExist: true
 
 commandTests:
   # Torch links cuDNN, cuBLAS, cuSPARSELt and NCCL, so a successful import is
@@ -86,3 +89,12 @@ commandTests:
     command: "/opt/venv/bin/python"
     args: ["-c", "import cutlass; print('cutlass', cutlass.__file__)"]
     expectedOutput: ["cutlass /"]
+  # b12x builds its RoCE proxy at channel construction, after
+  # roce.is_supported() has already returned True, so a missing
+  # infiniband/verbs.h silently demotes RoCEnante to NCCL at model load.
+  - name: "B12X RoCE proxy compiles"
+    command: "/opt/venv/bin/python"
+    args:
+      - "-c"
+      - "from b12x.comm.roce import _proxy; print('roce proxy', _proxy._build().name)"
+    expectedOutput: ["roce proxy roce_proxy-[0-9a-f]+\\.so"]
