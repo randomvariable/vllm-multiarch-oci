@@ -42,6 +42,15 @@ fileExistenceTests:
   - name: "liburing runtime"
     path: "/usr/lib/aarch64-linux-gnu/liburing.so.2"
     shouldExist: true
+  # b12x compiles its PLE reader in the container and only enables the
+  # io_uring path when pkg-config reports liburing, so the headers and
+  # pkg-config are runtime dependencies rather than build-only ones.
+  - name: "liburing development headers"
+    path: "/usr/include/liburing.h"
+    shouldExist: true
+  - name: "pkg-config"
+    path: "/usr/bin/pkg-config"
+    shouldExist: true
 
 commandTests:
   # Torch links cuDNN, cuBLAS, cuSPARSELt and NCCL, so a successful import is
@@ -58,3 +67,22 @@ commandTests:
       - "-c"
       - "import json; lock = json.load(open('/opt/vllmb12x/sources.lock.json')); assert lock['profile']['name'] == 'vllmb12x'; print(lock['profile']['sources']['vllm']['commit'])"
     expectedOutput: ["[0-9a-f]{40}"]
+  - name: "pkg-config resolves liburing"
+    command: "/usr/bin/pkg-config"
+    args: ["--modversion", "liburing"]
+    expectedOutput: ["[0-9]+\\.[0-9]+"]
+  # The compiled loader must link liburing. Without it DiskTable raises
+  # "io_uring PLE support is unavailable" on the first forward pass, which
+  # only surfaces after a full checkpoint download.
+  - name: "B12X loader links io_uring"
+    command: "/opt/venv/bin/python"
+    args:
+      - "-c"
+      - "from b12x.loader import _native; module = _native._build(); assert b'liburing' in module.read_bytes(), module; print('io_uring linked')"
+    expectedOutput: ["io_uring linked"]
+  # nvidia-cutlass-dsl publishes its package root through a .pth file, which
+  # only runs because the venv layer ships sitecustomize.py.
+  - name: "CUTLASS DSL is importable"
+    command: "/opt/venv/bin/python"
+    args: ["-c", "import cutlass; print('cutlass', cutlass.__file__)"]
+    expectedOutput: ["cutlass /"]
