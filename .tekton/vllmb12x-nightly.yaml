@@ -32,7 +32,13 @@ spec:
     serviceAccountName: "{{ service_account }}"
     podTemplate:
       nodeSelector:
-        kubernetes.io/arch: amd64
+        # Pinned to the large build node. Selecting on architecture alone put
+        # this run on whichever amd64 node was free, which includes two of the
+        # three control-plane nodes; a Bazel build plus a 10.6GiB layout push
+        # next to etcd starved the arm64 member and took worker nodes with it.
+        # The build node is arm64, so the step below bootstraps arm64 tools.
+        kubernetes.io/arch: arm64
+        kubernetes.io/hostname: "{{ build_node }}"
       imagePullSecrets: [{name: "{{ pull_secret }}"}]
       securityContext: {fsGroup: 65532}
   workspaces:
@@ -96,7 +102,10 @@ spec:
             - name: image_ref
           steps:
             - name: build-test-and-publish
-              image: gcr.io/bazel-public/bazel@sha256:e59bd66f8daf69f02dbfc18dbd72f0ecfe7926bbda95a5c9eb62433d83b8bd02
+              # gcr.io/bazel-public/bazel publishes amd64 only, and this run is
+              # pinned to the arm64 build node, so the tools are bootstrapped
+              # onto a plain Ubuntu base instead.
+              image: docker.io/library/ubuntu@sha256:2260313b31c8c011cd2eebe728008efac1b3982be73eb71348ea2648d2c0e09b
               workingDir: $(workspaces.source.path)
               securityContext: {runAsUser: 0, runAsGroup: 0}
               env:
@@ -111,8 +120,17 @@ spec:
                 set -euo pipefail
 
                 apt-get update
-                apt-get install --no-install-recommends --yes ca-certificates curl
+                apt-get install --no-install-recommends --yes \
+                  build-essential ca-certificates curl git patch python3 unzip zip
                 rm -rf /var/lib/apt/lists/*
+                BAZELISK=/usr/local/bin/bazel
+                curl --fail --silent --show-error --location \
+                  https://github.com/bazelbuild/bazelisk/releases/download/v1.29.0/bazelisk-linux-arm64 \
+                  --output "$BAZELISK"
+                printf '%s  %s\n' \
+                  e20e8b0f4f240091b7a55bf17b9398bd4f40ee70ae0208dff95dd4c445fb4010 \
+                  "$BAZELISK" | sha256sum --check --status
+                chmod 0755 "$BAZELISK"
                 RUSTUP_HOME=/opt/rustup
                 CARGO_HOME=/opt/cargo
                 export RUSTUP_HOME CARGO_HOME PATH="${CARGO_HOME}/bin:${PATH}"
@@ -120,15 +138,15 @@ spec:
                   sh -s -- -y --profile minimal --default-toolchain 1.95.0
                 KUBECTL_VERSION="$(curl --fail --silent --show-error --location https://dl.k8s.io/release/stable.txt)"
                 curl --fail --silent --show-error --location \
-                  "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" \
+                  "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/arm64/kubectl" \
                   --output /usr/local/bin/kubectl
                 chmod 0755 /usr/local/bin/kubectl
-                CRANE_ARCHIVE=/tmp/go-containerregistry_Linux_x86_64.tar.gz
+                CRANE_ARCHIVE=/tmp/go-containerregistry_Linux_arm64.tar.gz
                 curl --fail --silent --show-error --location \
-                  https://github.com/google/go-containerregistry/releases/download/v0.22.1/go-containerregistry_Linux_x86_64.tar.gz \
+                  https://github.com/google/go-containerregistry/releases/download/v0.22.1/go-containerregistry_Linux_arm64.tar.gz \
                   --output "$CRANE_ARCHIVE"
                 printf '%s  %s\n' \
-                  0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0 \
+                  898c0cff975f898a33e8c4580bdafb0e7c02c7faa33374e946762f97c4ab7110 \
                   "$CRANE_ARCHIVE" | sha256sum --check --status
                 tar --extract --gzip --file "$CRANE_ARCHIVE" --directory /usr/local/bin crane
                 chmod 0755 /usr/local/bin/crane
