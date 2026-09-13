@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Compile vLLM CUDA extensions separately from pure-Python wheel packaging."""
 
-load("//bazel:compiler_cache.bzl", "GCC_SYSROOT_ATTR", "compile_jobs")
+load("//bazel:compiler_cache.bzl", "GCC_SYSROOT_ATTR", "MEMORY_PER_JOB_ATTR", "compile_jobs")
 
 def _vllm_wheel_impl(ctx):
     wheel = ctx.actions.declare_file(ctx.attr.output)
@@ -155,6 +155,7 @@ vllm_wheel = rule(
         "max_jobs": attr.int(default = 64),
         "cpu": attr.int(default = 20),
         "memory": attr.int(default = 65536),
+        "memory_per_job": MEMORY_PER_JOB_ATTR,
         "_compile_driver": attr.label(
             default = Label("//bazel:vllm_extensions_action.py"),
             allow_single_file = True,
