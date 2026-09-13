@@ -25,11 +25,11 @@ _DATE: Final = re.compile(r"[0-9]{8}")
 
 
 def utc_now() -> dt.datetime:
-    return dt.datetime.now(tz=dt.UTC)
+    return dt.datetime.now(tz=dt.timezone.utc)
 
 
 def rfc3339(value: dt.datetime) -> str:
-    return value.astimezone(dt.UTC).isoformat(timespec="microseconds").replace("+00:00", "Z")
+    return value.astimezone(dt.timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def parse_rfc3339(value: str) -> dt.datetime:
