@@ -1,6 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 """Profile-driven, commit-pinned source archives."""
 
+# Bazel's default ctx.execute timeout is 600 seconds. PyTorch's recursive
+# submodule tree and the vendored Cargo registry both exceed that on a cold
+# checkout, and the failure surfaces as an opaque "Timed out" during analysis.
+_NETWORK_TIMEOUT = 3600
+
+# Archiving multi-gigabyte checkouts also runs past the default.
+_ARCHIVE_TIMEOUT = 1800
+
 def _source_build(cargo_vendor):
     files = ["source.tar", "source.identity.json"]
     if cargo_vendor:
@@ -15,15 +23,24 @@ exports_files(
 def _pinned_source_repository_impl(ctx):
     source = ctx.path("src")
     patches = []
-    result = ctx.execute(["git", "clone", "--no-checkout", ctx.attr.remote, source])
-    if result.return_code:
-        fail("git clone failed for %s: %s" % (ctx.attr.remote, result.stderr))
+    # Fetch the locked object into an empty repository instead of cloning the
+    # remote. A full clone of PyTorch transfers its entire history for one
+    # pinned commit, which is what exhausted the fetch timeout in CI and which
+    # GitHub's HTTP/2 endpoint resets outright on a slower link. A depth-1
+    # fetch of the exact commit also works for a pin outside the advertised
+    # default branch's history.
+    for command, message in (
+        (["git", "init", "--quiet", source], "git init failed for %s"),
+        (["git", "-C", source, "remote", "add", "origin", ctx.attr.remote], "git remote add failed for %s"),
+    ):
+        result = ctx.execute(command)
+        if result.return_code:
+            fail((message + ": %s") % (ctx.attr.remote, result.stderr))
 
-    # `git clone` fetches the remote's advertised default branch, not every
-    # detached commit the profile can lock. Fetch the exact object explicitly
-    # before checkout so an otherwise reachable CMake source pin works even
-    # when it is outside that branch's history.
-    result = ctx.execute(["git", "-C", source, "fetch", "--depth=1", "origin", ctx.attr.commit])
+    result = ctx.execute(
+        ["git", "-C", source, "fetch", "--depth=1", "origin", ctx.attr.commit],
+        timeout = _NETWORK_TIMEOUT,
+    )
     if result.return_code:
         fail("git fetch failed for %s: %s" % (ctx.attr.commit, result.stderr))
 
@@ -32,7 +49,10 @@ def _pinned_source_repository_impl(ctx):
         fail("git checkout failed for %s: %s" % (ctx.attr.commit, result.stderr))
 
     if ctx.attr.recursive_init_submodules:
-        result = ctx.execute(["git", "-C", source, "submodule", "update", "--init", "--recursive"])
+        result = ctx.execute(
+            ["git", "-C", source, "submodule", "update", "--init", "--recursive", "--jobs=8"],
+            timeout = _NETWORK_TIMEOUT,
+        )
         if result.return_code:
             fail("git submodule update failed for %s: %s" % (ctx.attr.remote, result.stderr))
 
@@ -66,7 +86,7 @@ def _pinned_source_repository_impl(ctx):
         "-cf",
         "source.tar",
         ".",
-    ])
+    ], timeout = _ARCHIVE_TIMEOUT)
     if result.return_code:
         fail("source archive failed for %s: %s" % (ctx.attr.remote, result.stderr))
     ctx.file("source.identity.json", json.encode({
@@ -83,7 +103,7 @@ def _pinned_source_repository_impl(ctx):
             "--manifest-path",
             source.get_child("rust/Cargo.toml"),
             vendor.get_child("vendor"),
-        ])
+        ], timeout = _NETWORK_TIMEOUT)
         if result.return_code:
             fail("cargo vendor failed for %s: %s" % (ctx.attr.remote, result.stderr))
         # Keep Cargo's source replacement relative to the action-local CARGO_HOME.
@@ -104,7 +124,7 @@ def _pinned_source_repository_impl(ctx):
             "-cf",
             "cargo-vendor.tar",
             ".",
-        ])
+        ], timeout = _ARCHIVE_TIMEOUT)
         if result.return_code:
             fail("cargo vendor archive failed for %s: %s" % (ctx.attr.remote, result.stderr))
     ctx.file("BUILD.bazel", _source_build(ctx.attr.cargo_vendor))
