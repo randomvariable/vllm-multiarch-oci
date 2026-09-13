@@ -10,6 +10,11 @@ metadata:
     pipelinesascode.tekton.dev/on-event: "[incoming]"
     pipelinesascode.tekton.dev/on-target-branch: "[main]"
     pipelinesascode.tekton.dev/max-keep-runs: "3"
+    # Two nightlies cannot run at once: they share the remote workers, the
+    # ccache volume, and the publication Lease. A newer commit supersedes an
+    # in-flight run rather than competing with it. max-keep-runs only prunes
+    # finished PipelineRuns.
+    pipelinesascode.tekton.dev/cancel-in-progress: "true"
     pipelinesascode.tekton.dev/task: "git-clone"
 spec:
   timeouts:
