@@ -117,7 +117,7 @@ spec:
                 CARGO_HOME=/opt/cargo
                 export RUSTUP_HOME CARGO_HOME PATH="${CARGO_HOME}/bin:${PATH}"
                 curl --fail --silent --show-error --location https://sh.rustup.rs | \
-                  sh -s -- -y --profile minimal --default-toolchain 1.89.0
+                  sh -s -- -y --profile minimal --default-toolchain 1.95.0
                 KUBECTL_VERSION="$(curl --fail --silent --show-error --location https://dl.k8s.io/release/stable.txt)"
                 curl --fail --silent --show-error --location \
                   "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" \
