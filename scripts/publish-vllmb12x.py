@@ -231,8 +231,8 @@ def main() -> None:
         subprocess.run(
             [
                 args.bazel,
-                *args.bazel_arg,
                 "run",
+                *args.bazel_arg,
                 args.push_target,
                 "--",
                 "--repository",
