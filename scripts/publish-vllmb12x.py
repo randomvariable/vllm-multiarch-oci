@@ -13,6 +13,7 @@ import datetime as dt
 import json
 import re
 import subprocess
+import tempfile
 import threading
 import uuid
 from pathlib import Path
@@ -200,6 +201,14 @@ def source_revision(profile: Path) -> str:
     return revision
 
 
+def published_reference(image_refs: Path) -> str:
+    """Return the single digest-qualified reference recorded by crane."""
+    references = [line.strip() for line in image_refs.read_text().splitlines() if line.strip()]
+    if len(references) != 1 or "@sha256:" not in references[0]:
+        raise RuntimeError(f"crane did not write one digest-qualified image reference: {references!r}")
+    return references[0]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repository", required=True, help="Registry repository without a tag")
@@ -210,13 +219,14 @@ def main() -> None:
     parser.add_argument("--lease-duration", type=int, default=60)
     parser.add_argument("--kubectl", default="kubectl")
     parser.add_argument("--bazel", default="bazel")
+    parser.add_argument("--crane", default="crane")
     parser.add_argument(
         "--bazel-arg",
         action="append",
         default=[],
-        help="Additional option passed before Bazel's run command",
+        help="Additional option passed before Bazel's build command",
     )
-    parser.add_argument("--push-target", default="//image:vllmb12x_push")
+    parser.add_argument("--image-target", default="//image:vllmb12x")
     parser.add_argument("--date", help="UTC YYYYMMDD, intended for deterministic tests")
     parser.add_argument("--result-file", type=Path)
     args = parser.parse_args()
@@ -227,19 +237,40 @@ def main() -> None:
     lease = Lease(args.kubectl, args.namespace, args.lease_name, args.lease_duration)
     sequence = lease.acquire()
     tag = allocate_tag(source_revision(args.profile), args.build_revision, date, sequence)
+    reference: str
     try:
         subprocess.run(
             [
                 args.bazel,
-                "run",
+                "build",
                 *args.bazel_arg,
-                args.push_target,
-                "--",
-                "--repository",
-                args.repository,
-                "--tag",
-                tag,
-                "--tag",
+                "--remote_download_outputs=all",
+                args.image_target,
+            ],
+            check=True,
+        )
+        image_layout = ROOT / "bazel-bin/image/vllmb12x"
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            image_refs = Path(temporary_directory) / "image-refs.txt"
+            subprocess.run(
+                [
+                    args.crane,
+                    "push",
+                    "--image-refs",
+                    str(image_refs),
+                    str(image_layout),
+                    f"{args.repository}:{tag}",
+                ],
+                check=True,
+            )
+            reference = published_reference(image_refs)
+        # The immutable tag is safe after the lease expires. `latest` is not.
+        lease.assert_held()
+        subprocess.run(
+            [
+                args.crane,
+                "tag",
+                f"{args.repository}:{tag}",
                 "latest",
             ],
             check=True,
@@ -247,7 +278,7 @@ def main() -> None:
         lease.assert_held()
     finally:
         lease.release()
-    result = json.dumps({"repository": args.repository, "tag": tag, "reference": f"{args.repository}:{tag}"})
+    result = json.dumps({"repository": args.repository, "tag": tag, "reference": reference})
     if args.result_file is not None:
         args.result_file.write_text(result + "\n")
     print(result)
