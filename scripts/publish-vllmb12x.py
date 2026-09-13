@@ -207,7 +207,7 @@ def main() -> None:
     parser.add_argument("--profile", type=Path, default=PROFILE)
     parser.add_argument("--lease-name", default="vllmb12x-publish")
     parser.add_argument("--namespace", default="ci")
-    parser.add_argument("--lease-duration", type=int, default=900)
+    parser.add_argument("--lease-duration", type=int, default=60)
     parser.add_argument("--kubectl", default="kubectl")
     parser.add_argument("--bazel", default="bazel")
     parser.add_argument(
