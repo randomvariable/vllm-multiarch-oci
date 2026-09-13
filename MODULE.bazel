@@ -64,9 +64,12 @@ apt.install(
     packages = [
         "ca-certificates:arm64",
         # GDAKI's wrappers dynamically load libibverbs. Keep its ABI library
-        # and the Mellanox provider plugin in the image.
+        # and the Mellanox provider plugin in the image. b12x also compiles
+        # its RoCE proxy (b12x/comm/roce/_roce_proxy.c) in the container, so
+        # infiniband/verbs.h must be present or RoCEnante falls back to NCCL.
         "ibverbs-providers:arm64",
         "libibverbs1:arm64",
+        "libibverbs-dev:arm64",
         "liburing2:arm64",
         # b12x compiles its PLE reader inside the container on first use
         # (b12x/loader/_native.py) and enables the io_uring path only when
