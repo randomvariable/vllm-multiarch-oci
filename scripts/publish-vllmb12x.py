@@ -233,23 +233,25 @@ def main() -> None:
 
     if not re.fullmatch(r"[a-z0-9./_-]+", args.repository):
         parser.error("repository must not contain a registry tag or digest")
+    revision = source_revision(args.profile)
+    # The build holds no lock: only the registry mutation below is serialized.
+    subprocess.run(
+        [
+            args.bazel,
+            "build",
+            *args.bazel_arg,
+            "--remote_download_outputs=all",
+            args.image_target,
+        ],
+        check=True,
+    )
+    image_layout = ROOT / "bazel-bin/image/vllmb12x"
     date = args.date or utc_now().strftime("%Y%m%d")
     lease = Lease(args.kubectl, args.namespace, args.lease_name, args.lease_duration)
     sequence = lease.acquire()
-    tag = allocate_tag(source_revision(args.profile), args.build_revision, date, sequence)
+    tag = allocate_tag(revision, args.build_revision, date, sequence)
     reference: str
     try:
-        subprocess.run(
-            [
-                args.bazel,
-                "build",
-                *args.bazel_arg,
-                "--remote_download_outputs=all",
-                args.image_target,
-            ],
-            check=True,
-        )
-        image_layout = ROOT / "bazel-bin/image/vllmb12x"
         with tempfile.TemporaryDirectory() as temporary_directory:
             image_refs = Path(temporary_directory) / "image-refs.txt"
             subprocess.run(
