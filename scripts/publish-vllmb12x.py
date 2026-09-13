@@ -115,7 +115,7 @@ class Lease:
         raise RuntimeError(f"{' '.join(result.args)} failed: {result.stderr.strip()}")
 
     def _write(self, lease: dict[str, Any], create: bool) -> dict[str, Any]:
-        action = ("create", "-f", "-") if create else ("replace", "-f", "-")
+        action = ("create", "-f", "-", "-o", "json") if create else ("replace", "-f", "-", "-o", "json")
         return json.loads(self._command(*action, input=json.dumps(lease)))
 
     def _record(
