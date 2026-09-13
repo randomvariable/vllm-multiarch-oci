@@ -123,6 +123,16 @@ spec:
                   "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" \
                   --output /usr/local/bin/kubectl
                 chmod 0755 /usr/local/bin/kubectl
+                CRANE_ARCHIVE=/tmp/go-containerregistry_Linux_x86_64.tar.gz
+                curl --fail --silent --show-error --location \
+                  https://github.com/google/go-containerregistry/releases/download/v0.22.1/go-containerregistry_Linux_x86_64.tar.gz \
+                  --output "$CRANE_ARCHIVE"
+                printf '%s  %s\n' \
+                  0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0 \
+                  "$CRANE_ARCHIVE" | sha256sum --check --status
+                tar --extract --gzip --file "$CRANE_ARCHIVE" --directory /usr/local/bin crane
+                chmod 0755 /usr/local/bin/crane
+                crane version
 
                 git config --global --add safe.directory "$PWD"
                 BUILD_REVISION="$(git rev-parse HEAD)"
@@ -153,6 +163,7 @@ spec:
                   --lease-name "$(params.publisher_lease)" \
                   --namespace "$(params.publisher_namespace)" \
                   --bazel-arg=--config=remote-aarch64 \
+                  --bazel-arg=--remote_cache=$(params.remote_cache) \
                   --bazel-arg=--disk_cache= \
                   --result-file "$RESULT"
                 REF="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["reference"])' "$RESULT")"
