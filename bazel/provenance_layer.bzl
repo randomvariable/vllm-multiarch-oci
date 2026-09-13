@@ -10,7 +10,7 @@ def _provenance_layer_impl(ctx):
     args.add("--build-version", ctx.attr.build_version)
     args.add("--output", output.path)
     identities = []
-    for identity, name in ctx.attr.source_identities.items():
+    for name, identity in ctx.attr.source_identities.items():
         files = identity.files.to_list()
         if len(files) != 1:
             fail("%s must provide exactly one identity file" % identity.label)
@@ -38,7 +38,7 @@ provenance_layer = rule(
     attrs = {
         "manifest": attr.label(mandatory = True, allow_single_file = True),
         "build_version": attr.string(mandatory = True),
-        "source_identities": attr.label_keyed_string_dict(
+        "source_identities": attr.string_keyed_label_dict(
             mandatory = True,
             allow_files = True,
         ),
