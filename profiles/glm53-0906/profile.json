@@ -12,7 +12,7 @@
   "sources": {
     "vllm": {
       "remote": "https://github.com/local-inference-lab/vllm.git",
-      "commit": "2a979314dc97b03173a0a76fc15664ec924db32b",
+      "commit": "377c93be7e74619c629a3177292f49deac5639fd",
       "recursive_init_submodules": true,
       "cargo_vendor": true
     },

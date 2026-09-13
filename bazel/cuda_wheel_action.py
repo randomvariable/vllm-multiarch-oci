@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from action_lib import (
     configure_compiler_cache,
+    configure_compiler_sysroot,
     extract,
     extract_durable,
     extract_wheel_script,
@@ -33,6 +34,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--nccl-tar")
     parser.add_argument("--build-script", required=True)
     parser.add_argument("--ccache-tar", required=True)
+    parser.add_argument("--gcc-sysroot-tar", required=True)
     parser.add_argument("--max-jobs", required=True, type=int)
     parser.add_argument("--output", required=True)
     parser.add_argument("--host-wheel", action="append", default=[])
@@ -47,6 +49,7 @@ def main() -> None:
     cuda_tar = work_root(args.cuda_tar)
     build_script = work_root(args.build_script)
     ccache_tar = work_root(args.ccache_tar)
+    gcc_sysroot_tar = work_root(args.gcc_sysroot_tar)
     output = work_root(args.output)
     wheels = [work_root(path) for path in args.host_wheel]
 
@@ -97,8 +100,6 @@ def main() -> None:
             "CUDA_HOME": str(cuda),
             "CUDA_PATH": str(cuda),
             "HOME": str(home),
-            "CC": "gcc",
-            "CXX": "g++",
             "NCCL_ROOT": str(nccl),
             "NCCL_INCLUDE_DIR": str(nccl / "include"),
             "NCCL_LIB_DIR": str(nccl / "lib"),
@@ -108,15 +109,14 @@ def main() -> None:
         }
     )
     env.update(target_env)
-    env["PATH"] = _prepend_path(
-        env.get("PATH"), cuda / "bin", site / "cmake/data/bin", site / "bin"
-    )
+    env["PATH"] = _prepend_path(env.get("PATH"), cuda / "bin", site / "cmake/data/bin", site / "bin")
     env["LD_LIBRARY_PATH"] = _prepend_path(
         env.get("LD_LIBRARY_PATH"), nccl / "lib", cuda / "lib"
     )
     env["CMAKE_ARGS"] = _append_argument(
         env.get("CMAKE_ARGS"), "-DPython3_EXECUTABLE=" + str(python)
     )
+    configure_compiler_sysroot(gcc_sysroot_tar, work, env)
     configure_compiler_cache(work, ccache_tar, env)
 
     run([python, build_script, python, wheels_dir], cwd=source, env=env)

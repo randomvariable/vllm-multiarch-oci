@@ -1,0 +1,98 @@
+diff --git a/vllm/distributed/device_communicators/shm_broadcast.py b/vllm/distributed/device_communicators/shm_broadcast.py
+index 6caacea6ec..1e21525d0e 100644
+--- a/vllm/distributed/device_communicators/shm_broadcast.py
++++ b/vllm/distributed/device_communicators/shm_broadcast.py
+@@ -4,6 +4,7 @@ import copyreg
+ import functools
+ import io
++import math
+ import os
+ import pickle
+ import shutil
+ import sys
+@@ -121,6 +122,12 @@ class SpinCondition:
+     await a notification on the zmq socket after a period of inactivity. This
+     allows the readers to spin quickly, hence "SpinCondition".
+ 
++    `busy_loop_s` is how long a reader keeps spinning after its last successful
++    read before it parks; it defaults to VLLM_SHM_BROADCAST_BUSY_LOOP_S. Set it
++    longer than a burst of messages within one engine step and shorter than the
++    gap between steps: above one step the reader never parks at all, and spins
++    for the whole of a generation.
++
+     To support clean shutdown, a separate thread in the reader's process must be
+     able to wake the reader so that it can exit. A separate cancel() method is
+     implemented with an in-process socket to allow this interruption.
+@@ -131,7 +138,7 @@ class SpinCondition:
+         is_reader: bool,
+         context: zmq.Context,
+         notify_address: str,
+-        busy_loop_s: float = 1,
++        busy_loop_s: float | None = None,
+     ):
+         self.is_reader = is_reader
+ 
+@@ -140,7 +147,22 @@ class SpinCondition:
+             self.last_read = time.monotonic()
+ 
+             # Time to keep busy-looping on the shm buffer before going idle
+-            self.busy_loop_s = busy_loop_s
++            self.busy_loop_s = (
++                busy_loop_s
++                if busy_loop_s is not None
++                else envs.VLLM_SHM_BROADCAST_BUSY_LOOP_S
++            )
++            # Reject incoherent windows before any socket is created. Infinity is
++            # the dangerous one: `current_time <= last_read + inf` is always true,
++            # so the reader stays in sched_yield() forever and never parks -- not
++            # even when idle, which is the case this class was added to fix.
++            # NaN and negatives merely disable spinning, but nothing sane sets
++            # them, so treat the whole class as a configuration error.
++            if not math.isfinite(self.busy_loop_s) or self.busy_loop_s < 0:
++                raise ValueError(
++                    "busy_loop_s must be finite and non-negative, got "
++                    f"{self.busy_loop_s!r} (VLLM_SHM_BROADCAST_BUSY_LOOP_S)"
++                )
+ 
+             # Readers subscribe to write notifications
+             self.local_notify_socket: zmq.Socket = context.socket(SUB)
+diff --git a/vllm/envs.py b/vllm/envs.py
+index e3fc351b99..888494714d 100755
+--- a/vllm/envs.py
++++ b/vllm/envs.py
+@@ -18,6 +18,7 @@ if TYPE_CHECKING:
+     VLLM_USE_MODELSCOPE: bool = False
+     VLLM_USE_FASTOKENS: bool = False
+     VLLM_RINGBUFFER_WARNING_INTERVAL: int = 60
++    VLLM_SHM_BROADCAST_BUSY_LOOP_S: float = 0.002
+     VLLM_NCCL_SO_PATH: str | None = None
+     LD_LIBRARY_PATH: str | None = None
+     VLLM_ROCM_SLEEP_MEM_CHUNK_SIZE: int = 256
+@@ -749,6 +750,19 @@ environment_variables: dict[str, Callable[[], Any]] = {
+     "VLLM_RINGBUFFER_WARNING_INTERVAL": lambda: int(
+         os.environ.get("VLLM_RINGBUFFER_WARNING_INTERVAL", "60")
+     ),
++    # How long a shm message-queue reader keeps busy-polling the ring buffer
++    # after its last successful read before parking on the zmq notification
++    # socket. Spinning wins a few microseconds of wake-up latency; it costs a
++    # core held at max clock for the whole window.
++    #
++    # Raise it on a discrete-GPU server, where a spinning core is thermal noise
++    # and latency is all that matters. Keep it small on packages that share a
++    # thermal budget between CPU and GPU (e.g. NVIDIA GB10): there a reader that
++    # never parks pins a performance core at max clock for the entire decode
++    # phase, and the heat comes straight out of the GPU's headroom.
++    "VLLM_SHM_BROADCAST_BUSY_LOOP_S": lambda: float(
++        os.environ.get("VLLM_SHM_BROADCAST_BUSY_LOOP_S", "0.002")
++    ),
+     # path to cudatoolkit home directory, under which should be bin, include,
+     # and lib directories.
+     "CUDA_HOME": lambda: os.environ.get("CUDA_HOME", None),
+@@ -2366,6 +2380,7 @@ def compile_factors() -> dict[str, object]:
+         "VLLM_RPC_BASE_PATH",
+         "VLLM_USE_MODELSCOPE",
+         "VLLM_RINGBUFFER_WARNING_INTERVAL",
++        "VLLM_SHM_BROADCAST_BUSY_LOOP_S",
+         "VLLM_DEBUG_DUMP_PATH",
+         "VLLM_PORT",
+         "VLLM_CACHE_ROOT",

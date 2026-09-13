@@ -12,17 +12,19 @@ bazel_dep(name = "rules_pkg", version = "1.3.0")
 bazel_dep(name = "rules_python", version = "1.7.0")
 single_version_override(
     module_name = "rules_python",
-    patches = ["//third_party:rules_python_raw_wheel.patch"],
     patch_strip = 1,
+    patches = ["//third_party:rules_python_raw_wheel.patch"],
 )
+
 bazel_dep(name = "rules_rust", version = "0.73.0")
 bazel_dep(name = "rules_shell", version = "0.8.0")
 bazel_dep(name = "rules_distroless", version = "0.9.4")
 bazel_dep(name = "container_structure_test", version = "1.22.1")
+
 single_version_override(
     module_name = "gawk",
-    patches = ["//third_party:gawk_linkopts.patch"],
     patch_strip = 1,
+    patches = ["//third_party:gawk_linkopts.patch"],
 )
 
 oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
@@ -42,6 +44,12 @@ use_repo(
 # and B12X need, from a pinned Ubuntu archive for deterministic ARM64 layers.
 apt = use_extension("@rules_distroless//apt:extensions.bzl", "apt")
 apt.sources_list(
+    architectures = ["arm64"],
+    components = ["main"],
+    suites = [
+        "resolute",
+        "resolute-security",
+    ],
     types = ["deb"],
     # Keep the snapshot as the authoritative index and checksum source. The
     # ports mirror supplies identical content-addressed debs when the snapshot
@@ -50,22 +58,41 @@ apt.sources_list(
         "https://snapshot.ubuntu.com/ubuntu/20260901T000000Z",
         "mirror+https://ports.ubuntu.com/ubuntu-ports",
     ],
-    suites = ["resolute", "resolute-security"],
-    components = ["main"],
-    architectures = ["arm64"],
 )
 apt.install(
     dependency_set = "glm53_runtime_apt",
-    suites = ["resolute", "resolute-security"],
     packages = [
         "ca-certificates:arm64",
-        "g++:arm64",
+        # GDAKI's wrappers dynamically load libibverbs. Keep its ABI library
+        # and the Mellanox provider plugin in the image.
+        "ibverbs-providers:arm64",
+        "libibverbs1:arm64",
         "libnuma1:arm64",
         "pciutils:arm64",
         "python3:arm64",
     ],
+    suites = [
+        "resolute",
+        "resolute-security",
+    ],
 )
-use_repo(apt, "glm53_runtime_apt")
+
+# Native actions receive this complete compiler and libc tree as a declared
+# input. It must not depend on GCC files preinstalled on a worker.
+apt.install(
+    dependency_set = "glm53_gcc_15_sysroot",
+    packages = [
+        "g++:arm64",
+        # Compile NCCL's net_ib and GDAKI transports against the same pinned
+        # RDMA userspace ABI shipped in the runtime image.
+        "libibverbs-dev:arm64",
+    ],
+    suites = [
+        "resolute",
+        "resolute-security",
+    ],
+)
+use_repo(apt, "glm53_gcc_15_sysroot", "glm53_runtime_apt")
 
 # Bazel caches whole actions, so one changed source recompiles a component from
 # scratch. vLLM's incremental-build guide recovers per-file reuse through a
@@ -79,10 +106,10 @@ use_repo(cuda, "cuda_sbsa")
 sources = use_extension("//bazel:sources.bzl", "profile_sources")
 sources.profile(
     manifest = "//profiles/glm53-0906:profile.json",
-    # Experiments add a semantic vLLM source edit here. Keeping the patch as a
-    # declared repository input makes source identity reproducible.
+    # Keep the Spark thermal scheduling control as a declared source input.
+    # Its hash becomes part of source.identity.json.
     vllm_patches = [
-        "//third_party:vllm_spinloop_timeout.patch",
+        "//third_party:vllm_shm_broadcast_spin_grace.patch",
     ],
 )
 use_repo(
@@ -101,13 +128,13 @@ use_repo(
     "glm53_0906_vllm",
     "glm53_0906_vllm_cmake_cutlass",
     "glm53_0906_vllm_cmake_deepgemm",
-    "glm53_0906_vllm_cmake_qutlass",
-    "glm53_0906_vllm_cmake_triton",
-    "glm53_0906_vllm_cmake_msa",
-    "glm53_0906_vllm_cmake_flashmla",
-    "glm53_0906_vllm_cmake_flashkda",
-    "glm53_0906_vllm_cmake_tml_fa4",
     "glm53_0906_vllm_cmake_flash_attn",
+    "glm53_0906_vllm_cmake_flashkda",
+    "glm53_0906_vllm_cmake_flashmla",
+    "glm53_0906_vllm_cmake_msa",
+    "glm53_0906_vllm_cmake_qutlass",
+    "glm53_0906_vllm_cmake_tml_fa4",
+    "glm53_0906_vllm_cmake_triton",
     "glm53_0906_xgrammar",
 )
 
@@ -125,16 +152,17 @@ python.toolchain(python_version = "3.12")
 use_repo(python, "python_3_12")
 
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
+
 # Resolve binary build dependencies for the platform that runs the action, not
 # the x86_64 Bazel client that evaluates this module extension.
 pip.default(
-    platform = "manylinux_2_34_aarch64",
     arch_name = "aarch64",
-    os_name = "linux",
     config_settings = [
         "@platforms//cpu:aarch64",
         "@platforms//os:linux",
     ],
+    os_name = "linux",
+    platform = "manylinux_2_34_aarch64",
     whl_abi_tags = ["cp{major}{minor}"],
     whl_platform_tags = [
         "manylinux_2_34_aarch64",
@@ -145,9 +173,22 @@ pip.default(
     ],
 )
 pip.parse(
+    download_only = True,
+    extra_pip_args = [
+        "--platform=manylinux_2_34_aarch64",
+        "--platform=manylinux_2_31_aarch64",
+        "--platform=manylinux_2_28_aarch64",
+        "--platform=manylinux2014_aarch64",
+        "--python-version=312",
+        "--implementation=cp",
+        "--abi=cp312",
+        "--abi=abi3",
+    ],
     hub_name = "host_deps",
     python_version = "3.12",
     requirements_lock = "//profiles/glm53-0906:host-build-requirements.lock",
+)
+pip.parse(
     download_only = True,
     extra_pip_args = [
         "--platform=manylinux_2_34_aarch64",
@@ -159,22 +200,9 @@ pip.parse(
         "--abi=cp312",
         "--abi=abi3",
     ],
-)
-pip.parse(
     hub_name = "runtime_deps",
     python_version = "3.12",
     requirements_lock = "//profiles/glm53-0906:requirements.lock",
-    download_only = True,
-    extra_pip_args = [
-        "--platform=manylinux_2_34_aarch64",
-        "--platform=manylinux_2_31_aarch64",
-        "--platform=manylinux_2_28_aarch64",
-        "--platform=manylinux2014_aarch64",
-        "--python-version=312",
-        "--implementation=cp",
-        "--abi=cp312",
-        "--abi=abi3",
-    ],
 )
 use_repo(pip, "host_deps", "runtime_deps")
 

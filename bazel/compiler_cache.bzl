@@ -7,3 +7,10 @@ CCACHE_ATTR = attr.label(
     default = Label("@ccache//:ccache.tar"),
     allow_single_file = True,
 )
+
+# GCC 15, binutils, libc headers, and libraries from the pinned Ubuntu snapshot.
+# Native build actions extract this instead of relying on worker image paths.
+GCC_SYSROOT_ATTR = attr.label(
+    default = Label("//platforms:gcc_15_sysroot"),
+    allow_single_file = True,
+)

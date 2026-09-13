@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """Compile vLLM CUDA extensions separately from pure-Python wheel packaging."""
 
+load("//bazel:compiler_cache.bzl", "GCC_SYSROOT_ATTR")
+
 def _vllm_wheel_impl(ctx):
     wheel = ctx.actions.declare_file(ctx.attr.output)
     extensions = ctx.actions.declare_file(ctx.label.name + ".extensions.tar")
@@ -20,6 +22,7 @@ def _vllm_wheel_impl(ctx):
     compile_args.add("--cargo", rust_toolchain.cargo.path)
     compile_args.add("--cargo-vendor-tar", ctx.file.cargo_vendor.path)
     compile_args.add("--ccache-tar", ctx.file.compiler_cache.path)
+    compile_args.add("--gcc-sysroot-tar", ctx.file.compiler_sysroot.path)
     compile_args.add("--max-jobs", min(ctx.attr.max_jobs, 4))
     compile_args.add("--cuda-architecture", ctx.attr.cuda_architecture)
     compile_args.add("--output", extensions.path)
@@ -42,6 +45,7 @@ def _vllm_wheel_impl(ctx):
         ctx.file.cuda,
         ctx.file.python,
         ctx.file.compiler_cache,
+        ctx.file.compiler_sysroot,
         ctx.file.cargo_vendor,
     ] + ctx.files.python_runtime + ctx.files.python_headers + wheel_inputs + ctx.files.nccl + cmake_source_files + [
         rust_toolchain.rustc,
@@ -70,6 +74,7 @@ def _vllm_wheel_impl(ctx):
     package_args.add("--cuda-tar", ctx.file.cuda.path)
     if ctx.file.nccl:
         package_args.add("--nccl-tar", ctx.file.nccl.path)
+    package_args.add("--gcc-sysroot-tar", ctx.file.compiler_sysroot.path)
     package_args.add("--build-script", ctx.file.build.path)
     package_args.add("--output", wheel.path)
     package_args.add_all(
@@ -83,6 +88,7 @@ def _vllm_wheel_impl(ctx):
         ctx.file.src,
         ctx.file.python,
         ctx.file.cuda,
+        ctx.file.compiler_sysroot,
         extensions,
         ctx.file.build,
     ] + ctx.files.python_runtime + wheel_inputs + ctx.files.nccl
@@ -110,6 +116,10 @@ def _vllm_wheel_impl(ctx):
 
 vllm_wheel = rule(
     implementation = _vllm_wheel_impl,
+    exec_compatible_with = [
+        "@platforms//cpu:aarch64",
+        "@platforms//os:linux",
+    ],
     attrs = {
         "src": attr.label(mandatory = True, allow_single_file = True),
         "cuda": attr.label(mandatory = True, allow_single_file = True),
@@ -129,6 +139,7 @@ vllm_wheel = rule(
             default = Label("@ccache//:ccache.tar"),
             allow_single_file = True,
         ),
+        "compiler_sysroot": GCC_SYSROOT_ATTR,
         "cargo_vendor": attr.label(mandatory = True, allow_single_file = True),
         "output": attr.string(mandatory = True),
         "host_wheels": attr.label_list(allow_files = True),
@@ -176,6 +187,7 @@ def _vllm_preflight_impl(ctx):
     args.add("--cargo", rust_toolchain.cargo.path)
     args.add("--cargo-vendor-tar", ctx.file.cargo_vendor.path)
     args.add("--ccache-tar", ctx.file.compiler_cache.path)
+    args.add("--gcc-sysroot-tar", ctx.file.compiler_sysroot.path)
     args.add("--cuda-architecture", ctx.attr.cuda_architecture)
     args.add("--output", report.path)
     for name in sorted(ctx.attr.cmake_sources):
@@ -195,6 +207,7 @@ def _vllm_preflight_impl(ctx):
         ctx.file.nccl,
         ctx.file.python,
         ctx.file.compiler_cache,
+        ctx.file.compiler_sysroot,
         ctx.file.cargo_vendor,
     ] + ctx.files.python_runtime + ctx.files.python_headers + wheel_inputs + cmake_source_files + [
         rust_toolchain.rustc,
@@ -219,6 +232,10 @@ def _vllm_preflight_impl(ctx):
 
 vllm_preflight = rule(
     implementation = _vllm_preflight_impl,
+    exec_compatible_with = [
+        "@platforms//cpu:aarch64",
+        "@platforms//os:linux",
+    ],
     attrs = {
         "src": attr.label(mandatory = True, allow_single_file = True),
         "source_identity": attr.label(mandatory = True, allow_single_file = True),
@@ -236,6 +253,7 @@ vllm_preflight = rule(
             default = Label("@ccache//:ccache.tar"),
             allow_single_file = True,
         ),
+        "compiler_sysroot": GCC_SYSROOT_ATTR,
         "cargo_vendor": attr.label(mandatory = True, allow_single_file = True),
         "output": attr.string(mandatory = True),
         "host_wheels": attr.label_list(allow_files = True),

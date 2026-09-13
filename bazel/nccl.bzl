@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Build the profile-pinned NCCL tree against the hermetic CUDA toolkit."""
 
-load("//bazel:compiler_cache.bzl", "CCACHE_ATTR")
+load("//bazel:compiler_cache.bzl", "CCACHE_ATTR", "GCC_SYSROOT_ATTR")
 
 
 def _nccl_lib_impl(ctx):
@@ -16,9 +16,8 @@ def _nccl_lib_impl(ctx):
     args.add("--src-tar", ctx.file.src.path)
     args.add("--cuda-tar", ctx.file.cuda.path)
     args.add("--ccache-tar", ctx.file.compiler_cache.path)
-    args.add("--gin-stub", ctx.file._gin_stub.path)
+    args.add("--gcc-sysroot-tar", ctx.file.compiler_sysroot.path)
     args.add("--cuda-arch", compiler_arch)
-    args.add("--gcc-internal", "/usr/libexec/gcc/aarch64-linux-gnu/15")
     args.add("--commit", ctx.attr.commit)
     args.add("--jobs", ctx.attr.jobs)
     args.add("--lib-output", output.path)
@@ -31,9 +30,9 @@ def _nccl_lib_impl(ctx):
                 ctx.file.src,
                 ctx.file.cuda,
                 ctx.file.compiler_cache,
+                ctx.file.compiler_sysroot,
                 ctx.file.python,
                 ctx.file._driver,
-                ctx.file._gin_stub,
                 ctx.file._action_lib,
             ] + ctx.files.python_runtime,
         ),
@@ -45,8 +44,6 @@ def _nccl_lib_impl(ctx):
             "cpu": "20",
             "memory": "32768",
         },
-        # GCC invokes cc1plus outside Bazel's toolchain. Keep the host compiler
-        # environment for this upstream Makefile action until it is ported.
         use_default_shell_env = True,
     )
     return [
@@ -57,10 +54,15 @@ def _nccl_lib_impl(ctx):
 
 nccl_lib = rule(
     implementation = _nccl_lib_impl,
+    exec_compatible_with = [
+        "@platforms//cpu:aarch64",
+        "@platforms//os:linux",
+    ],
     attrs = {
         "src": attr.label(mandatory = True, allow_single_file = True),
         "cuda": attr.label(mandatory = True, allow_single_file = True),
         "compiler_cache": CCACHE_ATTR,
+        "compiler_sysroot": GCC_SYSROOT_ATTR,
         "commit": attr.string(mandatory = True),
         "cuda_arch": attr.string(mandatory = True),
         "python": attr.label(mandatory = True, allow_single_file = True),
@@ -75,10 +77,6 @@ nccl_lib = rule(
         "sdk_output": attr.string(default = "nccl-sdk.tar"),
         "_driver": attr.label(
             default = Label("//bazel:nccl_action.py"),
-            allow_single_file = True,
-        ),
-        "_gin_stub": attr.label(
-            default = Label("//bazel:nccl_gin_gdaki_stub.cc"),
             allow_single_file = True,
         ),
         "_action_lib": attr.label(

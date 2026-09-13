@@ -94,7 +94,11 @@ def _write_cusparselt_tar(ctx):
     if not source.is_dir:
         fail("expected lib directory in cuSPARSELt archive")
 
-    destination = "cusparselt/usr/local/cuda/lib64"
+    # The CUDA base image publishes /usr/local/cuda as a symlink to the
+    # versioned toolkit. A layer carrying that path as a real directory
+    # replaces the symlink and hides the whole CUDA runtime, so keep this
+    # library on its own path and export it through LD_LIBRARY_PATH.
+    destination = "cusparselt/opt/cusparselt/lib"
     ctx.file("%s/.keep" % destination, "")
     libraries = [
         entry
@@ -119,7 +123,7 @@ def _write_cusparselt_tar(ctx):
         "cusparselt",
         "-cf",
         "cusparselt.tar",
-        "usr",
+        "opt",
     ])
     if result.return_code:
         fail("failed to archive cuSPARSELt runtime: %s" % result.stderr)

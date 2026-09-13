@@ -24,6 +24,22 @@ fileExistenceTests:
   - name: "profile-pinned NCCL"
     path: "/opt/nccl/lib/libnccl.so.2.30.4"
     shouldExist: true
-  - name: "CUDA 13 cuSPARSELt runtime"
-    path: "/usr/local/cuda/lib64/libcusparseLt.so.0"
+  - name: "RDMA verbs runtime"
+    path: "/usr/lib/aarch64-linux-gnu/libibverbs.so.1"
     shouldExist: true
+  - name: "Mellanox RDMA provider"
+    path: "/usr/lib/aarch64-linux-gnu/libibverbs/libmlx5-rdmav59.so"
+    shouldExist: true
+  - name: "CUDA 13 cuSPARSELt runtime"
+    path: "/opt/cusparselt/lib/libcusparseLt.so.0"
+    shouldExist: true
+
+commandTests:
+  # Torch links cuDNN, cuBLAS, cuSPARSELt and NCCL, so a successful import is
+  # the only proof that every runtime layer resolves through the loader.
+  - name: "Torch resolves its CUDA runtime"
+    command: "/opt/venv/bin/python"
+    args:
+      - "-c"
+      - "import torch; print('cudnn', torch.backends.cudnn.version())"
+    expectedOutput: ["cudnn 9[0-9]+"]

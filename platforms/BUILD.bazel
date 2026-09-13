@@ -35,9 +35,16 @@ filegroup(
     srcs = [],
 )
 
-# The NativeLink worker image supplies this complete GCC 15 cross toolchain.
-# Its absolute paths deliberately describe worker tools, so no client compiler
-# files or include-path metadata leak into remote action inputs.
+# `flat` is the pinned package closure: GCC 15, binutils, glibc headers and
+# libraries. CUDA build rules consume this label rather than worker paths.
+filegroup(
+    name = "gcc_15_sysroot",
+    srcs = ["@glm53_gcc_15_sysroot//:flat"],
+    visibility = ["//visibility:public"],
+)
+
+# This configuration still describes the worker compiler until all native
+# actions consume :gcc_15_sysroot directly.
 remote_linux_aarch64_cc_toolchain_config(
     name = "remote_linux_aarch64_cc_toolchain_config",
 )

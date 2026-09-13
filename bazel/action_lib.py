@@ -43,7 +43,7 @@ def extract(archive: Path, destination: Path) -> None:
 
 
 def materialize_vllm_cmake_sources(
-    archives: Mapping[str, Path], work: Path
+    archives: Mapping[str, Path], work: Path, vllm_source: Path
 ) -> tuple[dict[str, str], list[str]]:
     """Extract the exact CMake FetchContent trees and return supported overrides."""
     names = set(archives)
@@ -58,6 +58,8 @@ def materialize_vllm_cmake_sources(
         destination = root / name
         extract(archives[name], destination)
         sources[name] = destination
+
+    apply_flashkda_checkpoint_patch(sources["flashkda"], vllm_source)
 
     triton_kernels = sources["triton"] / "python" / "triton_kernels" / "triton_kernels"
     if not triton_kernels.is_dir():
@@ -83,6 +85,27 @@ def materialize_vllm_cmake_sources(
         "-DVLLM_CUTLASS_SRC_DIR=" + str(sources["cutlass"]),
     ]
     return env, cmake_args
+
+
+def apply_flashkda_checkpoint_patch(flashkda: Path, vllm_source: Path) -> None:
+    """Apply vLLM's packed-checkpoint patch that its FLASH_KDA_SRC_DIR branch skips.
+
+    vLLM patches FlashKDA only when CMake fetches it. A caller-supplied source
+    directory stays unpatched, and vLLM then requires the packed checkpoint API
+    anyway. The patch ships inside the pinned vLLM source, so apply that exact
+    file rather than a vendored copy that would drift from the pin.
+    """
+    patch_file = (
+        vllm_source / "cmake" / "external_projects" / "patches" / "flashkda-packed-checkpoints.patch"
+    )
+    if not patch_file.is_file():
+        raise RuntimeError(f"pinned vLLM source lacks the FlashKDA patch: {patch_file}")
+
+    run(["patch", "--strip=1", "--input", str(patch_file)], cwd=flashkda)
+
+    header = flashkda / "csrc" / "flash_kda.h"
+    if "checkpoint_indptr" not in header.read_text():
+        raise RuntimeError(f"patched FlashKDA source lacks the packed checkpoint API: {header}")
 
 
 def extract_durable(archive: Path, name: str) -> Path:
@@ -125,6 +148,64 @@ def configure_cargo_vendor(archive: Path, work: Path) -> Path:
         raise RuntimeError(f"declared Cargo vendor archive lacks {vendor}")
     config.write_text(config.read_text().replace('directory = "vendor"', 'directory = "%s"' % vendor))
     return cargo_home
+
+
+def configure_sysroot_runtime(archive: Path, work: Path, env: dict[str, str]) -> Path:
+    """Extract the pinned sysroot and resolve ELF dependencies only from it.
+
+    Actions that merely import the native wheels this build produces still need
+    their shared libraries, such as the libibverbs that RDMA-enabled NCCL pulls
+    into Torch. Serve them from the declared input, never the worker image.
+    """
+    root = work / "gcc-sysroot"
+    extract(archive, root)
+    libraries = root / "usr" / "lib" / "aarch64-linux-gnu"
+    if not libraries.is_dir():
+        raise RuntimeError(f"compiler sysroot lacks shared libraries: {libraries}")
+    env["LD_LIBRARY_PATH"] = _prepend_path(env.get("LD_LIBRARY_PATH"), libraries)
+    return root
+
+
+def configure_compiler_sysroot(archive: Path, work: Path, env: dict[str, str]) -> Path:
+    """Extract the pinned GCC tree and select wrappers that never use host GCC."""
+    # Build backends import native wheels while compiling dependent wheels, so
+    # the same sysroot must satisfy both their loader and this compiler.
+    root = configure_sysroot_runtime(archive, work, env)
+    compiler_dir = root / "usr" / "bin"
+    loader = root / "usr" / "lib" / "ld-linux-aarch64.so.1"
+    if not loader.is_file():
+        raise RuntimeError(f"compiler sysroot lacks dynamic loader: {loader}")
+    # GNU ld resolves its fixed AArch64 interpreter path through --sysroot.
+    # The Debian closure keeps the loader under /usr/lib, so expose the ABI
+    # spelling it requests without accessing the worker filesystem.
+    root_lib = root / "lib"
+    root_lib.mkdir(exist_ok=True)
+    sysroot_loader = root_lib / "ld-linux-aarch64.so.1"
+    if not sysroot_loader.exists():
+        sysroot_loader.symlink_to("../usr/lib/ld-linux-aarch64.so.1")
+    for name in ("gcc", "g++"):
+        compiler = compiler_dir / name
+        if not compiler.is_file():
+            raise RuntimeError(f"compiler sysroot lacks {compiler}")
+
+    wrappers = work / "compiler-bin"
+    wrappers.mkdir(parents=True, exist_ok=True)
+    for name in ("gcc", "g++"):
+        # Compute the extraction root from $0 so wrapper bytes remain stable
+        # across action roots and ccache can reuse compatible objects.
+        wrapper = wrappers / name
+        wrapper.write_text(
+            "#!/bin/sh\n"
+            'root=$(CDPATH= cd -- "$(dirname -- "$0")/../gcc-sysroot" && pwd)\n'
+            f'exec "$root/usr/bin/{name}" --sysroot="$root" '
+            '-B"$root/usr/libexec/gcc/aarch64-linux-gnu/15" "$@"\n'
+        )
+        wrapper.chmod(0o755)
+
+    env["CC"] = str(wrappers / "gcc")
+    env["CXX"] = str(wrappers / "g++")
+    env["PATH"] = _prepend_path(env.get("PATH"), wrappers)
+    return wrappers
 
 
 def install_wheels(python: Path, destination: Path, wheels: Sequence[Path]) -> None:
@@ -293,8 +374,10 @@ def _append_path(existing: str | None, item: Path) -> str:
     return ":".join(part for part in (existing, str(item)) if part)
 
 
-def _prepend_path(existing: str | None, item: Path) -> str:
-    return ":".join(part for part in (str(item), existing) if part)
+def _prepend_path(existing: str | None, *items: Path) -> str:
+    return ":".join(
+        part for part in (*(str(item) for item in items), existing) if part
+    )
 
 
 def _append_argument(existing: str | None, value: str) -> str:

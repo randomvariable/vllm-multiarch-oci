@@ -13,6 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from action_lib import (  # noqa: E402
     configure_compiler_cache,
+    configure_compiler_sysroot,
     configure_cargo_vendor,
     extract,
     extract_durable,
@@ -37,6 +38,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cargo", required=True)
     parser.add_argument("--cargo-vendor-tar", required=True)
     parser.add_argument("--ccache-tar", required=True)
+    parser.add_argument("--gcc-sysroot-tar", required=True)
     parser.add_argument("--cuda-architecture", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--host-wheel", action="append", default=[])
@@ -67,7 +69,7 @@ def main() -> None:
     extract(path_from_execroot(args.src_tar), source)
     cmake_sources = dict(item.split("=", 1) for item in args.cmake_source)
     cmake_env, cmake_source_args = materialize_vllm_cmake_sources(
-        {name: path_from_execroot(path) for name, path in cmake_sources.items()}, work
+        {name: path_from_execroot(path) for name, path in cmake_sources.items()}, work, source
     )
     cuda = extract_durable(path_from_execroot(args.cuda_tar), "cuda")
     ensure_cuda_lib64(cuda)
@@ -84,8 +86,6 @@ def main() -> None:
     env.update(cmake_env)
     env.update(
         {
-            "CC": "gcc",
-            "CXX": "g++",
             "CUDA_HOME": str(cuda),
             "CUDA_PATH": str(cuda),
             "CARGO_NET_OFFLINE": "true",
@@ -117,6 +117,7 @@ def main() -> None:
     env["CMAKE_ARGS"] = " ".join(
         part for part in (env.get("CMAKE_ARGS"), "-DPython3_EXECUTABLE=" + str(python)) if part
     )
+    configure_compiler_sysroot(path_from_execroot(args.gcc_sysroot_tar), work, env)
     launcher = configure_compiler_cache(work, path_from_execroot(args.ccache_tar), env)
     cargo_home = configure_cargo_vendor(path_from_execroot(args.cargo_vendor_tar), work)
     env["CARGO_HOME"] = str(cargo_home)

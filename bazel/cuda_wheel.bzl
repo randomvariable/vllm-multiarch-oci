@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Build an upstream Python CUDA extension as a content-addressed wheel action."""
 
-load("//bazel:compiler_cache.bzl", "CCACHE_ATTR")
+load("//bazel:compiler_cache.bzl", "CCACHE_ATTR", "GCC_SYSROOT_ATTR")
 
 def _cuda_wheel_impl(ctx):
     output = ctx.actions.declare_file(ctx.attr.output)
@@ -15,6 +15,7 @@ def _cuda_wheel_impl(ctx):
         args.add("--nccl-tar", ctx.file.nccl.path)
     args.add("--build-script", ctx.file.build.path)
     args.add("--ccache-tar", ctx.file.compiler_cache.path)
+    args.add("--gcc-sysroot-tar", ctx.file.compiler_sysroot.path)
     args.add("--max-jobs", str(min(ctx.attr.max_jobs, 4)))
     args.add("--output", output.path)
     args.add_all(ctx.files.host_wheels + ctx.files.deps, before_each = "--host-wheel")
@@ -25,6 +26,7 @@ def _cuda_wheel_impl(ctx):
         ctx.file.build,
         ctx.file.python,
         ctx.file.compiler_cache,
+        ctx.file.compiler_sysroot,
         ctx.file._driver,
         ctx.file._action_lib,
     ] + ctx.files.python_runtime + ctx.files.python_headers + ctx.files.host_wheels + ctx.files.deps + ctx.files.nccl
@@ -47,6 +49,10 @@ def _cuda_wheel_impl(ctx):
 
 cuda_wheel = rule(
     implementation = _cuda_wheel_impl,
+    exec_compatible_with = [
+        "@platforms//cpu:aarch64",
+        "@platforms//os:linux",
+    ],
     attrs = {
         "src": attr.label(mandatory = True, allow_single_file = True),
         "cuda": attr.label(mandatory = True, allow_single_file = True),
@@ -65,6 +71,7 @@ cuda_wheel = rule(
         ),
         "build": attr.label(mandatory = True, allow_single_file = True),
         "compiler_cache": CCACHE_ATTR,
+        "compiler_sysroot": GCC_SYSROOT_ATTR,
         "output": attr.string(mandatory = True),
         "host_wheels": attr.label_list(allow_files = True),
         "deps": attr.label_list(allow_files = True),

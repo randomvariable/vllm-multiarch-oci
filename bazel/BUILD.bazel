@@ -13,7 +13,6 @@ exports_files([
     "build_vllm_wheel.py",
     "cuda_wheel.bzl",
     "nccl_action.py",
-    "nccl_gin_gdaki_stub.cc",
     "vllm_wheel.bzl",
     "vllm_extensions_action.py",
     "vllm_package_action.py",

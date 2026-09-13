@@ -3,18 +3,22 @@
 
 import argparse
 import os
-import re
 import shutil
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from action_lib import configure_compiler_cache, extract, extract_durable, run, work_root, write_tar
+from action_lib import (
+    configure_compiler_cache,
+    configure_compiler_sysroot,
+    extract,
+    extract_durable,
+    run,
+    work_root,
+    write_tar,
+)
 
 _VERSION = b"NCCL version 2.30.4 compiled with CUDA 13.3"
-_DOCA_LIBSRC = re.compile(r"^DOCA_LIBSRC\s*:=.*", re.MULTILINE)
-
-
 def _action_path(value: str) -> Path:
     return Path.cwd() / value
 
@@ -26,9 +30,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--src-tar", required=True)
     parser.add_argument("--cuda-tar", required=True)
     parser.add_argument("--ccache-tar", required=True)
-    parser.add_argument("--gin-stub", required=True)
+    parser.add_argument("--gcc-sysroot-tar", required=True)
     parser.add_argument("--cuda-arch", required=True)
-    parser.add_argument("--gcc-internal", required=True)
     parser.add_argument("--commit", required=True)
     parser.add_argument("--jobs", required=True, type=int)
     parser.add_argument("--lib-output", required=True)
@@ -44,23 +47,11 @@ def main() -> None:
     extract(_action_path(args.src_tar), source)
     cuda = extract_durable(_action_path(args.cuda_tar), "cuda")
 
-    gin_stub = source / "src/transport/net_ib/gdaki/gin_host_gdaki.cc"
-    shutil.copyfile(_action_path(args.gin_stub), gin_stub)
-
-    makefile = source / "src/Makefile"
-    contents = makefile.read_text()
-    rewritten, replacements = _DOCA_LIBSRC.subn("DOCA_LIBSRC      :=", contents)
-    if replacements != 1:
-        raise RuntimeError(
-            "expected exactly one DOCA_LIBSRC assignment in pinned NCCL Makefile, "
-            f"found {replacements}"
-        )
-    makefile.write_text(rewritten)
-
     env = os.environ.copy()
     python = _action_path(args.python)
     ccache = configure_compiler_cache(work, _action_path(args.ccache_tar), env)
-    env["PATH"] = os.pathsep.join((str(python.parent), args.gcc_internal, env["PATH"]))
+    configure_compiler_sysroot(_action_path(args.gcc_sysroot_tar), work, env)
+    env["PATH"] = os.pathsep.join((str(python.parent), env["PATH"]))
     env["PYTHON"] = str(python)
     run(
         [
@@ -73,12 +64,19 @@ def main() -> None:
             f"CUDA_HOME={cuda}",
             f"CUDA_LIB={cuda / 'lib'}",
             f"NVCC={ccache} {cuda / 'bin/nvcc'}",
-            # nvcc invokes CXX with its own preprocessor flags. A multi-word
-            # launcher loses `g++` there, so let ccache wrap nvcc and retain a
-            # direct host compiler for nvcc's internal probe.
-            "CXX=g++",
+            # nvcc invokes CXX with its own preprocessor flags. Keep ccache as
+            # its launcher and pass the pinned compiler wrapper directly.
+            "CXX=" + env["CXX"],
             "CXXSTD=-std=c++17",
-            "NCCL_GIN_GDAKI_ENABLE=0",
+            # GDAKI's DOCA wrappers resolve libmlx5 at runtime. Do not enable
+            # NCCL's separate direct-mlx5 path, which needs an unshipped .so
+            # linker symlink and is not part of this transport.
+            "RDMA_CORE=1",
+            # NCCL adds -libverbs to CXXFLAGS, before its object list. GNU ld
+            # can discard that dependency under --as-needed, leaving GDAKI's
+            # verbs symbols unresolved when Torch loads libnccl. Put it in the
+            # link flags, which NCCL emits after all objects.
+            "LDFLAGS=-libverbs",
             "NCCL_GIT_BRANCH=profile-pinned",
             f"NCCL_GIT_COMMIT_HASH={args.commit}",
             f"NVCC_GENCODE=-gencode=arch=compute_{args.cuda_arch},code=sm_{args.cuda_arch}",

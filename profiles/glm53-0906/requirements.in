@@ -15,6 +15,7 @@ nvidia-cutlass-dsl[cu13]==4.6.2
 nvidia-ml-py
 nvtx==0.2.15
 quack-kernels==0.6.4
+smg-grpc-servicer[vllm]>=0.5.2
 tilelang==0.1.12
 tokenspeed-mla==0.1.8
 torchcodec>=0.14
