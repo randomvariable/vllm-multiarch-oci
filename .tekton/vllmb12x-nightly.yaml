@@ -102,7 +102,7 @@ spec:
               env:
                 - {name: HOME, value: /tekton/home}
                 - {name: DOCKER_CONFIG, value: /tekton/docker}
-                - {name: GITHUB_TOKEN_FILE, value: /tekton/github/token}
+                - {name: GITHUB_TOKEN_FILE, value: /var/run/vllmb12x/github/token}
               computeResources:
                 requests: {cpu: "4", memory: 8Gi}
                 limits: {memory: 24Gi}
@@ -148,7 +148,7 @@ spec:
                 REF="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["reference"])' "$RESULT")"
                 printf '%s' "$REF" > "$(results.image_ref.path)"
               volumeMounts:
-                - {name: github-token, mountPath: /tekton/github, readOnly: true}
+                - {name: github-token, mountPath: /var/run/vllmb12x/github, readOnly: true}
           volumes:
             - name: github-token
               secret:
