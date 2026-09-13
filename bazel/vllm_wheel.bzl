@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Compile vLLM CUDA extensions separately from pure-Python wheel packaging."""
 
-load("//bazel:compiler_cache.bzl", "GCC_SYSROOT_ATTR")
+load("//bazel:compiler_cache.bzl", "GCC_SYSROOT_ATTR", "compile_jobs")
 
 def _vllm_wheel_impl(ctx):
     wheel = ctx.actions.declare_file(ctx.attr.output)
@@ -23,7 +23,7 @@ def _vllm_wheel_impl(ctx):
     compile_args.add("--cargo-vendor-tar", ctx.file.cargo_vendor.path)
     compile_args.add("--ccache-tar", ctx.file.compiler_cache.path)
     compile_args.add("--gcc-sysroot-tar", ctx.file.compiler_sysroot.path)
-    compile_args.add("--max-jobs", min(ctx.attr.max_jobs, 4))
+    compile_args.add("--max-jobs", compile_jobs(ctx.attr))
     compile_args.add("--cuda-architecture", ctx.attr.cuda_architecture)
     compile_args.add("--output", extensions.path)
     compile_args.add("--cache-stats-output", cache_stats.path)
@@ -150,7 +150,9 @@ vllm_wheel = rule(
         "env": attr.string_dict(),
         "nccl": attr.label(allow_single_file = True),
         "cuda_architecture": attr.string(mandatory = True),
-        "max_jobs": attr.int(default = 4),
+        # Upper bound only. compile_jobs() reduces this to what the action's
+        # CPU and memory reservation affords.
+        "max_jobs": attr.int(default = 64),
         "cpu": attr.int(default = 20),
         "memory": attr.int(default = 65536),
         "_compile_driver": attr.label(
