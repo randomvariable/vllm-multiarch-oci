@@ -46,7 +46,7 @@ Build, test, and load select the ARM64 target and execution platform, local exec
 
 ## Nightly Publication
 
-The public PAC definition at [`.tekton/vllmb12x-nightly.yaml`](../../.tekton/vllmb12x-nightly.yaml) first builds the locked image and runs the image contract on the ARM64 remote worker. It then acquires a short Kubernetes Lease and publishes with `//image:vllmb12x_push`.
+The public PAC definition at [`.tekton/vllmb12x-nightly.yaml`](../../.tekton/vllmb12x-nightly.yaml) first builds the locked image and runs the image contract on the ARM64 remote worker. The publisher then rebuilds `//image:vllmb12x` with `--remote_download_outputs=all`, acquires a short Kubernetes Lease, and pushes the materialised OCI layout with a host `crane` rather than `//image:vllmb12x_push`. `rules_oci` packages `crane` and `jq` as exec-platform runfiles, so `bazel run` under the remote ARM64 configuration resolves binaries for the remote executor instead of the pipeline pod.
 
 `scripts/publish-vllmb12x.py` gives each publication an immutable tag containing the UTC date, locked vLLM revision, builder revision, and the Lease transition number. The transition number makes repeated same-revision rebuilds distinct. The publisher releases the Lease by shortening it rather than deleting it, so a delayed run cannot remove a later holder's lock. The image also receives `latest` after its immutable tag succeeds.
 

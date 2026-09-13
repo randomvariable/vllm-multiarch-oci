@@ -116,7 +116,7 @@ cuda_wheel(
     nccl = "//components/nccl:sdk",
     output = "flashinfer_jit_cache-0.6.18-cp39-abi3-manylinux_2_28_aarch64.whl",
     cpu = 20,
-    memory = 65536,
+    memory = 49152,
 )
 
 cuda_wheel(
@@ -177,7 +177,7 @@ vllm_wheel(
     cmake_sources = _VLLM_CMAKE_SOURCES,
     output = _VLLM_WHEEL,
     cpu = 20,
-    memory = 65536,
+    memory = 49152,
 )
 
 # Builds only the native archive. Use this boundary to retain completed native
