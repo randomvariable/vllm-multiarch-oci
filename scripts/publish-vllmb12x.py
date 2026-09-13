@@ -11,7 +11,9 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import os
 import re
+import shutil
 import subprocess
 import tempfile
 import threading
@@ -209,6 +211,27 @@ def published_reference(image_refs: Path) -> str:
     return references[0]
 
 
+def materialize_layout(layout: Path, destination: Path) -> Path:
+    """Copy an OCI layout with every blob resolved to a regular file.
+
+    Bazel symlinks base-image and apt blobs into the external repository
+    directories, and crane refuses a layout blob that is a symlink. Hard links
+    avoid copying the bytes when the output base shares a filesystem with the
+    destination.
+    """
+    for source in sorted(layout.rglob("*")):
+        if source.is_dir() and not source.is_symlink():
+            continue
+        target = destination / source.relative_to(layout)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        resolved = source.resolve()
+        try:
+            os.link(resolved, target)
+        except OSError:
+            shutil.copyfile(resolved, target)
+    return destination
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repository", required=True, help="Registry repository without a tag")
@@ -252,15 +275,17 @@ def main() -> None:
     tag = allocate_tag(revision, args.build_revision, date, sequence)
     reference: str
     try:
-        with tempfile.TemporaryDirectory() as temporary_directory:
+        # Alongside the output base so the blob hard links stay on one filesystem.
+        with tempfile.TemporaryDirectory(dir=image_layout.resolve().parent) as temporary_directory:
             image_refs = Path(temporary_directory) / "image-refs.txt"
+            pushable = materialize_layout(image_layout, Path(temporary_directory) / "layout")
             subprocess.run(
                 [
                     args.crane,
                     "push",
                     "--image-refs",
                     str(image_refs),
-                    str(image_layout),
+                    str(pushable),
                     f"{args.repository}:{tag}",
                 ],
                 check=True,
