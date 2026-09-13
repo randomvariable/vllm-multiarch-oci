@@ -1,0 +1,18 @@
+MODULE.bazel
+  h_15da545fc8cfbe 67-69,72
+MODULE.bazel.lock
+  h_15da545fc8cfbe 279,635,645,652
+tests/image/vllmb12x.yaml
+  h_15da545fc8cfbe 54-56,92-100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5cce469277e941a22ae05a01da147409c981b491",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
