@@ -1,0 +1,14 @@
+bazel/provenance_layer.bzl
+  h_15da545fc8cfbe 27,50-53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "bbcb514bfea36038456df5d11e93bef7cd0c64c9",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
