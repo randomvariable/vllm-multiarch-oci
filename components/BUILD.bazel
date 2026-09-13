@@ -118,8 +118,9 @@ cuda_wheel(
     cpu = 20,
     memory = 49152,
     # Ten concurrent AOT kernel compiles OOMKilled the worker (exit 137, four
-    # attempts, 64GiB cgroup), so these translation units cost well over the
-    # 4GiB default. Five jobs keeps the peak inside the worker.
+    # attempts, 64GiB cgroup). Measured at five jobs on server21: 19-29 live
+    # compiler processes, 12.91GiB peak for a single translation unit, and
+    # 37.25GiB summed resident compiler memory, so roughly 7.5GiB per job.
     memory_per_job = 8192,
 )
 
