@@ -1,0 +1,14 @@
+bazel/compiler_cache.bzl
+  h_15da545fc8cfbe 21-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0269be3dc991c8b7b586fe86606a2809e3619752",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
