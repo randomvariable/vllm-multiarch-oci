@@ -24,7 +24,7 @@ def _provenance_layer_impl(ctx):
             ctx.file._action_lib,
             ctx.file._driver,
             ctx.file.manifest,
-        ] + identities),
+        ] + ctx.files._python_runtime + identities),
         outputs = [output],
         arguments = [args],
         mnemonic = "AssembleProvenanceLayer",
@@ -46,6 +46,10 @@ provenance_layer = rule(
         "_python": attr.label(
             default = Label("@python_3_12//:python3"),
             allow_single_file = True,
+        ),
+        "_python_runtime": attr.label(
+            default = Label("@python_3_12//:files"),
+            allow_files = True,
         ),
         "_action_lib": attr.label(
             default = Label("//bazel:action_lib.py"),
