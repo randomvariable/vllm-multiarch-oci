@@ -1,0 +1,64 @@
+.tekton/vllmb12x-nightly.yaml
+  h_15da545fc8cfbe 1-168
+Justfile
+  h_15da545fc8cfbe 20,24,28-32
+MODULE.bazel
+  h_15da545fc8cfbe 63,70,84,90,97,110,119-140,191,207
+MODULE.bazel.lock
+  h_15da545fc8cfbe 279-280,282,285,288-289,291-292,295,298-300,305,309,315,318-319,325,328-330,335,338-339,345,348-350,355,358-359,365,368-370,375,378-379,385,388-389,395,398-399,401-404,407,410-412,417,420-421,427,430-431,437,440-441,447,450-452,457,460-461,467,470-471,477,480-482,487,490-492,497,500-501,628-917,919,922-923,925-944
+WATCHDOG.yml
+  h_15da545fc8cfbe 1-9
+bazel/BUILD.bazel
+  h_15da545fc8cfbe 16-17
+bazel/provenance_layer.bzl
+  h_15da545fc8cfbe 1-59
+bazel/provenance_layer_action.py
+  h_15da545fc8cfbe 1-68
+bazel/sources.bzl
+  h_15da545fc8cfbe 22-29
+bazel/vllm_image.bzl
+  h_15da545fc8cfbe 2,6-24,38,51-55,63
+components/BUILD.bazel
+  h_15da545fc8cfbe 5,42-50,53-59,83,88,103,124,152,167,169,171,178,199-200,214,216,218,230,249,267,286,299,328,348
+components/nccl/BUILD.bazel
+  h_15da545fc8cfbe 9
+docs/explanation/build-and-cache-design.md
+  h_15da545fc8cfbe 45
+docs/how-to/build-and-test.md
+  h_15da545fc8cfbe 31,51
+docs/how-to/build-locally-on-spark.md
+  h_15da545fc8cfbe 49,59,62,69-70,73
+docs/how-to/measure-incremental-builds.md
+  h_15da545fc8cfbe 23,26
+docs/reference/build-configuration.md
+  h_15da545fc8cfbe 9-10,16,26,42,47-54,63,84
+docs/tutorials/first-build.md
+  h_15da545fc8cfbe 29,32
+image/BUILD.bazel
+  h_15da545fc8cfbe 2,5-6,9,17,97-127,129,134,139-149
+platforms/BUILD.bazel
+  h_15da545fc8cfbe 42
+profiles/vllmb12x/profile.json
+  h_15da545fc8cfbe 6-7,11-12,16-17,21-22,24-27,31-42,46-52,56-57,59-113
+profiles/vllmb12x/version.bzl
+  h_15da545fc8cfbe 3,5
+scripts/publish-vllmb12x.py
+  h_15da545fc8cfbe 1-257
+scripts/refresh-vllmb12x.py
+  h_15da545fc8cfbe 1-154
+tests/image/BUILD.bazel
+  h_15da545fc8cfbe 6-7,9
+tests/image/vllmb12x.yaml
+  h_15da545fc8cfbe 36-44,55-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a194a62e3eb55a0d11daacfd6d4227592bdebf7e",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
