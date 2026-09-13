@@ -111,8 +111,13 @@ spec:
                 set -euo pipefail
 
                 apt-get update
-                apt-get install --no-install-recommends --yes ca-certificates curl kubernetes-client
+                apt-get install --no-install-recommends --yes ca-certificates curl
                 rm -rf /var/lib/apt/lists/*
+                KUBECTL_VERSION="$(curl --fail --silent --show-error --location https://dl.k8s.io/release/stable.txt)"
+                curl --fail --silent --show-error --location \
+                  "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" \
+                  --output /usr/local/bin/kubectl
+                chmod 0755 /usr/local/bin/kubectl
 
                 git config --global --add safe.directory "$PWD"
                 BUILD_REVISION="$(git rev-parse HEAD)"
