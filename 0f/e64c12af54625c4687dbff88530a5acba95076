@@ -1,0 +1,20 @@
+MODULE.bazel
+  h_15da545fc8cfbe 71-76
+MODULE.bazel.lock
+  h_15da545fc8cfbe 635,645,652,5205-5303
+bazel/venv_layer_action.py
+  h_15da545fc8cfbe 14-28,71
+tests/image/vllmb12x.yaml
+  h_15da545fc8cfbe 45-53,70-88
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0fe64c12af54625c4687dbff88530a5acba95076",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
