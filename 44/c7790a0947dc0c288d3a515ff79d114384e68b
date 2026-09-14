@@ -1,0 +1,16 @@
+third_party/vllm-patches.json
+  h_15da545fc8cfbe 8-19
+third_party/vllm_pr-762.patch
+  h_15da545fc8cfbe 1-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "44c7790a0947dc0c288d3a515ff79d114384e68b",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
