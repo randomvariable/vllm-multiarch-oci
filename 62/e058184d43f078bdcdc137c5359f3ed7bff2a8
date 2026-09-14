@@ -1,0 +1,18 @@
+recipes-site/astro.config.mjs
+  h_15da545fc8cfbe 48-50
+recipes-site/src/components/Sidebar.astro
+  h_15da545fc8cfbe 1-37
+recipes-site/src/content/docs/index.mdx
+  h_15da545fc8cfbe 2,10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "62e058184d43f078bdcdc137c5359f3ed7bff2a8",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
