@@ -1,0 +1,16 @@
+recipes-site/src/content/docs/guides/benchmark-deployment.mdx
+  h_15da545fc8cfbe 40
+recipes-site/src/content/docs/recipes/deepseek-v4-flash-vision-tp2.mdx
+  h_15da545fc8cfbe 33-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d3c09c5e09475dfdc21b60795c41809f7058c6c2",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
