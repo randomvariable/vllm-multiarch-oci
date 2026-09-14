@@ -89,6 +89,12 @@ commandTests:
     command: "/opt/venv/bin/python"
     args: ["-c", "import cutlass; print('cutlass', cutlass.__file__)"]
     expectedOutput: ["cutlass /"]
+  - name: "B12X Lightning Indexer CuteDSL imports"
+    command: "/opt/venv/bin/python"
+    args:
+      - "-c"
+      - "from vllm.vllm_flash_attn.cute.cache_utils import get_jit_cache; import vllm.models.deepseek_v4.nvidia.ops.fused_indexer_q_cutedsl; print('B12X Lightning Indexer CuteDSL import OK')"
+    expectedOutput: ["B12X Lightning Indexer CuteDSL import OK"]
   # b12x builds its RoCE proxy at channel construction, after
   # roce.is_supported() has already returned True, so a missing
   # infiniband/verbs.h silently demotes RoCEnante to NCCL at model load.
