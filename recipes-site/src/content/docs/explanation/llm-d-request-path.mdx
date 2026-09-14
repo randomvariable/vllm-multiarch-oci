@@ -1,0 +1,44 @@
+---
+title: How the llm-d request path works
+description: Separate endpoint selection, inference payload flow and two-rank GPU collectives.
+---
+
+The public stack borrows llm-d's Gateway API Inference Extension pattern, but it is not a monolithic llm-d installation. Four control responsibilities stay deliberately separate.
+
+<iframe
+  class="doc-figure"
+  src={`${import.meta.env.BASE_URL}figures/llm-d-request-path.html`}
+  title="Endpoint selection and GPU collective paths"
+  loading="lazy"
+></iframe>
+
+<a href={`${import.meta.env.BASE_URL}figures/llm-d-request-path.html`}>Open the architecture figure by itself</a>.
+
+## Request path
+
+1. A client sends an OpenAI-compatible request with `x-ai-eg-model: deepseek-ai/DeepSeek-V4-Flash-Vision-Exp` to Gateway port 10080.
+2. The AI route matches that exact model header and refers to the `InferencePool`.
+3. Envoy sends request metadata to EPP over gRPC port 9002. EPP evaluates only endpoints admitted by the pool.
+4. EPP returns its endpoint choice. `FailClose` makes selection fail if EPP cannot decide; it does not silently bypass policy.
+5. Envoy sends the original inference payload directly to the chosen rank-zero API on port 8888. The payload is not proxied through EPP.
+6. Rank zero coordinates tensor-parallel execution with rank one. Only rank zero returns the HTTP response.
+
+The pool selector admits LWS worker index 0 only. Rank one is never an HTTP backend even though it is essential to inference.
+
+## Collective path
+
+Rank zero and rank one exchange distributed-engine rendezvous and GPU collective traffic. Kubernetes control, DNS, Gateway/EPP and the model API use the Cilium primary network. The configured high-volume collective path uses the Multus/macvlan attachment and host RDMA devices.
+
+These networks have different owners and policy boundaries. Cilium policy does not automatically protect the secondary macvlan interface, and Multus does not replace Cilium as the pod's primary network.
+
+## Why the debug Service exists
+
+The rank-zero Service gives operators a stable way to port-forward directly to `/v1/models` or `/v1/chat/completions`. It proves the serving group independently of the routing stack. It also bypasses EPP, model-header matching and Gateway policy, so it cannot prove scheduled routing.
+
+## What changes with replicas
+
+This seed recipe has one TP group and therefore one eligible API endpoint. EPP still enforces the protocol and failure behavior, but queue/KV/prefix-cache scoring has no alternative replica to choose. If future recipes add independent TP groups, those signals can differentiate their rank-zero endpoints. The preserved `2/2/3` weights describe the accepted configuration, not a universal optimum.
+
+## Security boundary
+
+EPP gRPC is plaintext inside the cluster. Namespace/network isolation must restrict it to the Gateway data plane. Port-forward is used for initial acceptance so the tutorial does not imply an authenticated public service. Production exposure requires a separately accepted TLS, authentication and authorization boundary.

@@ -1,0 +1,104 @@
+---
+title: Install GPU Operator in host-owned mode
+description: Advertise one GB10 GPU without replacing the pinned host driver or toolkit.
+---
+
+The host owns NVIDIA kernel modules, GSP firmware, userspace and Container Toolkit. GPU Operator 26.7.0 owns discovery, validation, CDI and the device plugin only. Never enable its driver or RDMA-driver containers on the custom-fork lane.
+
+:::caution[Validation boundary]
+Version 26.7.0 is pinned from the released NVIDIA chart and meets its documented Kubernetes minimum, but this complete k3s/GB10 combination is not end-to-end validated here. The accepted production workload uses a different kubeadm cluster.
+:::
+
+## Choose the sole NFD owner
+
+NFD (Node Feature Discovery) labels hardware features on Nodes.
+
+- **Fresh cluster from this tutorial:** GPU Operator owns bundled NFD; use `nfd.enabled=true`.
+- **Existing cluster that already has NFD:** set `nfd.enabled=false` and verify the existing NFD is healthy.
+
+Network Operator must later use `nfd.enabled=false` in both cases. Two NFD installations compete over labels and lifecycle; stop if more than one is installed.
+
+```bash
+kubectl get deploy,ds --all-namespaces -l app.kubernetes.io/name=node-feature-discovery
+```
+
+## Install the chart
+
+**Run on:** workstation with cluster-admin credentials.  
+**Writes:** `gpu-operator` namespace, CRDs and operator operands.  
+**Expected:** operator operands settle Running/Completed without a driver DaemonSet.  
+**Stop:** if host driver/runtime checks in the k3s guide failed, or the chart tries to install a driver/toolkit.
+
+```bash
+helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
+helm repo update
+helm upgrade --install gpu-operator nvidia/gpu-operator \
+  --namespace gpu-operator \
+  --create-namespace \
+  --version 26.7.0 \
+  --set driver.enabled=false \
+  --set toolkit.enabled=false \
+  --set nfd.enabled=true \
+  --set cdi.enabled=true
+```
+
+For the existing-NFD lane change only the final NFD value:
+
+```bash
+helm upgrade --install gpu-operator nvidia/gpu-operator \
+  --namespace gpu-operator --create-namespace --version 26.7.0 \
+  --set driver.enabled=false --set toolkit.enabled=false \
+  --set nfd.enabled=false --set cdi.enabled=true
+```
+
+Confirm ownership from rendered values, not pod names alone:
+
+```bash
+helm get values gpu-operator -n gpu-operator -o yaml
+kubectl -n gpu-operator get pods -o wide
+kubectl -n gpu-operator wait --for=condition=Available deployment --all --timeout=10m
+kubectl -n gpu-operator get daemonset
+```
+
+Expected values are exactly `driver.enabled: false` and `toolkit.enabled: false`. No operator driver DaemonSet may run. Diagnose operands that are CrashLoopBackOff before continuing; common boundaries are missing host modules, missing CDI/runtime integration or unsatisfied NFD labels.
+
+## Require one allocatable GPU on each GB10
+
+```bash
+kubectl get nodes -o custom-columns=NAME:.metadata.name,GPU:.status.allocatable.nvidia\.com/gpu
+```
+
+For the two fresh GB10 nodes, the GPU column must be `1`. Do not copy higher allocator values from another site: an extended-resource count is an allocator unit, not a physical-GPU count. Experienced operators may use a different parameterized resource key/count only when their installed device plugin defines it.
+
+## Run the intermediate CUDA proof
+
+**Run on:** workstation.  
+**Creates:** one temporary pod using one physical GPU and `runtimeClassName: nvidia`.  
+**Expected:** CUDA allocates memory and synchronizes.  
+**Stop:** if scheduling, CDI injection, allocation or synchronization fails. `nvidia-smi` visibility alone is insufficient.
+
+```bash
+cat <<'EOF' | kubectl apply -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cuda-allocation-smoke
+  namespace: default
+spec:
+  restartPolicy: Never
+  runtimeClassName: nvidia
+  containers:
+    - name: cuda
+      image: nvcr.io/nvidia/k8s/cuda-sample:vectoradd-cuda12.5.0
+      resources:
+        limits:
+          nvidia.com/gpu: 1
+EOF
+kubectl wait pod/cuda-allocation-smoke --for=jsonpath='{.status.phase}'=Succeeded --timeout=10m
+kubectl logs cuda-allocation-smoke
+kubectl delete pod cuda-allocation-smoke
+```
+
+Expected logs end with `Test PASSED`. This proves one container can execute CUDA; it does not prove RDMA, TP=2 collectives or the recipe image. Continue with [Multus and RDMA](/vllm-multiarch-oci/guides/multus-rdma/).
+
+See NVIDIA's [GPU Operator getting started guide](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/getting-started.html), [platform support](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/platform-support.html) and [pre-installed driver/toolkit guidance](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/getting-started.html#common-deployment-scenarios).

@@ -121,6 +121,7 @@ sources.profile(
     # Its hash becomes part of source.identity.json.
     vllm_patches = [
         "//third_party:vllm_shm_broadcast_spin_grace.patch",
+        "//third_party:vllm_flash_attn_cute_namespace.patch",
     ],
 )
 use_repo(

@@ -3,6 +3,20 @@ schemaVersion: 2.0.0
 metadataTest:
   entrypoint: ["/opt/venv/bin/vllm"]
   workdir: "/root"
+  labels:
+    - key: "org.opencontainers.image.source"
+      value: "https://github.com/local-inference-lab/vllm"
+    - key: "org.opencontainers.image.revision"
+      value: "[0-9a-f]{40}"
+      isRegex: true
+    - key: "org.opencontainers.image.version"
+      value: "0\\.1\\.dev1\\+vllmb12x\\.g[0-9a-f]{12}"
+      isRegex: true
+    - key: "uk.co.randomvariable.vllmb12x.vllm-source-ref"
+      value: "refs/heads/.+"
+      isRegex: true
+    - key: "uk.co.randomvariable.vllmb12x.builder-source"
+      value: "https://github.com/randomvariable/vllm-multiarch-oci"
   envVars:
     - key: "CUDA_HOME"
       value: "/usr/local/cuda"
@@ -16,6 +30,10 @@ fileExistenceTests:
     permissions: "-rwxr-xr-x"
   - name: "vLLM launcher"
     path: "/opt/venv/bin/vllm"
+    shouldExist: true
+    permissions: "-rwxr-xr-x"
+  - name: "Kubernetes image helper"
+    path: "/opt/venv/bin/vllm-image"
     shouldExist: true
     permissions: "-rwxr-xr-x"
   - name: "vLLM wheel package"
@@ -56,6 +74,14 @@ fileExistenceTests:
     shouldExist: true
 
 commandTests:
+  - name: "Generic image helper exposes stable commands"
+    command: "/opt/venv/bin/vllm-image"
+    args: ["--help"]
+    expectedOutput: ["rendezvous-wait,model-sync,health"]
+  - name: "Leader rendezvous exits without network wait"
+    command: "/opt/venv/bin/vllm-image"
+    args: ["rendezvous-wait", "--rank", "0", "--port", "25000"]
+    expectedOutput: ["leader rank 0; no wait required"]
   # Torch links cuDNN, cuBLAS, cuSPARSELt and NCCL, so a successful import is
   # the only proof that every runtime layer resolves through the loader.
   - name: "Torch resolves its CUDA runtime"
@@ -89,6 +115,12 @@ commandTests:
     command: "/opt/venv/bin/python"
     args: ["-c", "import cutlass; print('cutlass', cutlass.__file__)"]
     expectedOutput: ["cutlass /"]
+  - name: "B12X Lightning Indexer CuteDSL imports"
+    command: "/opt/venv/bin/python"
+    args:
+      - "-c"
+      - "from vllm.vllm_flash_attn.cute.cache_utils import get_jit_cache; import vllm.models.deepseek_v4.nvidia.ops.fused_indexer_q_cutedsl; print('B12X Lightning Indexer CuteDSL import OK')"
+    expectedOutput: ["B12X Lightning Indexer CuteDSL import OK"]
   # b12x builds its RoCE proxy at channel construction, after
   # roce.is_supported() has already returned True, so a missing
   # infiniband/verbs.h silently demotes RoCEnante to NCCL at model load.

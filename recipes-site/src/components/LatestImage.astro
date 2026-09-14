@@ -1,0 +1,39 @@
+---
+const base = import.meta.env.BASE_URL;
+---
+
+<section class="latest-image" data-latest-image data-base={base} aria-labelledby="latest-image-title">
+  <p class="eyebrow">Published metadata</p>
+  <h2 id="latest-image-title">Resolved immutable image</h2>
+  <dl class="fact-grid">
+    <div><dt>Immutable tag</dt><dd data-latest-tag>Loading...</dd></div>
+    <div><dt>Digest reference</dt><dd data-latest-reference>Loading...</dd></div>
+    <div><dt>Resolved at</dt><dd data-latest-time>Loading...</dd></div>
+    <div><dt>Recipe status</dt><dd>Not inherited</dd></div>
+  </dl>
+  <p data-latest-error role="status" aria-live="polite"></p>
+  <noscript>Read the resolver output at <code>latest-image.json</code>, or enable JavaScript to display it here.</noscript>
+</section>
+
+<script>
+  const panels = document.querySelectorAll("[data-latest-image]:not([data-ready])");
+  for (const panel of panels) {
+    if (!(panel instanceof HTMLElement)) continue;
+    panel.dataset.ready = "true";
+    const field = (name) => panel.querySelector(`[data-latest-${name}]`);
+    fetch(`${panel.dataset.base || "/"}latest-image.json`)
+      .then((response) => {
+        if (!response.ok) throw new Error("Latest image metadata is unavailable.");
+        return response.json();
+      })
+      .then((latest) => {
+        if (field("tag")) field("tag").textContent = latest.tag;
+        if (field("reference")) field("reference").textContent = latest.reference;
+        if (field("time")) field("time").textContent = new Date(latest.resolved_at).toLocaleString();
+      })
+      .catch((cause) => {
+        const error = field("error");
+        if (error) error.textContent = cause instanceof Error ? cause.message : "Latest image metadata is unavailable.";
+      });
+  }
+</script>

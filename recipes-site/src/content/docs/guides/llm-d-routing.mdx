@@ -1,0 +1,124 @@
+---
+title: Route requests with EPP and Envoy AI Gateway
+description: Install a per-model Endpoint Picker and route only to the TP group's rank-zero API.
+---
+
+This is an **llm-d-style routing stack**, not installation of an llm-d router chart. LeaderWorkerSet orchestrates the two-rank serving group. Gateway API Inference Extension's Endpoint Picker (EPP) selects a ready API endpoint. Envoy AI Gateway forwards the actual OpenAI request.
+
+<iframe
+  class="doc-figure"
+  src={`${import.meta.env.BASE_URL}figures/llm-d-request-path.html`}
+  title="llm-d request routing architecture"
+  loading="lazy"
+></iframe>
+
+<a href={`${import.meta.env.BASE_URL}figures/llm-d-request-path.html`}>Open the routing figure by itself</a>.
+
+The request payload does **not** traverse EPP. Envoy asks EPP which endpoint to use, then sends the request directly to rank zero on port 8888. Rank one participates only through collectives. With one TP group there is one eligible endpoint, so prefix-aware selection has no multi-replica choice yet.
+
+## Render the routing bundle
+
+In the [recipe builder](/vllm-multiarch-oci/recipes/deepseek-v4-flash-vision-tp2/), select the routing target and provide the same namespace/name plus an Accepted `gateway_class` (the fresh guide creates `vllm-envoy`). Download the generated manifest.
+
+The generated bundle contains:
+
+- a dedicated ServiceAccount and least-scope RBAC for endpoint discovery;
+- the EPP ConfigMap, Deployment and Services;
+- an `InferencePool` selecting **only LWS worker index 0**;
+- Gateway, AIGatewayRoute and ClientTrafficPolicy resources.
+
+Its working EPP configuration preserves queue/KV/prefix-cache scorer weights `2/2/3`, metrics producers, gRPC 9002, health 9003, model HTTP 8888 and `failureMode: FailClose`. These weights reproduce the accepted configuration; they are not a generally optimal tuning recommendation.
+
+The route listens internally on HTTP 10080, matches the exact `x-ai-eg-model: deepseek-ai/DeepSeek-V4-Flash-Vision-Exp` header, targets the InferencePool, allows a 1800-second route timeout and a 50 MiB connection buffer for image payloads.
+
+## Isolate the control path
+
+EPP gRPC is plaintext. Keep the EPP and Gateway in an isolated namespace/network path and permit only the gateway data plane to reach EPP port 9002. The Multus secondary network is for rank collectives and is not part of EPP traffic. Do not present this internal Gateway as an authenticated public endpoint; add explicit authentication, authorization and TLS at your accepted edge before exposure.
+
+## Apply and check reconciliation
+
+**Run on:** workstation.  
+**Expected:** EPP Available; InferencePool accepted; Gateway Accepted and Programmed.  
+**Stop:** if the pool includes rank one, EPP is unreachable, or any `ResolvedRefs` condition is false.
+
+```bash
+read -r -p 'Recipe namespace: ' RECIPE_NAMESPACE
+read -r -p 'Recipe workload name: ' RECIPE_NAME
+kubectl apply --dry-run=client -f deepseek-v4-flash-vision-routing.yaml
+kubectl apply -f deepseek-v4-flash-vision-routing.yaml
+kubectl -n "$RECIPE_NAMESPACE" rollout status deployment/"$RECIPE_NAME-epp" --timeout=5m
+kubectl -n "$RECIPE_NAMESPACE" get inferencepool "$RECIPE_NAME" -o yaml
+kubectl -n "$RECIPE_NAMESPACE" get gateway "$RECIPE_NAME" -o jsonpath='{range .status.conditions[*]}{.type}={.status}{" "}{.reason}{"\n"}{end}'
+kubectl -n "$RECIPE_NAMESPACE" get aigatewayroute,clienttrafficpolicy
+```
+
+Inspect the pool's effective endpoint set:
+
+```bash
+kubectl -n "$RECIPE_NAMESPACE" get endpointslice \
+  -l inference.networking.k8s.io/pool-name="$RECIPE_NAME" -o wide
+kubectl -n "$RECIPE_NAMESPACE" get pods \
+  -l leaderworkerset.sigs.k8s.io/worker-index=0 -o wide
+```
+
+Every pool endpoint must correspond to worker index `0`. If the installed LWS label spelling differs from the pinned schema, stop and regenerate against the released API rather than broadening the selector.
+
+EPP diagnostics:
+
+```bash
+kubectl -n "$RECIPE_NAMESPACE" logs deployment/"$RECIPE_NAME-epp"
+kubectl -n "$RECIPE_NAMESPACE" port-forward service/"$RECIPE_NAME-epp-health" 9003:9003
+curl --fail http://127.0.0.1:9003/healthz
+```
+
+`FailClose` intentionally rejects selection when EPP is unhealthy instead of bypassing its policy.
+
+## Accept the routed path
+
+For initial acceptance, keep the Gateway internal and port-forward it:
+
+```bash
+kubectl -n "$RECIPE_NAMESPACE" port-forward gateway/"$RECIPE_NAME" 10080:10080
+```
+
+Send all requests to `http://127.0.0.1:10080/v1/chat/completions` with both headers:
+
+```text
+Content-Type: application/json
+x-ai-eg-model: deepseek-ai/DeepSeek-V4-Flash-Vision-Exp
+```
+
+Require three successful requests:
+
+1. text response from the exact served model;
+2. tool request producing the expected tool call;
+3. vision request containing a real image and producing content grounded in it.
+
+Watch EPP and Gateway logs during each request, then verify both LWS ranks remain Ready. The acceptance must use Gateway and the exact model header. `/v1/models` through the debug rank-zero Service is not a substitute.
+
+## What each component owns
+
+- **LWS:** group identity, leader/worker lifecycle and startup ordering.
+- **InferencePool:** declares eligible model endpoints; only rank zero belongs.
+- **EPP:** scores eligible endpoints and returns a selection to Gateway.
+- **Envoy Gateway:** programs the Gateway data plane.
+- **Envoy AI Gateway:** interprets AI routes/model headers and applies AI-specific policy.
+- **rank-zero Service:** debugging access that bypasses EPP scheduling.
+
+Read [the request-path explanation](/vllm-multiarch-oci/explanation/llm-d-request-path/) for the separation between request routing and collectives.
+
+## Optional LiteLLM front end
+
+An existing LiteLLM deployment can point one OpenAI-compatible backend at the internal Gateway URL and send the required model header:
+
+```yaml
+model_list:
+  - model_name: deepseek-v4-flash-vision
+    litellm_params:
+      model: openai/deepseek-ai/DeepSeek-V4-Flash-Vision-Exp
+      api_base: http://vllm-gateway.vllm.svc:10080/v1
+      extra_headers:
+        x-ai-eg-model: deepseek-ai/DeepSeek-V4-Flash-Vision-Exp
+```
+
+This does not require the private ModelConfig/controller, ingress, databases or secret layout. LiteLLM authentication and edge exposure remain its operator's responsibility.

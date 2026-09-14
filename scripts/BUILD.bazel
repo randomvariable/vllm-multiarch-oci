@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: Apache-2.0
+
+load("@rules_python//python:defs.bzl", "py_test")
+
+py_test(
+    name = "publish_vllmb12x_test",
+    srcs = [
+        "publish-vllmb12x.py",
+        "publish_vllmb12x_test.py",
+    ],
+    main = "publish_vllmb12x_test.py",
+)

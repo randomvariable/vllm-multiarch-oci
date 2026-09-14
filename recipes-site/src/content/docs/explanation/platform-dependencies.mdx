@@ -1,0 +1,58 @@
+---
+title: Why the platform layers are separate
+description: Ownership and dependency boundaries from GB10 firmware through model routing.
+---
+
+The recipe is reproducible only when each layer has one owner. Installing a second owner for a kernel module, runtime, CNI or feature-label controller can appear healthy while producing an untested stack.
+
+## Host and runtime
+
+The host operator owns the 64 KiB kernel, NVIDIA open kernel modules, matching userspace/GSP and NVIDIA Container Toolkit. k3s owns its containerd process and generated configuration. GPU Operator consumes that host contract; it does not replace the driver or toolkit.
+
+This order matters:
+
+```text
+DGX OS -> 64 KiB kernel/headers -> NVIDIA fork/userspace/GSP
+       -> NVIDIA Container Toolkit -> k3s/containerd -> GPU device plugin
+```
+
+A container image cannot repair a mismatched host kernel/GSP/userspace group. Conversely, installing a host CUDA toolkit does not alter the CUDA libraries baked into the recipe image.
+
+## GPU and networking
+
+Cilium owns the primary pod network and Kubernetes NetworkPolicy. Multus asks additional CNI plugins to attach a second interface. macvlan connects that interface to the selected physical RoCE network and Whereabouts assigns its IP. Network Operator owns only the RDMA shared-device allocator in this lane.
+
+```text
+k3s -> Cilium primary CNI -> working DNS/API traffic
+                    |
+                    +-> Multus -> macvlan + Whereabouts -> secondary IP
+host mlx5 + open driver -------------------> RDMA shared-device resource
+```
+
+One NFD owner labels hardware: GPU Operator on the fresh path, or a pre-existing NFD on an experienced operator's cluster. Network Operator's bundled NFD remains disabled. Cilium policy does not automatically extend onto the macvlan interface.
+
+Extended-resource numbers are allocator units defined by a device plugin. They are not physical GPU/HCA counts. The beginner lane requests one GPU unit and one RDMA unit for each one-rank GB10 node.
+
+## Serving and routing
+
+cert-manager precedes certificate-dependent controllers. LWS creates and coordinates the two-rank group. The Inference Extension defines the InferencePool/EPP contract. Envoy Gateway programs the Gateway data plane, and Envoy AI Gateway supplies AI-route policy.
+
+```text
+cert-manager -> LWS -> rank 0 + rank 1
+             -> Inference Extension -> InferencePool + EPP
+             -> Envoy Gateway -> Envoy AI Gateway -> model route
+```
+
+LWS is not a scheduler. EPP selects only rank-zero APIs and never carries the inference payload. Rank one remains invisible to HTTP routing and participates through tensor-parallel collectives.
+
+## Evidence labels
+
+The dependency reference uses three evidence classes:
+
+- **tested:** component/recipe behavior observed in the accepted non-k3s kubeadm/Cilium deployment;
+- **source-observed:** a version/configuration found in that deployment but not itself a compatibility proof;
+- **newly verified:** a released upstream artifact and documented support boundary chosen for this tutorial.
+
+The complete k3s + custom driver + GPU Operator + Multus/RDMA + routing combination remains explicitly **not end-to-end validated on k3s** until both GB10 hardware gates and routed requests have completed.
+
+See the [dependency matrix](/vllm-multiarch-oci/reference/platform-dependencies/) for exact pins, sources, readiness commands and owners.

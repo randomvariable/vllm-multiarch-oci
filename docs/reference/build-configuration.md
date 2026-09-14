@@ -48,7 +48,15 @@ Build, test, and load select the ARM64 target and execution platform, local exec
 
 The public PAC definition at [`.tekton/vllmb12x-nightly.yaml`](../../.tekton/vllmb12x-nightly.yaml) first builds the locked image and runs the image contract on the ARM64 remote worker. The publisher then rebuilds `//image:vllmb12x` with `--remote_download_outputs=all`, acquires a short Kubernetes Lease, and pushes the materialised OCI layout with a host `crane` rather than `//image:vllmb12x_push`. `rules_oci` packages `crane` and `jq` as exec-platform runfiles, so `bazel run` under the remote ARM64 configuration resolves binaries for the remote executor instead of the pipeline pod. Bazel symlinks the base-image and apt blobs into its external repository directories, and `crane` rejects a layout blob that is a symlink, so the publisher copies the layout beside the output base with hard links and pushes that copy.
 
-`scripts/publish-vllmb12x.py` gives each publication an immutable tag containing the UTC date, locked vLLM revision, builder revision, and the Lease transition number. The transition number makes repeated same-revision rebuilds distinct. The publisher releases the Lease by shortening it rather than deleting it, so a delayed run cannot remove a later holder's lock. The image also receives `latest` after its immutable tag succeeds.
+`scripts/publish-vllmb12x.py` gives each publication an immutable tag with this form:
+
+```text
+vllmb12x-<source-branch>-<vllm-commit-12>-<builder-commit-12>-<UTC-date>-n<sequence>
+```
+
+For example, `refs/heads/dev/jovian-judgement` becomes `dev-jovian-judgement`. The profile stores the full source ref and full commit. The tag uses normalized branch text and 12-character commit prefixes for operators. The Lease transition number makes repeated builds of the same revisions distinct. The publisher releases the Lease by shortening it rather than deleting it. A delayed run cannot remove a later holder's lock. The image also receives `latest` after its immutable tag succeeds.
+
+The OCI metadata identifies the built vLLM source through `org.opencontainers.image.source`, `org.opencontainers.image.revision`, and `org.opencontainers.image.version`. Image-specific labels retain the full source ref, vLLM revision, vLLM version, and builder repository. The embedded `/opt/vllmb12x/sources.lock.json` records the complete dependency lock.
 
 The public pipeline names only PAC parameters. The private PAC Repository binds registry, authentication, remote-execution, storage, and Lease details.
 

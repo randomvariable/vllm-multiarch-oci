@@ -1,0 +1,218 @@
+---
+title: Install the GB10 64 KiB kernel driver
+description: Build the pinned NVIDIA open-driver fork with DKMS on Ubuntu 24.04 DGX OS arm64.
+---
+
+This is the fresh-host path for Ubuntu 24.04 DGX OS on arm64. It combines kernel ABI `7.0.0-1016-nvidia-64k`, NVIDIA userspace and GSP firmware 615.71.09, and the already-patched [`spark-615.71.09` fork](https://github.com/randomvariable/open-gpu-kernel-modules/tree/c5296e2d92f2cdb23cd10df25ec6e989b5f96c42).
+
+The fork returns pooled GB10 system memory when the final CUDA client exits and carries integrated-GPU ATS/THP changes. Those are mechanisms, not benchmark claims. Do not apply the patches again: commit `c5296e2d92f2cdb23cd10df25ec6e989b5f96c42` already contains them.
+
+:::danger[Maintenance boundary]
+On an existing host, gracefully quiesce the entire distributed group, verify that no process or container holds a GPU device, retain a known-good kernel and driver, and establish console access first. Never force-kill GPU holders. This procedure requires an operator-controlled reboot.
+:::
+
+## 1. Preflight the host
+
+**Run on:** each GPU host, as root.  
+**Writes:** package state, `/usr/src`, DKMS state, initramfs and boot state.  
+**Expected:** arm64 DGX OS, Secure Boot disabled, requested packages visible in already-configured repositories.  
+**Stop:** on any mismatch; do not invent a repository URL or substitute another ABI.
+
+```bash
+test "$(dpkg --print-architecture)" = arm64
+. /etc/os-release; test "$VERSION_ID" = 24.04
+mokutil --sb-state
+apt-cache policy linux-image-7.0.0-1016-nvidia-64k linux-headers-7.0.0-1016-nvidia-64k \
+  nvidia-open nvidia-driver-open nvidia-dkms-open nvidia-kernel-source-open \
+  nvidia-kernel-common nvidia-firmware
+apt-cache madison nvidia-open | grep 615.71.09
+```
+
+The worked path requires `SecureBoot disabled`. If it is enabled, stop and use the distribution's trusted module-signing and key-enrollment procedure. Do not silently disable Secure Boot and do not install unsigned modules.
+
+Before mutating an existing host:
+
+```bash
+nvidia-smi
+fuser -v /dev/nvidia* /dev/dri/render* /dev/infiniband/* || true
+docker ps --format '{{.Names}} {{.Status}}' 2>/dev/null || true
+kubectl get pods --all-namespaces -o wide --field-selector spec.nodeName="$(hostname)" 2>/dev/null || true
+efibootmgr -v
+```
+
+`fuser` must report no workload holder. `efibootmgr` must have no `BootNext:` line and its first `BootOrder` entry must be the ordinary disk/Ubuntu boot entry, not PXE or removable media.
+
+## 2. Install the exact kernel and driver userspace
+
+**Run on:** each GPU host, root.  
+**Expected:** package candidates exist at the requested versions.  
+**Stop:** if apt proposes removing the active known-good kernel, or any NVIDIA userspace/GSP package cannot be held at 615.71.09.
+
+```bash
+apt-get update
+apt-get install linux-image-7.0.0-1016-nvidia-64k linux-headers-7.0.0-1016-nvidia-64k \
+  build-essential dkms git mokutil
+NVIDIA_PACKAGE_VERSION=$(apt-cache madison nvidia-open | awk '$3 ~ /^615\.71\.09-1ubuntu1([~+].*)?$/ {print $3; exit}')
+test -n "$NVIDIA_PACKAGE_VERSION"
+apt-get install \
+  "nvidia-open=$NVIDIA_PACKAGE_VERSION" \
+  "nvidia-driver-open=$NVIDIA_PACKAGE_VERSION" \
+  "nvidia-dkms-open=$NVIDIA_PACKAGE_VERSION" \
+  "nvidia-kernel-source-open=$NVIDIA_PACKAGE_VERSION"
+NVIDIA_COMMON_VERSION=$(apt-cache madison nvidia-kernel-common | awk '$3 ~ /^615\.71\.09-1ubuntu1([~+].*)?$/ {print $3; exit}')
+NVIDIA_FIRMWARE_VERSION=$(apt-cache madison nvidia-firmware | awk '$3 ~ /^615\.71\.09-1ubuntu1([~+].*)?$/ {print $3; exit}')
+test -n "$NVIDIA_COMMON_VERSION"
+test -n "$NVIDIA_FIRMWARE_VERSION"
+apt-get install "nvidia-kernel-common=$NVIDIA_COMMON_VERSION" "nvidia-firmware=$NVIDIA_FIRMWARE_VERSION"
+apt-mark hold nvidia-open nvidia-driver-open nvidia-dkms-open \
+  nvidia-kernel-source-open nvidia-kernel-common nvidia-firmware
+```
+
+Check the intended build tree before proceeding:
+
+```bash
+KERNEL_RELEASE=7.0.0-1016-nvidia-64k
+test -d "/lib/modules/$KERNEL_RELEASE"
+test -r "/lib/modules/$KERNEL_RELEASE/build/Makefile"
+```
+
+The host CUDA toolkit is required only if you compile or run the host probe later; serving containers bring their own userspace. A host `cuda-toolkit-13-4` package does not change or describe the OCI image's CUDA version.
+
+## 3. Stage the pinned fork
+
+The public fork's DKMS name is `nvidia-open`; do not use private automation's historical `nvidia-spark` name.
+
+```bash
+DRIVER_VERSION=615.71.09
+SOURCE=/usr/src/nvidia-open-$DRIVER_VERSION
+test ! -e "$SOURCE"
+if dkms status -m nvidia-open -v "$DRIVER_VERSION" | grep -q .; then
+  echo 'nvidia-open 615.71.09 is already registered; resolve ownership before replacing it' >&2
+  exit 1
+fi
+rm -rf /tmp/open-gpu-kernel-modules
+git clone --filter=blob:none --no-checkout \
+  https://github.com/randomvariable/open-gpu-kernel-modules.git /tmp/open-gpu-kernel-modules
+git -C /tmp/open-gpu-kernel-modules fetch --depth=1 origin c5296e2d92f2cdb23cd10df25ec6e989b5f96c42
+git -C /tmp/open-gpu-kernel-modules checkout --detach c5296e2d92f2cdb23cd10df25ec6e989b5f96c42
+test "$(git -C /tmp/open-gpu-kernel-modules rev-parse HEAD)" = c5296e2d92f2cdb23cd10df25ec6e989b5f96c42
+install -d -m 0755 "$SOURCE"
+git -C /tmp/open-gpu-kernel-modules archive --format=tar HEAD | tar -x -C "$SOURCE"
+```
+
+Create `$SOURCE/dkms.conf` with all five modules:
+
+```bash
+cat >"$SOURCE/dkms.conf" <<'EOF'
+PACKAGE_NAME="nvidia-open"
+PACKAGE_VERSION="615.71.09"
+AUTOINSTALL="yes"
+MAKE[0]="'make' -j$(nproc) KERNEL_UNAME=${kernelver} modules"
+CLEAN="'make' clean"
+BUILT_MODULE_NAME[0]="nvidia"
+BUILT_MODULE_LOCATION[0]="kernel-open/nvidia"
+DEST_MODULE_LOCATION[0]="/updates/dkms"
+BUILT_MODULE_NAME[1]="nvidia-modeset"
+BUILT_MODULE_LOCATION[1]="kernel-open/nvidia-modeset"
+DEST_MODULE_LOCATION[1]="/updates/dkms"
+BUILT_MODULE_NAME[2]="nvidia-drm"
+BUILT_MODULE_LOCATION[2]="kernel-open/nvidia-drm"
+DEST_MODULE_LOCATION[2]="/updates/dkms"
+BUILT_MODULE_NAME[3]="nvidia-uvm"
+BUILT_MODULE_LOCATION[3]="kernel-open/nvidia-uvm"
+DEST_MODULE_LOCATION[3]="/updates/dkms"
+BUILT_MODULE_NAME[4]="nvidia-peermem"
+BUILT_MODULE_LOCATION[4]="kernel-open/nvidia-peermem"
+DEST_MODULE_LOCATION[4]="/updates/dkms"
+EOF
+```
+
+This follows the fork's [DKMS procedure](https://github.com/randomvariable/open-gpu-kernel-modules/blob/c5296e2d92f2cdb23cd10df25ec6e989b5f96c42/README.md). Register, build and install only for the pinned ABI:
+
+```bash
+dkms add -m nvidia-open -v 615.71.09
+dkms build -m nvidia-open -v 615.71.09 -k 7.0.0-1016-nvidia-64k
+dkms install -m nvidia-open -v 615.71.09 -k 7.0.0-1016-nvidia-64k
+dkms status -m nvidia-open -v 615.71.09 -k 7.0.0-1016-nvidia-64k
+```
+
+Expected status contains `installed`. Stop on build warnings promoted to errors, missing modules, signing rejection, or a second DKMS owner for the same NVIDIA module names.
+
+## 4. Select and verify on-disk artifacts
+
+```bash
+for module in nvidia nvidia-uvm nvidia-modeset nvidia-drm nvidia-peermem; do
+  path=$(modinfo -k 7.0.0-1016-nvidia-64k -F filename "$module")
+  version=$(modinfo -k 7.0.0-1016-nvidia-64k -F version "$module")
+  test -f "$path"
+  case "$path" in /lib/modules/7.0.0-1016-nvidia-64k/updates/dkms/*) ;; *) exit 1 ;; esac
+  test "$version" = 615.71.09
+  printf '%-18s %s %s\n' "$module" "$version" "$path"
+done
+depmod -a 7.0.0-1016-nvidia-64k
+update-initramfs -u -k 7.0.0-1016-nvidia-64k
+```
+
+Verify disk-first boot and absence of one-shot override again:
+
+```bash
+! efibootmgr -v | grep -q '^BootNext:'
+efibootmgr -v | grep -E '^BootOrder:|^Boot[0-9A-Fa-f]{4}'
+```
+
+Select `7.0.0-1016-nvidia-64k` using the host's normal GRUB/DGX OS mechanism, then perform an operator-controlled reboot. Do not script a blind reboot from copied documentation.
+
+## 5. Prove activation
+
+**Run on:** the rebooted GPU host.  
+**Expected:** the requested ABI, 64 KiB pages, loaded and on-disk module identity, working CUDA.  
+**Stop:** if any version/path differs; do not start k3s workloads.
+
+```bash
+test "$(uname -r)" = 7.0.0-1016-nvidia-64k
+test "$(getconf PAGESIZE)" = 65536
+test "$(modinfo -F version nvidia)" = 615.71.09
+for module in nvidia nvidia-uvm nvidia-modeset nvidia-drm nvidia-peermem; do
+  path=$(modinfo -n "$module")
+  version=$(modinfo -F version "$module")
+  test -f "$path"
+  test "$version" = 615.71.09
+  loaded=/sys/module/$(printf %s "$module" | tr - _)/srcversion
+  test -r "$loaded"
+  test "$(cat "$loaded")" = "$(modinfo -F srcversion "$module")"
+done
+nvidia-smi
+```
+
+If the fork's pool-retention option is configured, verify the loaded value rather than assuming the file was honored:
+
+```bash
+cat /sys/module/nvidia/parameters/NVreg_SystemMemoryPoolRetainMB
+```
+
+A zero is expected for `NVreg_SystemMemoryPoolRetainMB=0`.
+
+Finally run a real CUDA allocation and synchronization. This uses the host toolkit and is stronger than visibility-only `nvidia-smi`:
+
+```bash
+cat >/tmp/cuda-smoke.cu <<'EOF'
+#include <cuda_runtime.h>
+#include <stdio.h>
+int main(void) {
+  void *p = 0;
+  int count = 0;
+  if (cudaGetDeviceCount(&count) != cudaSuccess || count < 1) return 1;
+  if (cudaMalloc(&p, 1024 * 1024) != cudaSuccess) return 2;
+  if (cudaMemset(p, 0xa5, 1024 * 1024) != cudaSuccess) return 3;
+  if (cudaDeviceSynchronize() != cudaSuccess) return 4;
+  if (cudaFree(p) != cudaSuccess) return 5;
+  printf("CUDA allocation synchronized on %d device(s)\n", count);
+  return 0;
+}
+EOF
+/usr/local/cuda/bin/nvcc /tmp/cuda-smoke.cu -o /tmp/cuda-smoke
+/tmp/cuda-smoke
+rm -f /tmp/cuda-smoke /tmp/cuda-smoke.cu
+```
+
+Only after this succeeds should the host join the [k3s cluster](/vllm-multiarch-oci/guides/k3s/).

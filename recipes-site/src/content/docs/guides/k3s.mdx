@@ -1,0 +1,140 @@
+---
+title: Install k3s with Cilium on a GPU cluster
+description: Bootstrap one k3s server and two GB10 agents with custom CNI and NVIDIA runtime discovery.
+---
+
+This guide creates a fresh, non-HA k3s `v1.34.6+k3s1` cluster: one separate control-plane host and two DGX Spark agents. Cilium 1.19.4 is the only primary CNI path. kube-proxy stays enabled.
+
+:::caution[Not production-proven here]
+The author's accepted TP=2 deployment runs on kubeadm/Cilium, not k3s. These pinned k3s instructions have not completed the GPU/RDMA end-to-end hardware gates.
+:::
+
+## Network and host prerequisites
+
+Read the official [k3s requirements](https://docs.k3s.io/installation/requirements), [quick start](https://docs.k3s.io/quick-start) and [custom CNI guidance](https://docs.k3s.io/networking/basic-network-options#custom-cni). Ensure:
+
+- unique hostnames, synchronized clocks and working forward/reverse DNS;
+- TCP 6443 from both agents to the server;
+- node-to-node traffic allowed for Cilium VXLAN and health checks;
+- no overlapping host, pod, service or later RDMA-secondary subnets;
+- the [GB10 driver gate](/vllm-multiarch-oci/guides/gb10-64k-driver/) passes on each agent.
+
+Install NVIDIA Container Toolkit on **each GPU agent before k3s**, using NVIDIA's [apt procedure](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html). Then prove the executable is in the service-visible PATH:
+
+```bash
+command -v nvidia-container-runtime
+systemctl show-environment | grep '^PATH=' || true
+```
+
+If the system manager PATH excludes its directory, add a service drop-in before installing k3s. Do not edit generated containerd configuration.
+
+## Configure the server before first start
+
+**Run on:** control-plane host, root.  
+**Writes:** `/etc/rancher/k3s/config.yaml`, k3s state and systemd service.  
+**Expected before Cilium:** server process is active but Node/CoreDNS may remain NotReady.  
+**Stop:** if Flannel or the bundled network-policy controller is enabled.
+
+```bash
+install -d -m 0755 /etc/rancher/k3s
+cat >/etc/rancher/k3s/config.yaml <<'EOF'
+flannel-backend: none
+disable-network-policy: true
+disable:
+  - traefik
+  - servicelb
+write-kubeconfig-mode: "0640"
+EOF
+curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION='v1.34.6+k3s1' sh -
+systemctl is-active k3s
+```
+
+Traefik and ServiceLB are disabled so this tutorial does not expose an unrelated edge gateway. `kubeProxyReplacement: false` below deliberately retains kube-proxy.
+
+Give your workstation access without broadening the server file to world-readable: copy `/etc/rancher/k3s/k3s.yaml` through your approved administrative channel, change only its `server:` address to the control-plane IP on port 6443, protect it with mode 0600, then export `KUBECONFIG` to that copy.
+
+Retrieve the join token on the control plane through a secure channel:
+
+```bash
+sudo cat /var/lib/rancher/k3s/server/node-token
+```
+
+Do not paste it into docs, tickets, shared shell history or Kubernetes manifests.
+
+## Join the GPU agents
+
+On **each GPU host**, read the join details without echoing the token, then create the persistent agent settings before first start:
+
+```bash
+read -r -p 'Control-plane LAN IP: ' CONTROL_PLANE_IP
+read -r -p 'Unique GPU node name: ' GPU_NODE_NAME
+read -r -s -p 'k3s join token: ' K3S_TOKEN; printf '\n'
+install -d -m 0755 /etc/rancher/k3s
+cat >/etc/rancher/k3s/config.yaml <<EOF
+server: https://${CONTROL_PLANE_IP}:6443
+token: ${K3S_TOKEN}
+node-name: ${GPU_NODE_NAME}
+EOF
+unset K3S_TOKEN
+curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION='v1.34.6+k3s1' \
+  INSTALL_K3S_EXEC='agent' sh -
+systemctl is-active k3s-agent
+```
+
+The token file is root-readable; remove any transient copy after joining. `kubectl get nodes` may show NotReady now because a custom CNI is intentionally absent.
+
+## Install Cilium before expecting readiness
+
+On the workstation, install the pinned [Cilium CLI](https://docs.cilium.io/en/stable/gettingstarted/k8s-install-default/) and chart. The selected values follow Cilium's [k3s guide](https://docs.cilium.io/en/stable/installation/k3s/) and [Helm reference](https://docs.cilium.io/en/stable/helm-reference/).
+
+```bash
+helm repo add cilium https://helm.cilium.io/
+helm repo update
+helm upgrade --install cilium cilium/cilium \
+  --namespace kube-system \
+  --version 1.19.4 \
+  --set kubeProxyReplacement=false \
+  --set routingMode=tunnel \
+  --set tunnelProtocol=vxlan \
+  --set ipam.mode=kubernetes \
+  --set cni.exclusive=false \
+  --set cni.binPath=/var/lib/rancher/k3s/data/cni \
+  --set cni.confPath=/var/lib/rancher/k3s/agent/etc/cni/net.d
+cilium status --wait
+cilium connectivity test
+kubectl -n kube-system rollout status deployment/coredns --timeout=5m
+kubectl get nodes -o wide
+```
+
+`cni.exclusive=false` is required because Multus will later coexist in the same configuration directory. Cilium remains the primary interface and policy owner; it must not take exclusive ownership. Nodes that remain NotReady after Cilium is Available have a real CNI/path failure: stop and inspect Cilium status and kubelet/containerd logs rather than enabling Flannel.
+
+Reject drift explicitly:
+
+```bash
+test "$(sudo awk '/^flannel-backend:/{print $2}' /etc/rancher/k3s/config.yaml)" = none
+test "$(sudo awk '/^disable-network-policy:/{print $2}' /etc/rancher/k3s/config.yaml)" = true
+helm get values cilium -n kube-system -o yaml | grep -A2 '^cni:'
+```
+
+The Cilium values must contain `exclusive: false`.
+
+## Confirm NVIDIA runtime discovery
+
+On **each GPU agent**, inspect k3s' generated template result; never mutate it:
+
+```bash
+command -v nvidia-container-runtime
+sudo grep -n -E 'nvidia|BinaryName' \
+  /var/lib/rancher/k3s/agent/etc/containerd/config.toml
+sudo k3s crictl info | grep -i nvidia
+```
+
+The generated configuration must contain an NVIDIA runtime. If it does not, fix the executable/service PATH and restart `k3s-agent` only while this is still a fresh cluster with no GPU workload. There is no speculative alternate `config.toml` lane.
+
+Prove the runtime class exists before the GPU Operator guide:
+
+```bash
+kubectl get runtimeclass nvidia
+```
+
+Later GPU pods set `runtimeClassName: nvidia` explicitly even though k3s can detect the runtime. Continue with [GPU Operator](/vllm-multiarch-oci/guides/gpu-operator/).

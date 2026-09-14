@@ -1,0 +1,32 @@
+---
+const base = import.meta.env.BASE_URL;
+---
+
+<div class="release-strip release-strip-live" data-release-strip data-base={base} aria-label="Latest image publication">
+  <span>Latest publication</span>
+  <code data-release-reference>Digest resolved during the trusted site build</code>
+  <a href={`${base}image-releases/`}>Inspect release data</a>
+</div>
+
+<script>
+  const strips = document.querySelectorAll("[data-release-strip]:not([data-ready])");
+  for (const strip of strips) {
+    if (!(strip instanceof HTMLElement)) continue;
+    strip.dataset.ready = "true";
+    const reference = strip.querySelector("[data-release-reference]");
+    fetch(`${strip.dataset.base || "/"}latest-image.json`)
+      .then((response) => {
+        if (!response.ok) throw new Error("unavailable");
+        return response.json();
+      })
+      .then((latest) => {
+        if (reference) reference.textContent = `${latest.tag} · ${latest.reference}`;
+        if (reference instanceof HTMLElement) {
+          reference.title = `Resolved ${new Date(latest.resolved_at).toLocaleString()}`;
+        }
+      })
+      .catch(() => {
+        if (reference) reference.textContent = "Latest publication metadata is unavailable";
+      });
+  }
+</script>

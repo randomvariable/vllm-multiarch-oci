@@ -1,0 +1,105 @@
+---
+title: Deploy the DeepSeek TP=2 group
+description: Render, apply and accept the two-node LeaderWorkerSet without overstating its validation.
+---
+
+This deployment uses two nodes, one physical GB10 and one vLLM rank per node, with tensor parallel size 2. The model snapshot is pinned to `6821d6ad3681a4b137b066b76094fa82ebd0a380`. The default image is the exact digest accepted live on 14 September 2026.
+
+<iframe
+  class="doc-figure"
+  src={`${import.meta.env.BASE_URL}figures/tp2-deployment.html`}
+  title="Two-node tensor-parallel deployment"
+  loading="lazy"
+></iframe>
+
+<a href={`${import.meta.env.BASE_URL}figures/tp2-deployment.html`}>Open the deployment figure by itself</a>.
+
+The rank-zero pod owns the HTTP API on port 8888. The rank-one pod is headless and participates in GPU collectives. LWS controls group lifecycle and leader-first startup; it does not schedule inference requests. Cilium carries Kubernetes/control traffic, while the separately attached Multus network carries the configured collective path.
+
+## Render a complete artifact
+
+Open the [recipe builder](/vllm-multiarch-oci/recipes/deepseek-v4-flash-vision-tp2/), select **Kubernetes / LeaderWorkerSet**, and supply:
+
+- namespace and workload name;
+- absolute model and JIT host paths;
+- Hugging Face Secret name and key;
+- NetworkAttachmentDefinition, HCA, GID index, socket and Gloo interfaces;
+- exact node selector, topology key and allowed topology values;
+- GPU and RDMA extended-resource keys and allocator-unit counts.
+
+Do not copy resource keys or high allocator counts from another site unless your own device plugins expose that contract. On the fresh lane, one rank requests one GPU and one RDMA unit.
+
+The builder withholds copy/download actions when required values are missing or invalid. It never asks for a token. Keep **Validated recipe image** selected for the accepted digest; selecting the resolved latest image is explicitly unvalidated for this recipe.
+
+## Create namespace and credential
+
+**Run on:** workstation.  
+**Writes:** namespace and one Secret.  
+**Expected:** Secret contains the local environment value without printing it.  
+**Stop:** if `HF_TOKEN` is empty; never place it in rendered YAML.
+
+```bash
+: "${HF_TOKEN:?export HF_TOKEN locally first}"
+read -r -p 'Recipe namespace: ' RECIPE_NAMESPACE
+read -r -p 'Hugging Face Secret name: ' HF_SECRET
+read -r -p 'Secret data key: ' HF_SECRET_KEY
+kubectl create namespace "$RECIPE_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n "$RECIPE_NAMESPACE" create secret generic "$HF_SECRET" \
+  --from-literal="$HF_SECRET_KEY=$HF_TOKEN" \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+## Inspect and apply the download
+
+Download the generated YAML. The builder has already rejected missing fields and private references; perform a local Kubernetes parse before apply:
+
+```bash
+kubectl apply --dry-run=client -f deepseek-v4-flash-vision-lws.yaml
+kubectl apply -f deepseek-v4-flash-vision-lws.yaml
+```
+
+The generated pods select `runtimeClassName: nvidia`, mount persistent `/models` and `/cache`, use 64 GiB memory-backed shared memory, and run `vllm-image model-sync`. Only the worker waits for the leader rendezvous. There is no liveness probe: long GPU kernels must not trigger a destructive group restart.
+
+## Observe startup
+
+```bash
+read -r -p 'Recipe workload name: ' RECIPE_NAME
+kubectl -n "$RECIPE_NAMESPACE" get leaderworkerset,pod -w
+kubectl -n "$RECIPE_NAMESPACE" describe leaderworkerset "$RECIPE_NAME"
+kubectl -n "$RECIPE_NAMESPACE" get pods -l leaderworkerset.sigs.k8s.io/name="$RECIPE_NAME" -o wide
+```
+
+Expected sequence:
+
+1. both nodes validate/download the identical pinned snapshot;
+2. rank zero opens rendezvous port 25000;
+3. rank one resolves the LWS leader address and connects;
+4. the two model containers become Ready only after the rank-zero `/v1/models` API responds and the worker engine child is alive.
+
+Stop if ranks land on the same topology value, image digests differ, rank one becomes an API Service endpoint, or a helper exits with configuration/DNS/port/model errors. Startup and readiness use the same HTTP health basis with different kubelet budgets; readiness is not a stronger semantic model check.
+
+## Direct rank-zero acceptance
+
+The generated rank-zero Service is debugging access. Port-forward it from the workstation:
+
+```bash
+kubectl -n "$RECIPE_NAMESPACE" port-forward service/"$RECIPE_NAME" 8888:8888
+```
+
+In another terminal, first verify the served name:
+
+```bash
+curl --fail --silent http://127.0.0.1:8888/v1/models
+```
+
+Then make three real requests against `deepseek-ai/DeepSeek-V4-Flash-Vision-Exp`: a text completion, a tool-call request with an explicit tool schema, and a vision request whose message includes one valid image. Require valid OpenAI-compatible JSON and the expected content/tool result for each.
+
+This direct Service proves the rank-zero API and both-rank engine group. It bypasses EPP selection and is therefore not routing proof. Continue with [llm-d-style routing](/vllm-multiarch-oci/guides/llm-d-routing/).
+
+## Operational stop
+
+A healthy distributed group may spend a long time in GPU kernels. Never force-delete its pods or force-kill GB10 processes merely because a request or shutdown is slow. Use ordinary Kubernetes deletion and allow the generated 120-second termination grace. If maintenance is required, drain requests, remove the complete group gracefully, verify no GPU holders, then proceed.
+
+:::note[Docker lane]
+The same recipe can render two host-network Docker scripts, but that path is **not yet runtime-validated**. Syntax/rendering is not two-host acceptance. It requires two free GB10 hosts and the same model/RDMA/interface contract.
+:::

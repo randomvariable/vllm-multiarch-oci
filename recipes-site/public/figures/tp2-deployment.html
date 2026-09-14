@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Two-node tensor-parallel deployment</title>
+  <style>
+    :root { --paper:#faf7f2; --paper-2:#f1ece4; --ink:#252b32; --muted:#56616b; --soft:#6d747b; --rule:rgba(37,43,50,.16); --rule-solid:#c8c2b8; --accent:#a94e2b; --accent-tint:rgba(169,78,43,.08); --link:#285f82; }
+    * { box-sizing:border-box; }
+    html, body { margin:0; min-height:100%; background:var(--paper); color:var(--ink); }
+    body { font-family:"Geist", sans-serif; }
+    main { width:100%; padding:24px; overflow:hidden; }
+    .figure { width:min(100%,1280px); margin:0 auto; }
+    .diagram-scroll { width:100%; overflow-x:auto; overscroll-behavior-x:contain; border:1px solid var(--rule); border-radius:8px; background:var(--paper); }
+    .schematic { display:block; width:100%; min-width:960px; height:auto; }
+    .notes { display:grid; grid-template-columns:1.15fr .85fr; gap:16px; margin-top:16px; }
+    .note { padding:16px 20px; border:1px solid var(--rule); border-radius:8px; background:#fff; }
+    .note:nth-child(2) { background:var(--paper-2); }
+    .note h2 { margin:0 0 8px; font:400 24px/1.1 "Instrument Serif", serif; }
+    .note p { margin:0; color:var(--muted); font-size:14px; line-height:1.55; }
+    .note code { color:var(--ink); font:500 12px "Geist Mono", monospace; }
+    footer { display:flex; justify-content:space-between; gap:16px; margin-top:16px; padding-top:12px; border-top:1px solid var(--rule); color:var(--soft); font:400 11px/1.5 "Geist Mono", monospace; }
+    footer a { color:var(--link); }
+    @media (max-width:700px) { main{padding:12px}.notes{grid-template-columns:1fr}.note{padding:14px 16px}footer{display:block}.diagram-scroll{border-radius:6px} }
+  </style>
+</head>
+<body>
+<main>
+  <figure class="figure">
+    <div class="diagram-scroll" tabindex="0" aria-label="Scrollable two-node deployment diagram">
+      <svg class="schematic" viewBox="0 0 1280 720" role="img" aria-labelledby="tp2-deployment-title tp2-deployment-desc" xmlns="http://www.w3.org/2000/svg">
+        <title id="tp2-deployment-title">Two-node tensor-parallel deployment</title>
+        <desc id="tp2-deployment-desc">A client sends HTTP inference requests through a Kubernetes Service to the rank-zero vLLM pod, while rank zero and rank one exchange tensor-parallel collectives over a separate RoCE network.</desc>
+        <defs>
+          <marker id="tp2-deployment-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#56616b"/></marker>
+          <marker id="tp2-deployment-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#a94e2b"/></marker>
+          <marker id="tp2-deployment-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#285f82"/></marker>
+          <symbol id="tp2-deployment-pod-icon" viewBox="0 0 20 20">
+            <path fill="#326ce5" d="M10 1.4 17.6 5l1.9 8.1-5.2 6.4H5.7L.5 13.1 2.4 5z"/>
+            <path fill="#fff" d="m5.9 7.1 4.1-1.2 4.1 1.2-4.1 1.2zm0 .5 3.8 1.1v5.2l-3.8-2.1zm8.2 0v4.2l-3.8 2.1V8.7z"/>
+          </symbol>
+          <symbol id="tp2-deployment-service-icon" viewBox="0 0 20 20">
+            <path fill="#326ce5" d="M10 1.4 17.6 5l1.9 8.1-5.2 6.4H5.7L.5 13.1 2.4 5z"/>
+            <path fill="#fff" d="M7.1 5.4h5.8v2H7.1zM4.3 12.2h3.4v2.2H4.3zm5.3 0H13v2.2H9.6zm5.2 0h3.4v2.2h-3.4zM9.5 7.4v2H6v2.8h1V10.4h6v1.8h1V9.4h-3.5v-2z"/>
+          </symbol>
+        </defs>
+        <rect width="1280" height="720" fill="#faf7f2"/>
+
+        <text x="48" y="44" fill="#a94e2b" font-family="'Geist Mono',monospace" font-size="8" font-weight="600" letter-spacing=".16em">DEPLOYMENT / TESTED LWS SHAPE</text>
+        <text x="48" y="84" fill="#252b32" font-family="'Instrument Serif',serif" font-size="28">One model. Two GB10 nodes. One API endpoint.</text>
+        <text x="48" y="112" fill="#56616b" font-family="'Geist',sans-serif" font-size="12">LeaderWorkerSet fixes placement and startup; vLLM owns the TP=2 execution group.</text>
+
+        <!-- Physical placement zones -->
+        <rect x="312" y="148" width="408" height="432" rx="8" fill="rgba(37,43,50,.02)" stroke="rgba(37,43,50,.20)" stroke-width="1" stroke-dasharray="4 4"/>
+        <rect x="328" y="144" width="196" height="16" rx="2" fill="#faf7f2"/>
+        <text x="336" y="156" fill="#6d747b" font-family="'Geist Mono',monospace" font-size="8" letter-spacing=".12em">GB10 NODE A / WORKER 0</text>
+        <rect x="776" y="148" width="408" height="432" rx="8" fill="rgba(37,43,50,.02)" stroke="rgba(37,43,50,.20)" stroke-width="1" stroke-dasharray="4 4"/>
+        <rect x="792" y="144" width="196" height="16" rx="2" fill="#faf7f2"/>
+        <text x="800" y="156" fill="#6d747b" font-family="'Geist Mono',monospace" font-size="8" letter-spacing=".12em">GB10 NODE B / WORKER 1</text>
+
+        <!-- Connections are painted before nodes. -->
+        <line x1="248" y1="260" x2="352" y2="260" stroke="#285f82" stroke-width="2" marker-end="url(#tp2-deployment-arrow-link)"/>
+        <rect x="260" y="236" width="76" height="12" rx="2" fill="#faf7f2"/>
+        <text x="298" y="244" fill="#285f82" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle" letter-spacing=".06em">HTTP :8888</text>
+
+        <line x1="516" y1="304" x2="516" y2="364" stroke="#285f82" stroke-width="2" marker-end="url(#tp2-deployment-arrow-link)"/>
+        <rect x="532" y="324" width="84" height="12" rx="2" fill="#faf7f2"/>
+        <text x="574" y="332" fill="#285f82" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle" letter-spacing=".06em">ONLY RANK 0</text>
+
+        <line x1="672" y1="412" x2="824" y2="412" stroke="#a94e2b" stroke-width="2" marker-end="url(#tp2-deployment-arrow-accent)"/>
+        <rect x="688" y="388" width="120" height="12" rx="2" fill="#faf7f2"/>
+        <text x="748" y="396" fill="#a94e2b" font-family="'Geist Mono',monospace" font-size="8" font-weight="600" text-anchor="middle" letter-spacing=".06em">RDMA COLLECTIVE</text>
+
+        <line x1="824" y1="452" x2="672" y2="452" stroke="#a94e2b" stroke-width="2" marker-end="url(#tp2-deployment-arrow-accent)"/>
+        <rect x="692" y="428" width="112" height="12" rx="2" fill="#faf7f2"/>
+        <text x="748" y="436" fill="#a94e2b" font-family="'Geist Mono',monospace" font-size="8" font-weight="600" text-anchor="middle" letter-spacing=".06em">RDMA COLLECTIVE</text>
+
+        <!-- Client -->
+        <rect x="48" y="216" width="200" height="88" rx="6" fill="#fff" stroke="#252b32"/>
+        <rect x="60" y="228" width="48" height="16" rx="2" fill="none" stroke="rgba(37,43,50,.40)"/>
+        <text x="84" y="240" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle" letter-spacing=".08em">CLIENT</text>
+        <text x="148" y="264" fill="#252b32" font-family="'Geist',sans-serif" font-size="12" font-weight="600" text-anchor="middle">Inference client</text>
+        <text x="148" y="284" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">text / tool / vision</text>
+
+        <!-- Service -->
+        <rect x="352" y="216" width="328" height="88" rx="6" fill="#fff" stroke="#252b32"/>
+        <use href="#tp2-deployment-service-icon" x="368" y="236" width="40" height="40"/>
+        <rect x="420" y="228" width="56" height="16" rx="2" fill="none" stroke="rgba(37,43,50,.40)"/>
+        <text x="448" y="240" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle" letter-spacing=".08em">SERVICE</text>
+        <text x="516" y="264" fill="#252b32" font-family="'Geist',sans-serif" font-size="12" font-weight="600" text-anchor="middle">Rank-zero serving Service</text>
+        <text x="516" y="284" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">selector: worker-index=0 / :8888</text>
+
+        <!-- Rank zero -->
+        <rect x="352" y="364" width="320" height="152" rx="6" fill="rgba(169,78,43,.08)" stroke="#a94e2b" stroke-width="2"/>
+        <use href="#tp2-deployment-pod-icon" x="368" y="380" width="40" height="40"/>
+        <rect x="420" y="376" width="32" height="16" rx="2" fill="none" stroke="rgba(169,78,43,.52)"/>
+        <text x="436" y="388" fill="#a94e2b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle" letter-spacing=".08em">POD</text>
+        <text x="512" y="412" fill="#252b32" font-family="'Geist',sans-serif" font-size="12" font-weight="600" text-anchor="middle">Leader pod / rank 0</text>
+        <text x="512" y="432" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">vLLM API :8888 / one GB10</text>
+        <rect x="368" y="456" width="288" height="40" rx="4" fill="rgba(37,43,50,.05)" stroke="#c8c2b8"/>
+        <text x="380" y="476" fill="#252b32" font-family="'Geist',sans-serif" font-size="12">DeepSeek-V4-Flash-Vision</text>
+        <text x="644" y="476" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="end">6821d6a</text>
+
+        <!-- Rank one -->
+        <rect x="824" y="364" width="320" height="152" rx="6" fill="#fff" stroke="#252b32"/>
+        <use href="#tp2-deployment-pod-icon" x="840" y="380" width="40" height="40"/>
+        <rect x="892" y="376" width="32" height="16" rx="2" fill="none" stroke="rgba(37,43,50,.40)"/>
+        <text x="908" y="388" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle" letter-spacing=".08em">POD</text>
+        <text x="984" y="412" fill="#252b32" font-family="'Geist',sans-serif" font-size="12" font-weight="600" text-anchor="middle">Worker pod / rank 1</text>
+        <text x="984" y="432" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">headless / one GB10</text>
+        <rect x="840" y="456" width="288" height="40" rx="4" fill="rgba(37,43,50,.05)" stroke="#c8c2b8"/>
+        <text x="852" y="476" fill="#252b32" font-family="'Geist',sans-serif" font-size="12">DeepSeek-V4-Flash-Vision</text>
+        <text x="1116" y="476" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="end">6821d6a</text>
+
+        <!-- Persistent placement detail -->
+        <rect x="352" y="532" width="320" height="32" rx="4" fill="#f1ece4" stroke="#c8c2b8"/>
+        <text x="512" y="552" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">NODE-LOCAL /models + /cache</text>
+        <rect x="824" y="532" width="320" height="32" rx="4" fill="#f1ece4" stroke="#c8c2b8"/>
+        <text x="984" y="552" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">NODE-LOCAL /models + /cache</text>
+
+        <!-- Legend -->
+        <line x1="48" y1="628" x2="1232" y2="628" stroke="rgba(37,43,50,.16)"/>
+        <text x="48" y="652" fill="#6d747b" font-family="'Geist Mono',monospace" font-size="8" letter-spacing=".14em">LEGEND</text>
+        <line x1="144" y1="648" x2="184" y2="648" stroke="#285f82" stroke-width="2" marker-end="url(#tp2-deployment-arrow-link)"/>
+        <text x="196" y="652" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8">API REQUEST</text>
+        <line x1="348" y1="648" x2="388" y2="648" stroke="#a94e2b" stroke-width="2" marker-start="url(#tp2-deployment-arrow-accent)" marker-end="url(#tp2-deployment-arrow-accent)"/>
+        <text x="400" y="652" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8">TP COLLECTIVE</text>
+        <line x1="568" y1="648" x2="608" y2="648" stroke="#56616b" stroke-dasharray="5 4" marker-end="url(#tp2-deployment-arrow)"/>
+        <text x="620" y="652" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8">STARTUP CONTROL</text>
+        <rect x="820" y="640" width="20" height="16" rx="2" fill="none" stroke="rgba(37,43,50,.28)" stroke-dasharray="4 4"/>
+        <text x="852" y="652" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8">PHYSICAL NODE BOUNDARY</text>
+      </svg>
+    </div>
+    <figcaption class="notes">
+      <section class="note">
+        <h2>The API path ends at rank zero</h2>
+        <p>The Service selects only <code>worker-index=0</code>. Rank zero receives the OpenAI-compatible request on port 8888 and coordinates inference; rank one is not an API endpoint.</p>
+      </section>
+      <section class="note">
+        <h2>Collectives use a second path</h2>
+        <p>Both ranks participate in TP=2. Tensor data crosses the secondary RoCE attachment, separately from the primary-network HTTP request and LWS startup rendezvous.</p>
+      </section>
+    </figcaption>
+    <footer>
+      <span>Diagram: vllm-multiarch-oci recipe topology</span>
+      <span>Icon source: Kubernetes Community resource icons (Apache-2.0); geometry embedded and sanitized.</span>
+    </footer>
+  </figure>
+</main>
+</body>
+</html>

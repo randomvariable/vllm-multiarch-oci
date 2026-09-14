@@ -1,0 +1,6 @@
+{
+  "repository": "ghcr.io/randomvariable/vllm-b12x-multi",
+  "tag": "vllmb12x-dev-jovian-judgement-b40673cd006b-5f3804361c05-20260914-n14",
+  "reference": "ghcr.io/randomvariable/vllm-b12x-multi@sha256:72431d1f54507c621d7b8c4140c1620867b8a171bdacfb7fa76f4c075db90561",
+  "resolved_at": "2026-09-14T12:00:00Z"
+}

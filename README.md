@@ -23,12 +23,15 @@ just load
 
 ## Documentation
 
+The public [deployment recipe site](https://randomvariable.github.io/vllm-multiarch-oci/) provides the tested DeepSeek configuration, generated Kubernetes and Docker instructions, and the guided cluster setup path.
+
 | Need | Document |
 | --- | --- |
 | Learn the build graph | [Inspect Your First Build](docs/tutorials/first-build.md) |
 | Prepare a Spark build environment | [Build Locally on DGX Spark](docs/how-to/build-locally-on-spark.md) |
 | Build, test, and load | [Build and Test an Image](docs/how-to/build-and-test.md) |
 | Measure a native edit | [Measure Incremental Builds](docs/how-to/measure-incremental-builds.md) |
+| Use model, rendezvous, and health helpers | [Use the Kubernetes Image Helpers](docs/how-to/use-kubernetes-helpers.md) |
 | Look up targets and options | [Build Configuration](docs/reference/build-configuration.md) |
 | Understand build boundaries | [Build and Cache Design](docs/explanation/build-and-cache-design.md) |
 

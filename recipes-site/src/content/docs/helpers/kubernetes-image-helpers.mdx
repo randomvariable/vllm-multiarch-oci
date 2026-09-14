@@ -1,0 +1,21 @@
+---
+title: Kubernetes image helpers
+description: Authoritative model synchronization, rendezvous and health commands shipped in the image.
+---
+
+The authoritative flag and behavior reference is maintained with the image source:
+
+- [`docs/how-to/use-kubernetes-helpers.md`](https://github.com/randomvariable/vllm-multiarch-oci/blob/main/docs/how-to/use-kubernetes-helpers.md)
+- [`image_tools/vllm_image.py`](https://github.com/randomvariable/vllm-multiarch-oci/blob/main/image_tools/vllm_image.py)
+
+The site does not duplicate its complete flag table. Generated LWS and Docker artifacts invoke the same `/opt/venv/bin/vllm-image` executable.
+
+## Command roles
+
+- `model-sync` downloads an exact 40-character Hugging Face commit, validates `config.json` and indexed safetensors shards, then atomically publishes the completed snapshot. It is idempotent only after validation succeeds.
+- `rendezvous-wait` makes nonzero ranks resolve the leader and wait for the distributed port. Rank zero exits immediately.
+- `health` checks the rank-zero HTTP API; for a worker it also verifies exactly one live direct vLLM engine child. Startup and readiness use this same basis with different kubelet budgets.
+
+Do not add a liveness probe. A long healthy GPU operation can delay HTTP responses, and a liveness restart can tear down the complete distributed group. Kubernetes already observes termination of the PID 1 serving process.
+
+The helpers do not patch vLLM, install packages at runtime, persist credentials, or turn a rendered configuration into hardware validation.

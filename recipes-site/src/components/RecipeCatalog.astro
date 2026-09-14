@@ -1,0 +1,64 @@
+---
+const base = import.meta.env.BASE_URL;
+---
+
+<section class="catalog-live" data-recipe-catalog data-base={base} aria-label="Published recipes">
+  <div class="recipe-card-grid" data-recipe-cards>
+    <article class="recipe-card">
+      <p class="recipe-status">Published catalog</p>
+      <h3>Loading recipe data...</h3>
+    </article>
+  </div>
+  <p data-catalog-error role="status" aria-live="polite"></p>
+  <noscript>
+    <p><a href={`${base}recipes/deepseek-v4-flash-vision-tp2/`}>Open the DeepSeek V4 Flash Vision TP=2 recipe</a>.</p>
+  </noscript>
+</section>
+
+<script>
+  const catalogs = document.querySelectorAll("[data-recipe-catalog]:not([data-ready])");
+  for (const catalog of catalogs) {
+    if (!(catalog instanceof HTMLElement)) continue;
+    catalog.dataset.ready = "true";
+    const cards = catalog.querySelector("[data-recipe-cards]");
+    const error = catalog.querySelector("[data-catalog-error]");
+    const base = catalog.dataset.base || "/";
+    fetch(`${base}recipes.json`)
+      .then((response) => {
+        if (!response.ok) throw new Error("Recipe catalog is unavailable.");
+        return response.json();
+      })
+      .then((data) => {
+        cards?.replaceChildren();
+        /** @type {any[]} */
+        const recipes = data.recipes || [];
+        for (const recipe of recipes) {
+          const article = document.createElement("article");
+          article.className = "recipe-card";
+          const status = document.createElement("p");
+          status.className = "recipe-status";
+          status.textContent = `LWS ${recipe.validation.lws} · Docker ${recipe.validation.docker}`;
+          const title = document.createElement("h3");
+          title.textContent = recipe.meta.title;
+          const description = document.createElement("p");
+          description.textContent = recipe.meta.description;
+          const meta = document.createElement("div");
+          meta.className = "card-meta";
+          for (const value of [`TP ${recipe.deployment.tensor_parallel_size}`, `${recipe.deployment.nodes} nodes`, recipe.model.served_name]) {
+            const item = document.createElement("span");
+            item.textContent = value;
+            meta.append(item);
+          }
+          const link = document.createElement("a");
+          link.className = "recipe-link";
+          link.href = `${base}recipes/${encodeURIComponent(recipe.meta.slug)}/`;
+          link.textContent = "Open recipe →";
+          article.append(status, title, description, meta, link);
+          cards?.append(article);
+        }
+      })
+      .catch((cause) => {
+        if (error) error.textContent = cause instanceof Error ? cause.message : "Recipe catalog is unavailable.";
+      });
+  }
+</script>

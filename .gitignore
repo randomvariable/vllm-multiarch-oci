@@ -1,7 +1,6 @@
-.bazel-cache/
-.bazelrc.user
-bazel-*
-.build-evidence/
-# Private execution records are not public project documentation.
-/specs/recoverable-incremental-builds/
-__pycache__/
+# Generated Astro site state
+recipes-site/.astro/
+recipes-site/dist/
+recipes-site/node_modules/
+recipes-site/public/latest-image.json
+recipes-site/public/recipes.json

@@ -1,0 +1,199 @@
+---
+title: Add Multus, Whereabouts and RDMA
+description: Attach a separate macvlan RoCE network while Cilium remains the primary CNI.
+---
+
+Cilium must already pass its connectivity test. Multus is a CNI multiplexer: it adds a secondary macvlan interface to a pod after Cilium creates the primary interface. Whereabouts allocates secondary IPs. NVIDIA Network Operator 26.7.0 is used only to advertise a narrow RDMA shared-device resource backed by inbox `mlx5`; it must not install OFED, NFD, Multus or other CNI components.
+
+:::caution[Security and validation boundary]
+Cilium policy governs the primary interface; it does not automatically secure the Multus/macvlan interface. Isolate the secondary subnet physically and by host/network controls. This k3s lane is not yet proven by a two-GB10 GPU RDMA transfer.
+:::
+
+## Discover the k3s CNI paths
+
+**Run on:** each GPU host, root/read-only.  
+**Expected:** all nodes report the same k3s CNI binary and configuration locations.  
+**Stop:** if paths differ; do not substitute ordinary `/opt/cni/bin` or `/etc/cni/net.d` mounts.
+
+```bash
+CNI_BIN=/var/lib/rancher/k3s/data/cni
+CNI_CONF=/var/lib/rancher/k3s/agent/etc/cni/net.d
+test -d "$CNI_BIN"
+test -d "$CNI_CONF"
+printf 'CNI_BIN=%s\nCNI_CONF=%s\n' "$CNI_BIN" "$CNI_CONF"
+test -x "$CNI_BIN/macvlan"
+```
+
+The selected k3s release exposes a stable `/var/lib/rancher/k3s/data/cni` link. Follow k3s' [Multus guidance](https://docs.k3s.io/networking/multus-ipams), not a generic distribution's CNI paths.
+
+## Install Multus thick plugin
+
+Use the pinned v4.2.2 thick-plugin manifest, rewritten locally so every CNI host mount uses the discovered k3s paths:
+
+```bash
+curl --fail --location --output /tmp/multus-thick-v4.2.2.yaml \
+  https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/v4.2.2/deployments/multus-daemonset-thick-plugin.yml
+python3 - /tmp/multus-thick-v4.2.2.yaml <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text()
+text = text.replace('/etc/cni/net.d', '/var/lib/rancher/k3s/agent/etc/cni/net.d')
+text = text.replace('/opt/cni/bin', '/var/lib/rancher/k3s/data/cni')
+path.write_text(text)
+PY
+grep -nE '/etc/cni/net.d|/opt/cni/bin' /tmp/multus-thick-v4.2.2.yaml && exit 1 || true
+kubectl apply -f /tmp/multus-thick-v4.2.2.yaml
+kubectl -n kube-system rollout status daemonset/kube-multus-ds --timeout=5m
+```
+
+Inspect `/tmp/multus-thick-v4.2.2.yaml` before applying. Both installer variables and host mounts must resolve to the same k3s paths. Stop if Multus replaces the Cilium primary configuration instead of creating a Multus wrapper with Cilium as delegate.
+
+## Install Whereabouts 0.9.2
+
+```bash
+curl --fail --location --output /tmp/whereabouts-v0.9.2.yaml \
+  https://raw.githubusercontent.com/k8snetworkplumbingwg/whereabouts/v0.9.2/doc/crds/daemonset-install.yaml
+python3 - /tmp/whereabouts-v0.9.2.yaml <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text()
+text = text.replace('/etc/cni/net.d', '/var/lib/rancher/k3s/agent/etc/cni/net.d')
+text = text.replace('/opt/cni/bin', '/var/lib/rancher/k3s/data/cni')
+path.write_text(text)
+PY
+grep -nE '/etc/cni/net.d|/opt/cni/bin' /tmp/whereabouts-v0.9.2.yaml && exit 1 || true
+kubectl apply -f /tmp/whereabouts-v0.9.2.yaml
+kubectl -n kube-system rollout status daemonset/whereabouts --timeout=5m
+kubectl get crd ippools.whereabouts.cni.cncf.io overlappingrangeipreservations.whereabouts.cni.cncf.io
+```
+
+Before applying, inspect the rewritten DaemonSet's CNI config/binary hostPath mounts. Do not apply it if a generic host path remains.
+
+## Install Network Operator as allocator only
+
+Network Operator's bundled NFD, Multus, CNI and OFED management are disabled. The host's pinned open driver and inbox mlx5 remain authoritative.
+
+```bash
+helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
+helm repo update
+helm upgrade --install network-operator nvidia/network-operator \
+  --namespace network-operator \
+  --create-namespace \
+  --version 26.7.0 \
+  --set nfd.enabled=false \
+  --set multus.enabled=false \
+  --set sriovNetworkOperator.enabled=false \
+  --set ofedDriver.deploy=false
+kubectl -n network-operator wait --for=condition=Available deployment --all --timeout=10m
+helm get values network-operator -n network-operator -o yaml
+```
+
+Stop if Network Operator creates an OFED driver pod, a second NFD, or another Multus DaemonSet.
+
+## Define the secondary network
+
+Read real values chosen with the network operator; no example fabric values are safe defaults:
+
+```bash
+read -r -p 'Physical RoCE interface: ' ROCE_INTERFACE
+read -r -p 'Secondary subnet CIDR: ' ROCE_SUBNET
+read -r -p 'First allocatable IP: ' ROCE_RANGE_START
+read -r -p 'Last allocatable IP: ' ROCE_RANGE_END
+read -r -p 'Fabric MTU: ' ROCE_MTU
+read -r -p 'Reserved CIDR or IP: ' ROCE_EXCLUDE
+```
+
+The subnet must not overlap host, pod or service networks. Reserve host and infrastructure addresses through Whereabouts exclusions.
+
+```bash
+cat <<EOF | kubectl apply -f -
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: roce-net
+  namespace: vllm
+spec:
+  config: |-
+    {
+      "cniVersion": "0.3.1",
+      "type": "macvlan",
+      "master": "${ROCE_INTERFACE}",
+      "mode": "bridge",
+      "mtu": ${ROCE_MTU},
+      "ipam": {
+        "type": "whereabouts",
+        "range": "${ROCE_SUBNET}",
+        "range_start": "${ROCE_RANGE_START}",
+        "range_end": "${ROCE_RANGE_END}",
+        "exclude": ["${ROCE_EXCLUDE}"]
+      }
+    }
+EOF
+```
+
+The documented fabric is L2-only, so the manifest omits `gateway`. If your routed secondary network requires one, add the real address selected by the network operator rather than inventing it.
+
+## Advertise one RDMA unit per node
+
+Find the actual netdevice names and PCI driver on both hosts:
+
+```bash
+rdma link show
+ibdev2netdev
+ethtool -i "$ROCE_INTERFACE"
+```
+
+Create a narrow shared-device policy matching only the intended physical interface. Do not use `rdmaMax: 63`; production allocator counts are not physical-device counts. This fresh lane needs one allocatable unit for its one rank per node.
+
+```bash
+cat <<EOF | kubectl apply -f -
+apiVersion: mellanox.com/v1alpha1
+kind: NicClusterPolicy
+metadata:
+  name: nic-cluster-policy
+spec:
+  rdmaSharedDevicePlugin:
+    config: |
+      {
+        "configList": [{
+          "resourceName": "roce",
+          "rdmaHcaMax": 1,
+          "selectors": {
+            "ifNames": ["${ROCE_INTERFACE}"],
+            "drivers": ["mlx5_core"]
+          }
+        }]
+      }
+EOF
+kubectl get nicclusterpolicy nic-cluster-policy -o yaml
+kubectl get nodes -o custom-columns=NAME:.metadata.name,RDMA:.status.allocatable.rdma\.com/roce
+```
+
+Expected: each GB10 agent advertises at least one `rdma.com/roce`. That is an allocator unit granting access to the selected RDMA device, not a count of HCAs or ports.
+
+## Prove attachment, then GPU RDMA
+
+Create two diagnostic pods, one pinned to each GPU node, with:
+
+- annotation `k8s.v1.cni.cncf.io/networks: vllm/roce-net`;
+- request and limit `rdma.com/roce: 1`;
+- `runtimeClassName: nvidia` for the later GPU test.
+
+Set `DIAG_POD` to each resulting pod in turn:
+
+```bash
+read -r -p 'Diagnostic pod name: ' DIAG_POD
+kubectl -n vllm get pod "$DIAG_POD" -o jsonpath='{.metadata.annotations.k8s\.v1\.cni\.cncf\.io/network-status}'
+kubectl -n vllm exec "$DIAG_POD" -- ip -brief address
+kubectl -n vllm exec "$DIAG_POD" -- rdma link show
+```
+
+The `network-status` annotation must show one Cilium primary interface and one distinct Whereabouts address on the secondary network. Re-run a primary-network DNS/API connectivity check after Multus installation. A secondary-interface ping proves only IP attachment.
+
+Before applying the model LWS, perform NVIDIA's supported [GPUDirect RDMA verification](https://docs.nvidia.com/networking/display/gpudirectrdmav18/testing+gpudirect+rdma) between the two diagnostic pods using the exact flags documented for the installed `perftest` build. Run the receiving command on one pod and the matching CUDA-buffer client on the other; require successful transfer and reported bandwidth. Stop if the test falls back to host memory, cannot open the mlx5 device, or reports GID/MTU/address-family mismatch.
+
+Record the selected NetworkAttachmentDefinition name, HCA, GID index, socket/Gloo interface and extended resource key for the [recipe builder](/vllm-multiarch-oci/recipes/deepseek-v4-flash-vision-tp2/).

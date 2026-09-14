@@ -1,0 +1,118 @@
+---
+title: Install serving and routing controllers
+description: Readiness checklist and pinned controller order for LWS and the Gateway API inference stack.
+---
+
+Experienced operators can enter here if their cluster already satisfies the host, GPU, primary-network and RDMA contracts. Fresh k3s readers should complete the [linear tutorial](/vllm-multiarch-oci/tutorials/k3s-to-deepseek/) first.
+
+## Readiness checklist
+
+Run from a workstation with cluster-admin credentials. Stop on the first failed condition:
+
+```bash
+kubectl get nodes
+cilium status --wait
+kubectl -n kube-system rollout status deployment/coredns --timeout=5m
+kubectl get runtimeclass nvidia
+kubectl get nodes -o custom-columns=NAME:.metadata.name,GPU:.status.allocatable.nvidia\.com/gpu,RDMA:.status.allocatable.rdma\.com/roce
+kubectl get network-attachment-definition -A
+```
+
+Require two distinct eligible GPU nodes, one allocatable GPU and one selected RDMA unit per rank, a tested secondary network and persistent storage with at least 200 GiB free per node. Existing clusters may use parameterized resource names/counts only when their device plugins define those allocator units.
+
+## Install cert-manager first
+
+cert-manager must precede controllers whose webhooks or certificates depend on it.
+
+```bash
+helm repo add jetstack https://charts.jetstack.io
+helm repo update
+helm upgrade --install cert-manager jetstack/cert-manager \
+  --namespace cert-manager --create-namespace \
+  --version v1.21.2 \
+  --set crds.enabled=true
+kubectl -n cert-manager wait --for=condition=Available deployment --all --timeout=5m
+```
+
+## Install LeaderWorkerSet v0.10.0
+
+LWS orchestrates a leader and workers as a group with startup ordering. It is not a scheduler and does not select inference endpoints.
+
+```bash
+helm upgrade --install lws oci://registry.k8s.io/lws/charts/lws \
+  --namespace lws-system --create-namespace \
+  --version 0.10.0
+kubectl -n lws-system wait --for=condition=Available deployment --all --timeout=5m
+kubectl get crd leaderworkersets.leaderworkerset.x-k8s.io
+```
+
+Stop if the CRD is absent or the webhook/controller is unavailable. Source: [LWS v0.10.0 release](https://github.com/kubernetes-sigs/lws/releases/tag/v0.10.0).
+
+## Install Inference Extension v1.5.0
+
+The Gateway API Inference Extension defines `InferencePool` and the Endpoint Picker Protocol. The recipe later creates one EPP per model.
+
+```bash
+kubectl apply --server-side -f \
+  https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.0/standard-install.yaml
+kubectl apply --server-side -f \
+  https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.0/experimental-install.yaml
+kubectl apply --server-side -f \
+  https://raw.githubusercontent.com/kubernetes-sigs/gateway-api-inference-extension/v1.5.0/config/crd/bases/inference.networking.k8s.io_inferencepools.yaml
+kubectl get crd inferencepools.inference.networking.k8s.io
+```
+
+The final URL is the v1.5.0-tagged CRD source, not `main`. Review the [v1.5.0 installation guides](https://gateway-api-inference-extension.sigs.k8s.io/guides/) before adding other experimental APIs.
+
+## Install Envoy Gateway 1.8.3
+
+```bash
+helm upgrade --install eg oci://docker.io/envoyproxy/gateway-helm \
+  --namespace envoy-gateway-system --create-namespace \
+  --version 1.8.3
+kubectl -n envoy-gateway-system wait --for=condition=Available deployment --all --timeout=10m
+```
+
+Create the fresh-cluster `GatewayClass` with Envoy Gateway's official controller name:
+
+```bash
+cat <<'EOF' | kubectl apply -f -
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: vllm-envoy
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass
+EOF
+kubectl wait gatewayclass/vllm-envoy --for=condition=Accepted --timeout=5m
+```
+
+Existing-cluster readers may instead supply an already-Accepted class to the routing builder. Do not assume the private deployment's class name. Sources: [Envoy Gateway install](https://gateway.envoyproxy.io/docs/install/install-helm/) and [1.8.3 release](https://github.com/envoyproxy/gateway/releases/tag/v1.8.3).
+
+## Install Envoy AI Gateway v1.1.0
+
+Install CRDs before the controller, following the release's [Helm installation](https://aigateway.envoyproxy.io/docs/getting-started/installation/):
+
+```bash
+helm upgrade --install envoy-ai-gateway-crds \
+  oci://docker.io/envoyproxy/ai-gateway-crds-helm \
+  --namespace envoy-ai-gateway-system --create-namespace \
+  --version 1.1.0
+helm upgrade --install envoy-ai-gateway \
+  oci://docker.io/envoyproxy/ai-gateway-helm \
+  --namespace envoy-ai-gateway-system \
+  --version 1.1.0
+kubectl -n envoy-ai-gateway-system wait --for=condition=Available deployment --all --timeout=10m
+kubectl get crd aigatewayroutes.aigateway.envoyproxy.io clienttrafficpolicies.gateway.envoyproxy.io
+```
+
+Stop if either chart/reference is unavailable in the v1.1.0 release or the installed CRD group differs. Do not substitute an unpinned `latest` chart. Source: [Envoy AI Gateway v1.1.0](https://github.com/envoyproxy/ai-gateway/releases/tag/v1.1.0).
+
+## Final controller gate
+
+```bash
+kubectl api-resources | grep -E 'LeaderWorkerSet|InferencePool|AIGatewayRoute|ClientTrafficPolicy'
+kubectl get gatewayclass vllm-envoy -o jsonpath='{range .status.conditions[*]}{.type}={.status}{" "}{end}{"\n"}'
+```
+
+Only proceed to [TP=2 deployment](/vllm-multiarch-oci/guides/deploy-tp2/) when every resource type is discoverable and the GatewayClass is `Accepted=True`.
