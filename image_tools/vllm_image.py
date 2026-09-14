@@ -98,15 +98,48 @@ def rendezvous_wait(args: argparse.Namespace) -> None:
     )
 
 
-def _engine_alive(pid: int) -> bool:
+_ENGINE_COMMS = {"VLLM::EngineCor", "VLLM::Worker_TP"}
+
+
+def _process_state(pid: int, proc_root: Path = Path("/proc")) -> str | None:
     if pid <= 0:
-        return False
+        return None
     try:
         os.kill(pid, 0)
-        state = Path(f"/proc/{pid}/stat").read_text().split(") ", 1)[1][0]
-        return state not in {"X", "Z"}
+        return (proc_root / str(pid) / "stat").read_text().split(") ", 1)[1][0]
     except (OSError, IndexError):
-        return False
+        return None
+
+
+def _engine_alive(pid: int, proc_root: Path = Path("/proc")) -> bool:
+    return _process_state(pid, proc_root) not in {None, "X", "Z"}
+
+
+def _engine_child(parent_pid: int, proc_root: Path = Path("/proc")) -> int:
+    try:
+        children = (proc_root / str(parent_pid) / "task" / str(parent_pid) / "children").read_text().split()
+    except OSError as error:
+        raise CommandError(f"health engine failure: cannot inspect children of PID {parent_pid}: {error}", EXIT_ENGINE) from error
+    engines: list[int] = []
+    for value in children:
+        try:
+            pid = int(value)
+            comm = (proc_root / value / "comm").read_text().rstrip("\n")
+        except (OSError, ValueError):
+            continue
+        if comm in _ENGINE_COMMS and _engine_alive(pid, proc_root):
+            engines.append(pid)
+    if not engines:
+        raise CommandError(
+            f"health engine failure: PID {parent_pid} has no live direct child with comm in {sorted(_ENGINE_COMMS)}",
+            EXIT_ENGINE,
+        )
+    if len(engines) != 1:
+        raise CommandError(
+            f"health engine failure: PID {parent_pid} has ambiguous live engine children: {engines}",
+            EXIT_ENGINE,
+        )
+    return engines[0]
 
 
 def _http_ready(url: str, timeout: float) -> None:
@@ -130,10 +163,14 @@ def health(args: argparse.Namespace) -> None:
             raise CommandError("--local-url is required for leader rank", EXIT_CONFIG)
         url = args.local_url
     else:
-        if args.engine_pid is None:
-            raise CommandError("--engine-pid is required for worker ranks", EXIT_CONFIG)
-        if not _engine_alive(args.engine_pid):
-            raise CommandError(f"health engine failure: PID {args.engine_pid} is not alive", EXIT_ENGINE)
+        if args.engine_pid is not None:
+            engine_pid = args.engine_pid
+        elif args.engine_parent_pid is not None:
+            engine_pid = _engine_child(args.engine_parent_pid)
+        else:
+            raise CommandError("--engine-pid or --engine-parent-pid is required for worker ranks", EXIT_CONFIG)
+        if not _engine_alive(engine_pid):
+            raise CommandError(f"health engine failure: PID {engine_pid} is not alive", EXIT_ENGINE)
         if not args.leader_url:
             raise CommandError("--leader-url is required for worker ranks", EXIT_CONFIG)
         url = args.leader_url
@@ -275,6 +312,7 @@ def parser() -> argparse.ArgumentParser:
     probe.add_argument("--local-url")
     probe.add_argument("--leader-url")
     probe.add_argument("--engine-pid", type=int)
+    probe.add_argument("--engine-parent-pid", type=int)
     probe.add_argument("--timeout", type=_duration, default=8)
     probe.set_defaults(run=health)
     return root

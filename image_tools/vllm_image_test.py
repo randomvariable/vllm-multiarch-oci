@@ -120,6 +120,36 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(dead.returncode, vllm_image.EXIT_ENGINE)
         self.assertIn("is not alive", dead.stderr)
 
+    def proc_tree(self, root: Path, children: list[tuple[int, str, str]]) -> None:
+        parent = root / "1/task/1"
+        parent.mkdir(parents=True)
+        (parent / "children").write_text(" ".join(str(pid) for pid, _comm, _state in children))
+        for pid, comm, state in children:
+            process = root / str(pid)
+            process.mkdir()
+            (process / "comm").write_text(comm + "\n")
+            (process / "stat").write_text(f"{pid} ({comm}) {state} 1 1 1\n")
+
+    def test_engine_child_exact_live_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.proc_tree(root, [(22, "python", "S"), (23, "VLLM::Worker_TP", "S")])
+            with mock.patch("image_tools.vllm_image.os.kill"):
+                self.assertEqual(vllm_image._engine_child(1, root), 23)
+
+    def test_engine_child_missing_dead_zombie_and_ambiguous(self):
+        cases = [
+            ([], "no live direct child"),
+            ([(22, "VLLM::Worker_TP", "Z")], "no live direct child"),
+            ([(22, "VLLM::Worker_TP", "S"), (23, "VLLM::EngineCor", "S")], "ambiguous"),
+        ]
+        for children, error in cases:
+            with self.subTest(children=children), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.proc_tree(root, children)
+                with mock.patch("image_tools.vllm_image.os.kill"), self.assertRaisesRegex(vllm_image.CommandError, error):
+                    vllm_image._engine_child(1, root)
+
     def snapshot(self, root: Path, revision: str, complete=True) -> Path:
         snapshot = root / "odd-cache-layout" / revision
         snapshot.mkdir(parents=True)
