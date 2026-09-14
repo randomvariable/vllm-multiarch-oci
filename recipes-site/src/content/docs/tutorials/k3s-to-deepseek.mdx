@@ -1,0 +1,95 @@
+---
+title: From bare GB10 hosts to routed DeepSeek
+description: A linear, beginner-safe path from two fresh DGX Spark hosts to a TP=2 vision endpoint.
+---
+
+This tutorial connects every layer needed to serve **DeepSeek-V4-Flash-Vision-Exp** across two GB10 nodes. It assumes one separate control-plane machine and two DGX Spark GPU agents. It does **not** promise a highly available control plane.
+
+:::caution[Validation boundary]
+The image and two-node LeaderWorkerSet were accepted live on 14 September 2026 on the author's existing **kubeadm/Cilium** cluster. The k3s path below is assembled from the pinned upstream releases and is **not end-to-end validated on k3s or spare GB10 hosts**. A CPU-only k3s/controller check is not GPU or RDMA proof.
+:::
+
+## What you will build
+
+1. Each GPU host boots a 64 KiB-page kernel and the pinned open NVIDIA driver fork.
+2. k3s owns Kubernetes and containerd; Cilium owns the primary pod network.
+3. GPU Operator discovers the host-owned driver and advertises one GPU per GB10.
+4. Multus adds a separate macvlan network; Whereabouts allocates addresses; Network Operator advertises RDMA units.
+5. LeaderWorkerSet starts one vLLM rank on each host.
+6. Gateway API Inference Extension's Endpoint Picker (EPP) selects the rank-zero API for Envoy AI Gateway.
+
+A **node** is a machine in the Kubernetes cluster. A **pod** is Kubernetes' unit for running containers. A **controller** continuously reconciles declared resources. A **CRD** adds a new Kubernetes API type. A **CNI** connects pods to networks. The [glossary](/vllm-multiarch-oci/reference/glossary/) defines the remaining terms.
+
+## Before touching a host
+
+On your workstation, record values in a local shell; do not paste tokens into this site:
+
+```bash
+read -r -p 'Control-plane LAN IP: ' CONTROL_PLANE_IP
+read -r -p 'First GPU node name: ' GPU_NODE_1
+read -r -p 'Second GPU node name: ' GPU_NODE_2
+read -r -s -p 'Hugging Face token: ' HF_TOKEN; printf '\n'
+export CONTROL_PLANE_IP GPU_NODE_1 GPU_NODE_2 HF_TOKEN
+```
+
+You also need:
+
+- console access and retained known-good kernel/driver artifacts for both GPU hosts;
+- Secure Boot already disabled, or an approved distribution module-signing/enrollment procedure;
+- synchronized DNS and time on all three machines;
+- TCP 6443 from each GPU host to the control plane, plus node-to-node traffic required by Cilium and your RDMA fabric;
+- a non-overlapping secondary-network subnet, physical RoCE interface, MTU and exclusions selected by your network operator;
+- two persistent host directories, each with at least 200 GiB free for the model plus a separate JIT cache directory.
+
+**Stop** if any host is carrying a GPU workload, lacks console recovery, or has unknown boot state. Never force-kill a GB10 GPU holder merely because a kernel is taking a long time.
+
+## 1. Establish the host contract
+
+Perform the [64 KiB kernel and driver procedure](/vllm-multiarch-oci/guides/gb10-64k-driver/) on **each GPU host**. The gate is not merely `nvidia-smi`: require kernel `7.0.0-1016-nvidia-64k`, page size `65536`, all five module artifacts at 615.71.09, and a CUDA allocation/synchronization test.
+
+## 2. Bootstrap the cluster
+
+Follow [k3s with Cilium](/vllm-multiarch-oci/guides/k3s/):
+
+- install NVIDIA Container Toolkit before k3s on both GPU hosts;
+- create the server config before the first start with Flannel and the bundled network-policy controller disabled;
+- join both GPU agents without embedding the token in documentation or shell history;
+- install Cilium before expecting Nodes or CoreDNS to become Ready.
+
+**Gate:** `cilium status --wait` and `cilium connectivity test` pass, CoreDNS is Available, and the generated containerd configuration contains the NVIDIA runtime. Do not edit k3s' generated `config.toml`.
+
+## 3. Expose one physical GPU per node
+
+Install the [GPU Operator in host-owned mode](/vllm-multiarch-oci/guides/gpu-operator/). The fresh-cluster lane gives NFD ownership to GPU Operator and keeps both `driver.enabled` and `toolkit.enabled` false.
+
+**Gate:** each GB10 node reports exactly one `nvidia.com/gpu`, and a one-GPU CUDA sample completes. This intermediate check does not prove distributed serving.
+
+## 4. Add the secondary RDMA network
+
+Complete [Multus, Whereabouts and RDMA](/vllm-multiarch-oci/guides/multus-rdma/). Cilium remains the primary network for Kubernetes control/API traffic. Multus attaches a separate macvlan interface for collectives; Cilium policy does not automatically cover it.
+
+**Gate:** two diagnostic pods receive distinct secondary addresses and complete the official GPU RDMA transfer test. Ordinary ping proves IP reachability only.
+
+## 5. Install serving and routing controllers
+
+Use the pinned commands in [cluster prerequisites](/vllm-multiarch-oci/guides/cluster-prerequisites/). Install cert-manager before certificate-dependent controllers, then LeaderWorkerSet v0.10.0, Inference Extension v1.5.0, Envoy Gateway 1.8.3 and Envoy AI Gateway v1.1.0. Create the public `GatewayClass` in that guide.
+
+**Gate:** every controller deployment is Available and every required CRD exists before continuing.
+
+## 6. Render and apply the TP=2 recipe
+
+Open the [DeepSeek TP=2 recipe](/vllm-multiarch-oci/recipes/deepseek-v4-flash-vision-tp2/) and enter the site-specific values you established. The builder generates the Service and LeaderWorkerSet from the same authored recipe definition.
+
+Follow [deploy the TP=2 group](/vllm-multiarch-oci/guides/deploy-tp2/) for Secret creation, apply, rollout interpretation and direct rank-zero tests.
+
+**Gate:** both ranks are Ready. Rank zero answers text, tool-use and image requests using the exact served model name. Rank one is never an API endpoint.
+
+## 7. Add scheduled routing
+
+Render the routing bundle and follow [llm-d-style request routing](/vllm-multiarch-oci/guides/llm-d-routing/). The result is LWS orchestration plus an InferencePool, EPP and Envoy AI Gateway; it is not an llm-d router chart.
+
+**Gate:** EPP is Available, Gateway conditions are `Accepted=True` and `Programmed=True`, and a request through Gateway port 10080 with `x-ai-eg-model: deepseek-ai/DeepSeek-V4-Flash-Vision-Exp` succeeds for text, tool and vision inputs. A direct debug-Service `/v1/models` request is not routing proof.
+
+## Where to stop
+
+Do not continue after a failed gate. Capture the command, expected state and observed state from the relevant guide. Do not compensate by enabling an alternate CNI, a containerized NVIDIA driver, an automatic OFED installation, or a privileged Docker container: those produce a different stack from this recipe.

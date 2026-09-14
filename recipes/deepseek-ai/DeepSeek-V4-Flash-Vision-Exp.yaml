@@ -1,0 +1,288 @@
+meta:
+  title: DeepSeek V4 Flash Vision, two-node TP=2
+  slug: deepseek-v4-flash-vision-tp2
+  description: A fixed two-node, one-GB10-per-node DeepSeek-V4-Flash-Vision deployment using tensor parallelism over RoCE.
+model:
+  model_id: deepseek-ai/DeepSeek-V4-Flash-Vision-Exp
+  revision: 6821d6ad3681a4b137b066b76094fa82ebd0a380
+  served_name: deepseek-v4-flash-vision
+runtime:
+  command:
+    - /opt/venv/bin/python
+    - -m
+    - vllm.entrypoints.cli.main
+    - serve
+  base_args:
+    - --served-model-name
+    - deepseek-v4-flash-vision
+    - --host
+    - 0.0.0.0
+    - --port
+    - "8888"
+    - --trust-remote-code
+    - --distributed-executor-backend
+    - mp
+    - --master-port
+    - "25000"
+    - --decode-context-parallel-size
+    - "1"
+    - --dcp-comm-backend
+    - a2a
+    - --kv-cache-dtype
+    - fp8
+    - --block-size
+    - "256"
+    - --load-format
+    - instanttensor
+    - --attention-backend
+    - B12X
+    - --linear-backend
+    - b12x
+    - --gpu-memory-utilization
+    - "0.81"
+    - --max-model-len
+    - "1000000"
+    - --max-num-seqs
+    - "4"
+    - --max-num-batched-tokens
+    - "8192"
+    - --max-cudagraph-capture-size
+    - "16"
+    - --compilation-config
+    - '{"cudagraph_mode":"FULL_AND_PIECEWISE","custom_ops":["all"],"cudagraph_capture_sizes":[1,2,3,4,8,12,16]}'
+    - --limit-mm-per-prompt
+    - '{"image":1}'
+    - --async-scheduling
+    - --no-scheduler-reserve-full-isl
+    - --enable-chunked-prefill
+    - --enable-prefix-caching
+    - --enable-prompt-tokens-details
+    - --speculative-config
+    - '{"method":"dspark","num_speculative_tokens":3,"draft_sample_method":"probabilistic"}'
+    - --tokenizer-mode
+    - deepseek_v4
+    - --tool-call-parser
+    - deepseek_v4
+    - --enable-auto-tool-choice
+    - --reasoning-parser
+    - deepseek_v4
+    - --reasoning-config
+    - '{"reasoning_parser":"deepseek_v4","reasoning_start_str":"","reasoning_end_str":""}'
+    - --default-chat-template-kwargs.thinking=true
+    - --default-chat-template-kwargs.reasoning_effort=high
+    - --enable-flashinfer-autotune
+    - --disable-access-log-for-endpoints
+    - /metrics,/v1/models
+  base_env:
+    DSV4_MODEL: /models/deepseek-v4-flash-vision
+    SERVED_MODEL_NAME: deepseek-v4-flash-vision
+    LOAD_FORMAT: instanttensor
+    DSPARK_TOKENS: "3"
+    GPU_MEMORY_UTILIZATION: "0.81"
+    MM_IMAGE_LIMIT: "1"
+    MAX_MODEL_LEN: "1000000"
+    MAX_NUM_SEQS: "4"
+    MAX_NUM_BATCHED_TOKENS: "8192"
+    VLLM_USE_V2_MODEL_RUNNER: "1"
+    B12X_DENSE_SPLITK_TURBO: "1"
+    B12X_MOE_FORCE_A8: "1"
+    VLLM_USE_FLASHINFER_SAMPLER: "1"
+    VLLM_USE_BREAKABLE_CUDAGRAPH: "0"
+    VLLM_USE_AOT_COMPILE: "1"
+    VLLM_USE_MEGA_AOT_ARTIFACT: "1"
+    VLLM_ALLOW_LONG_MAX_MODEL_LEN: "1"
+    VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS: "0"
+    CUTE_DSL_ARCH: sm_121a
+    PYTHONPATH: /opt/venv/lib/python3.12/site-packages:/opt/venv/lib/python3.12/site-packages/nvidia_cutlass_dsl/dsl_packages
+    DG_JIT_USE_NVRTC: "0"
+    TORCH_CUDA_ARCH_LIST: 12.1a
+    FLASHINFER_CUDA_ARCH_LIST: 12.1a
+    PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+    VLLM_WORKER_MULTIPROC_METHOD: spawn
+    SAFETENSORS_FAST_GPU: "1"
+    VLLM_PLUGINS: ""
+    HF_HOME: /models
+    HF_HUB_OFFLINE: "1"
+    TRANSFORMERS_OFFLINE: "1"
+    VLLM_ENABLE_ROCE_ALLREDUCE: "1"
+    NCCL_NET: IB
+    NCCL_IB_DISABLE: "0"
+    NCCL_CROSS_NIC: "1"
+    NCCL_CUMEM_ENABLE: "0"
+    NCCL_IGNORE_CPU_AFFINITY: "1"
+    NCCL_NVLS_ENABLE: "0"
+    NCCL_DEBUG: WARN
+    TORCH_NCCL_ASYNC_ERROR_HANDLING: "1"
+    VLLM_CACHE_ROOT: /cache/vllm
+    XDG_CACHE_HOME: /cache
+    TRITON_CACHE_DIR: /cache/triton
+    TORCHINDUCTOR_CACHE_DIR: /cache/torchinductor
+    FLASHINFER_WORKSPACE_BASE: /cache/flashinfer
+    VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS: "1800"
+deployment:
+  nodes: 2
+  tensor_parallel_size: 2
+  model_path: /models/deepseek-v4-flash-vision
+  storage_min_free_gib: 200
+  download_workers: 8
+  ignore_patterns:
+    - inference/*
+    - encoding/*
+    - .eval_results/*
+  parameters:
+    namespace:
+      label: Kubernetes namespace
+      type: string
+      required: true
+      default: vllm
+      targets: [lws, llm-d-routing]
+      description: Namespace for the model and its routing resources.
+    name:
+      label: Deployment name
+      type: string
+      required: true
+      default: deepseek-v4-flash-vision
+      description: DNS-compatible base name for resources and Docker containers.
+    model_storage_path:
+      label: Model storage path
+      type: string
+      required: true
+      default: ""
+      targets: [lws, docker]
+      description: Absolute persistent host path on each GPU node for the model cache and published snapshot.
+    jit_storage_path:
+      label: JIT cache path
+      type: string
+      required: true
+      default: ""
+      targets: [lws, docker]
+      description: Absolute persistent host path on each GPU node for compiler and kernel caches.
+    hf_secret:
+      label: Hugging Face Secret
+      type: string
+      required: true
+      default: huggingface-token
+      targets: [lws]
+      description: Kubernetes Secret created from the operator's local HF_TOKEN environment variable.
+    hf_secret_key:
+      label: Hugging Face Secret key
+      type: string
+      required: true
+      default: HF_TOKEN
+      targets: [lws]
+      description: Data key in the Kubernetes Secret; the browser never accepts or stores the token itself.
+    network_attachment:
+      label: RoCE network attachment
+      type: string
+      required: true
+      default: ""
+      targets: [lws]
+      description: Multus NetworkAttachmentDefinition name for the secondary collective network.
+    node_selector:
+      label: GPU node selector
+      type: stringMap
+      required: true
+      default: {}
+      targets: [lws]
+      description: Site-specific labels selecting the two GB10 nodes; arm64 is enforced separately.
+    topology_key:
+      label: Exclusive topology key
+      type: string
+      required: true
+      default: ""
+      targets: [lws]
+      description: Site label that groups the two nodes allowed to form this TP group.
+    topology_values:
+      label: Allowed topology values
+      type: string
+      required: true
+      default: ""
+      targets: [lws]
+      description: Comma-separated values accepted for the exclusive topology key.
+    gpu_resource:
+      label: GPU extended resource
+      type: string
+      required: true
+      default: nvidia.com/gpu
+      targets: [lws]
+      description: Device-plugin resource key; requested units are allocator units, not a physical GPU count.
+    gpu_units:
+      label: GPU allocator units
+      type: integer
+      required: true
+      default: 1
+      targets: [lws]
+      description: Extended-resource units allocated per rank; the fresh-cluster path exposes one unit per GB10.
+    rdma_resource:
+      label: RDMA extended resource
+      type: string
+      required: true
+      default: ""
+      targets: [lws]
+      description: RDMA shared-device-plugin resource key for the selected host interfaces.
+    rdma_units:
+      label: RDMA allocator units
+      type: integer
+      required: true
+      default: 1
+      targets: [lws]
+      description: Extended-resource allocator units per rank, not the number of HCAs or ports.
+    hca:
+      label: NCCL HCA list
+      type: string
+      required: true
+      default: ""
+      targets: [lws, docker]
+      description: Comma-separated real host RDMA device names exposed to the pod or Docker container.
+    gid_index:
+      label: RoCE GID index
+      type: integer
+      required: true
+      default: 3
+      targets: [lws, docker]
+      description: GID index verified for the site's RoCE VLAN and address family.
+    socket_interface:
+      label: NCCL socket interface
+      type: string
+      required: true
+      default: ""
+      targets: [lws, docker]
+      description: Control-plane interface name used by NCCL socket bootstrap on each target.
+    gloo_interface:
+      label: Gloo socket interface
+      type: string
+      required: true
+      default: ""
+      targets: [lws, docker]
+      description: Control-plane interface name used by Gloo on each target.
+    leader_ip:
+      label: Leader host IP
+      type: string
+      required: true
+      default: ""
+      targets: [docker]
+      description: Docker-only rank-zero address reachable from the worker over the host network.
+    worker_ip:
+      label: Worker host IP
+      type: string
+      required: true
+      default: ""
+      targets: [docker]
+      description: Docker-only rank-one address used as that rank's VLLM_HOST_IP.
+    gateway_class:
+      label: GatewayClass name
+      type: string
+      required: true
+      default: ""
+      targets: [llm-d-routing]
+      description: Routing-only accepted Envoy GatewayClass supplied by the cluster operator.
+validation:
+  image: ghcr.io/randomvariable/vllm-b12x-multi@sha256:42d5d72bd79a371c3b5a756fe2a1814f3c9393dd9a73d65bcefa01eb8f28d726
+  lws: verified
+  docker: unverified
+  evidence: Accepted live on 2026-09-14 in the author's non-k3s kubeadm/Cilium two-node GB10 cluster; this records functional deployment acceptance, not an independently measured benchmark.
+guide:
+  hardware: Two arm64 GB10 nodes, one physical integrated GPU per node, with a working RoCE secondary network and at least 200 GiB free model storage per node.
+  fixed_tuning: TP=2, DSpark depth 3, 0.81 GPU memory utilization, 1,000,000-token maximum context, four sequences, 8,192 batched tokens, graph cap 16.
+  networking: Primary control traffic uses the operator-selected socket interfaces; tensor-parallel collectives use the selected RDMA HCAs. Kubernetes allocator units do not describe physical device counts.
+  safety: Stop both ranks gracefully with a 120-second timeout. A long kernel is not grounds for force-killing a GB10 process.

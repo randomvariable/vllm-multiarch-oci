@@ -1,0 +1,28 @@
+---
+title: Platform glossary
+description: Compact definitions for the host-to-serving tutorial.
+---
+
+- **Node:** a physical or virtual machine registered with Kubernetes. This tutorial has one control-plane node and two GPU agent nodes.
+- **Pod:** Kubernetes' smallest deployable unit; one or more containers sharing network and lifecycle.
+- **Controller:** software that watches Kubernetes objects and reconciles actual state toward their declared state.
+- **CRD:** CustomResourceDefinition, which adds a resource type such as `LeaderWorkerSet` or `InferencePool` to the Kubernetes API.
+- **CNI:** Container Network Interface; the plugin contract used to connect pods. Cilium is primary, while Multus attaches an additional network.
+- **Runtime:** the container execution integration beneath Kubernetes. k3s uses containerd and discovers `nvidia-container-runtime` for GPU injection.
+- **RuntimeClass:** Kubernetes object selecting a configured runtime handler. Recipe pods explicitly use `runtimeClassName: nvidia`.
+- **GPU device plugin:** component that advertises GPU extended resources to Kubernetes and assigns devices to containers.
+- **Extended resource:** integer scheduling/assignment contract such as `nvidia.com/gpu` or `rdma.com/roce`. Its count is allocator-defined and need not equal physical-device count.
+- **RDMA:** Remote Direct Memory Access, used here for the secondary high-throughput collective path between GPU ranks.
+- **RoCE:** RDMA over Converged Ethernet; the selected fabric carried by a macvlan secondary interface.
+- **Multus:** CNI multiplexer that requests one or more extra pod-network attachments after the primary CNI.
+- **Whereabouts:** cluster-wide IP address manager for the secondary Multus network.
+- **LWS:** LeaderWorkerSet, a Kubernetes controller/API that manages a leader and workers as a group. It is not an inference scheduler.
+- **Tensor parallelism (TP):** one model computation split across ranks. TP=2 here means two ranks across two nodes.
+- **Rank zero:** leader process exposing the HTTP model API and coordinating distributed execution.
+- **Rank one:** headless worker process participating in collectives; never an InferencePool HTTP endpoint.
+- **InferencePool:** Gateway API Inference Extension resource declaring eligible model-serving endpoints.
+- **EPP:** Endpoint Picker Protocol/Picker; evaluates eligible endpoints and returns a selection to Gateway. The request payload does not traverse EPP.
+- **GatewayClass:** cluster-scoped declaration of which Gateway controller owns a class of Gateways.
+- **AIGatewayRoute:** Envoy AI Gateway route that matches AI model metadata and sends traffic toward the InferencePool.
+- **GSP:** GPU System Processor firmware. Its version must match the NVIDIA kernel modules/userspace contract.
+- **DKMS:** Dynamic Kernel Module Support; builds and installs the pinned open driver against the exact kernel ABI.

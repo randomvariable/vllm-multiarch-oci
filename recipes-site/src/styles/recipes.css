@@ -1,0 +1,859 @@
+@font-face {
+  font-family: "Instrument Serif";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/vllm-multiarch-oci/fonts/InstrumentSerif-Regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Instrument Serif";
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/vllm-multiarch-oci/fonts/InstrumentSerif-Italic.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/vllm-multiarch-oci/fonts/Geist.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/vllm-multiarch-oci/fonts/GeistMono.woff2") format("woff2");
+}
+
+:root {
+  --recipe-paper: #faf7f2;
+  --recipe-paper-2: #f1ece4;
+  --recipe-ink: #252b32;
+  --recipe-muted: #56616b;
+  --recipe-soft: #6d747b;
+  --recipe-rule: rgba(37, 43, 50, 0.16);
+  --recipe-rule-solid: #c8c2b8;
+  --recipe-accent: #a94e2b;
+  --recipe-accent-tint: rgba(169, 78, 43, 0.08);
+  --recipe-link: #285f82;
+  --sl-font: "Geist", sans-serif;
+  --sl-font-mono: "Geist Mono", monospace;
+  --sl-color-bg: var(--recipe-paper);
+  --sl-color-bg-nav: rgba(250, 247, 242, 0.94);
+  --sl-color-bg-sidebar: var(--recipe-paper-2);
+  --sl-color-text: var(--recipe-ink);
+  --sl-color-text-accent: var(--recipe-link);
+  --sl-color-accent-low: #eadbd2;
+  --sl-color-accent: var(--recipe-accent);
+  --sl-color-accent-high: #6f2c16;
+  --sl-color-hairline: var(--recipe-rule);
+  --sl-color-hairline-light: var(--recipe-rule);
+  --sl-content-width: 54rem;
+}
+
+:root[data-theme="dark"] {
+  --recipe-paper: #202326;
+  --recipe-paper-2: #292d30;
+  --recipe-ink: #f3eee6;
+  --recipe-muted: #c2bbb0;
+  --recipe-soft: #a7a095;
+  --recipe-rule: rgba(243, 238, 230, 0.17);
+  --recipe-rule-solid: #56514a;
+  --recipe-accent: #e38a63;
+  --recipe-accent-tint: rgba(227, 138, 99, 0.11);
+  --recipe-link: #8dc2df;
+  --sl-color-accent-low: #542d20;
+  --sl-color-accent-high: #ffd6c5;
+}
+
+html {
+  background: var(--recipe-paper);
+}
+
+body {
+  color: var(--recipe-ink);
+  background-color: var(--recipe-paper);
+  background-image:
+    linear-gradient(var(--recipe-rule) 1px, transparent 1px),
+    linear-gradient(90deg, var(--recipe-rule) 1px, transparent 1px),
+    radial-gradient(circle at 78% 7%, var(--recipe-accent-tint), transparent 26rem);
+  background-size: 3.5rem 3.5rem, 3.5rem 3.5rem, auto;
+  background-attachment: fixed;
+  font-family: "Geist", sans-serif;
+  overflow-x: clip;
+}
+
+h1,
+h2,
+h3,
+.hero .tagline {
+  color: var(--recipe-ink);
+}
+
+.sl-markdown-content :is(h1, h2, h3),
+.hero h1,
+.recipe-builder h2 {
+  font-family: "Instrument Serif", serif;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+
+.sl-markdown-content h2 {
+  border-block-start-color: var(--recipe-rule);
+}
+
+.sl-markdown-content a:not([class]) {
+  color: var(--recipe-link);
+  text-decoration-color: color-mix(in srgb, var(--recipe-link) 42%, transparent);
+  text-underline-offset: 0.2em;
+}
+
+.sl-markdown-content :not(pre) > code {
+  border: 1px solid var(--recipe-rule);
+  border-radius: 0.2rem;
+  background: var(--recipe-paper-2);
+}
+
+.sl-markdown-content pre,
+.expressive-code {
+  border: 1px solid var(--recipe-rule-solid);
+  border-radius: 0.25rem;
+  box-shadow: none;
+}
+
+header.header {
+  border-block-end-color: var(--recipe-rule);
+  backdrop-filter: blur(16px);
+}
+
+.sidebar-pane {
+  border-inline-end-color: var(--recipe-rule);
+}
+
+.eyebrow {
+  margin: 0 0 0.55rem;
+  color: var(--recipe-accent);
+  font: 600 0.68rem/1.2 "Geist Mono", monospace;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.release-strip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  margin: 1.75rem 0 2.5rem;
+  padding: 0.8rem 1rem;
+  border-block: 1px solid var(--recipe-rule-solid);
+  background: color-mix(in srgb, var(--recipe-paper-2) 86%, transparent);
+  font-size: 0.82rem;
+}
+
+.release-strip > span:first-child {
+  color: var(--recipe-accent);
+  font-family: "Geist Mono", monospace;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.release-strip code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.release-strip a {
+  color: var(--recipe-link);
+  font-weight: 600;
+}
+
+.hero {
+  position: relative;
+  padding-block: clamp(3rem, 9vw, 7rem) clamp(2rem, 6vw, 5rem);
+}
+
+.hero::before {
+  content: "TP / 02";
+  position: absolute;
+  inset: 1.25rem 0 auto auto;
+  color: var(--recipe-rule-solid);
+  font: 500 clamp(2rem, 8vw, 6.5rem)/1 "Geist Mono", monospace;
+  letter-spacing: -0.08em;
+  pointer-events: none;
+}
+
+.hero h1 {
+  max-width: 13ch;
+  font-size: clamp(3.2rem, 9vw, 7rem);
+  line-height: 0.88;
+}
+
+.hero .tagline {
+  max-width: 44rem;
+  color: var(--recipe-muted);
+  font-size: clamp(1rem, 2vw, 1.2rem);
+  line-height: 1.65;
+}
+
+.hero .actions a {
+  border-radius: 0.2rem;
+  font-family: "Geist Mono", monospace;
+  font-size: 0.82rem;
+  letter-spacing: 0.02em;
+}
+
+.hero .actions .primary {
+  background: var(--recipe-accent);
+  color: #fffaf5;
+}
+
+.hero .actions .minimal {
+  border: 1px solid var(--recipe-rule-solid);
+  background: var(--recipe-paper-2);
+}
+
+.site-intro,
+.recipe-summary-grid,
+.recipe-card-grid,
+.topology-card,
+.fact-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.site-intro {
+  grid-template-columns: 1.15fr 0.85fr;
+  align-items: start;
+  margin-block: 2rem 4rem;
+}
+
+.intro-copy {
+  padding: clamp(1.5rem, 4vw, 3rem);
+  border: 1px solid var(--recipe-rule-solid);
+  background: color-mix(in srgb, var(--recipe-paper) 88%, transparent);
+}
+
+.intro-copy .large-copy {
+  margin: 0;
+  font-family: "Instrument Serif", serif;
+  font-size: clamp(1.8rem, 4vw, 3.2rem);
+  line-height: 1.03;
+}
+
+.topology-card {
+  grid-template-columns: 1fr;
+  padding: 1.3rem;
+  border: 1px solid var(--recipe-rule-solid);
+  background: var(--recipe-ink);
+  color: var(--recipe-paper);
+}
+
+.topology-card h2,
+.topology-card p {
+  color: inherit;
+}
+
+.topology-node {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.85rem;
+  border: 1px solid color-mix(in srgb, var(--recipe-paper) 24%, transparent);
+}
+
+.topology-node .rank {
+  color: var(--recipe-accent);
+  font: 600 0.7rem/1 "Geist Mono", monospace;
+}
+
+.topology-node strong {
+  color: inherit;
+  font-size: 0.88rem;
+}
+
+.topology-node small {
+  color: color-mix(in srgb, var(--recipe-paper) 70%, transparent);
+  font-family: "Geist Mono", monospace;
+}
+
+.collective-line {
+  position: relative;
+  height: 1.7rem;
+  border-inline-start: 1px solid var(--recipe-accent);
+  margin-inline-start: 1rem;
+}
+
+.collective-line::after {
+  content: "collective traffic";
+  position: absolute;
+  inset: 0 auto auto 0.8rem;
+  color: color-mix(in srgb, var(--recipe-paper) 65%, transparent);
+  font: 0.65rem/1 "Geist Mono", monospace;
+}
+
+.recipe-card-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-block: 1.5rem 4rem;
+}
+
+.recipe-card {
+  min-width: 0;
+  padding: 1.4rem;
+  border-block-start: 3px solid var(--recipe-accent);
+  border-inline: 1px solid var(--recipe-rule);
+  border-block-end: 1px solid var(--recipe-rule);
+  background: var(--recipe-paper);
+}
+
+.recipe-card h3 {
+  margin-block: 0.5rem;
+  font-size: 1.65rem;
+}
+
+.recipe-card p {
+  color: var(--recipe-muted);
+}
+
+.recipe-card .card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block-start: 1rem;
+}
+
+.recipe-card .card-meta span,
+.fact-grid dt,
+.recipe-status {
+  font: 500 0.67rem/1.3 "Geist Mono", monospace;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.recipe-card .card-meta span {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--recipe-rule-solid);
+}
+
+.recipe-link {
+  display: inline-flex;
+  margin-block-start: 1rem;
+  color: var(--recipe-link);
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.fact-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-block: 1.5rem 3rem;
+}
+
+.fact-grid > div {
+  min-width: 0;
+  padding: 1rem;
+  border-block-start: 1px solid var(--recipe-rule-solid);
+}
+
+.fact-grid dt {
+  color: var(--recipe-soft);
+}
+
+.fact-grid dd {
+  margin: 0.5rem 0 0;
+  color: var(--recipe-ink);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.recipe-builder {
+  width: min(78rem, calc(100vw - 2rem));
+  margin-block: 4rem;
+  margin-inline: 50%;
+  transform: translateX(-50%);
+  padding-block-start: 1.5rem;
+  border-block-start: 1px solid var(--recipe-rule-solid);
+}
+
+.builder-heading,
+.output-toolbar,
+.step-heading,
+.download-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: start;
+}
+
+.builder-heading {
+  margin-block-end: 1.5rem;
+}
+
+.builder-heading h2 {
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 3.5rem);
+}
+
+.builder-heading > div > p:last-child {
+  max-width: 45rem;
+  color: var(--recipe-muted);
+}
+
+.builder-status {
+  max-width: 21rem;
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--recipe-rule);
+  color: var(--recipe-muted);
+  font: 0.72rem/1.45 "Geist Mono", monospace;
+}
+
+.builder-shell {
+  display: grid;
+  grid-template-columns: minmax(18rem, 0.72fr) minmax(0, 1.28fr);
+  border: 1px solid var(--recipe-rule-solid);
+  background: var(--recipe-paper);
+}
+
+.builder-form,
+.builder-output {
+  min-width: 0;
+  padding: clamp(1rem, 3vw, 2rem);
+}
+
+.builder-form {
+  border-inline-end: 1px solid var(--recipe-rule-solid);
+  background: var(--recipe-paper-2);
+}
+
+.builder-form fieldset {
+  padding: 0;
+  margin: 0 0 1.5rem;
+  border: 0;
+}
+
+.builder-form legend {
+  margin-block-end: 0.7rem;
+  color: var(--recipe-ink);
+  font-weight: 650;
+}
+
+.segmented {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border: 1px solid var(--recipe-rule-solid);
+  background: var(--recipe-paper);
+}
+
+.segmented label {
+  cursor: pointer;
+}
+
+.segmented label + label {
+  border-inline-start: 1px solid var(--recipe-rule-solid);
+}
+
+.segmented input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.segmented span {
+  display: block;
+  padding: 0.7rem;
+  color: var(--recipe-muted);
+  font: 600 0.72rem/1.2 "Geist Mono", monospace;
+  text-align: center;
+}
+
+.segmented input:checked + span {
+  background: var(--recipe-ink);
+  color: var(--recipe-paper);
+}
+
+.segmented input:focus-visible + span,
+.choice-card:has(input:focus-visible) {
+  outline: 3px solid color-mix(in srgb, var(--recipe-link) 55%, transparent);
+  outline-offset: 2px;
+}
+
+.choice-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.7rem;
+  align-items: start;
+  margin-block-end: 0.55rem;
+  padding: 0.8rem;
+  border: 1px solid var(--recipe-rule);
+  background: var(--recipe-paper);
+  cursor: pointer;
+}
+
+.choice-card:has(input:checked) {
+  border-color: var(--recipe-accent);
+  background: var(--recipe-accent-tint);
+}
+
+.choice-card input {
+  accent-color: var(--recipe-accent);
+}
+
+.choice-card span {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.choice-card small,
+.field-hint,
+.form-note {
+  color: var(--recipe-muted);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.image-warning,
+.output-error,
+.noscript-note {
+  padding: 0.75rem;
+  border-inline-start: 3px solid var(--recipe-accent);
+  background: var(--recipe-accent-tint);
+  color: var(--recipe-ink);
+  font-size: 0.78rem;
+}
+
+.parameter-fields {
+  display: grid;
+  gap: 1rem;
+}
+
+.field-group {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.field-group label {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  color: var(--recipe-ink);
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+
+.required-marker {
+  color: var(--recipe-accent);
+  font: 0.59rem/1.5 "Geist Mono", monospace;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.field-group :is(input, textarea) {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.65rem 0.7rem;
+  border: 1px solid var(--recipe-rule-solid);
+  border-radius: 0;
+  background: var(--recipe-paper);
+  color: var(--recipe-ink);
+  font: 0.75rem/1.4 "Geist Mono", monospace;
+}
+
+.field-group textarea {
+  resize: vertical;
+}
+
+.field-group :is(input, textarea):focus-visible {
+  border-color: var(--recipe-link);
+  outline: 2px solid color-mix(in srgb, var(--recipe-link) 28%, transparent);
+  outline-offset: 1px;
+}
+
+.field-group :is(input, textarea):invalid:not(:focus) {
+  border-color: var(--recipe-accent);
+}
+
+.field-error {
+  min-height: 1em;
+  color: var(--recipe-accent);
+  font-size: 0.68rem;
+}
+
+.generate-button,
+.copy-button,
+.download-button {
+  border: 0;
+  border-radius: 0;
+  font: 600 0.7rem/1.2 "Geist Mono", monospace;
+  cursor: pointer;
+}
+
+.generate-button {
+  width: 100%;
+  margin-block-start: 1.5rem;
+  padding: 0.85rem 1rem;
+  background: var(--recipe-accent);
+  color: #fffaf5;
+}
+
+.generate-button:disabled {
+  background: var(--recipe-rule-solid);
+  color: var(--recipe-muted);
+  cursor: not-allowed;
+}
+
+.generate-button:focus-visible,
+.copy-button:focus-visible,
+.download-button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--recipe-link) 50%, transparent);
+  outline-offset: 2px;
+}
+
+.builder-output {
+  background-image: linear-gradient(135deg, transparent 75%, var(--recipe-accent-tint) 75%);
+  background-size: 1rem 1rem;
+}
+
+.output-toolbar {
+  align-items: center;
+  padding-block-end: 1rem;
+  border-block-end: 1px solid var(--recipe-rule);
+}
+
+.output-toolbar h3 {
+  margin: 0;
+  font-family: "Instrument Serif", serif;
+  font-size: 2rem;
+  font-weight: 400;
+}
+
+.validation-badge {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--recipe-accent);
+  color: var(--recipe-accent);
+  font: 600 0.63rem/1 "Geist Mono", monospace;
+  text-transform: uppercase;
+}
+
+.output-empty {
+  min-height: 19rem;
+  display: grid;
+  place-content: center;
+  max-width: 30rem;
+  margin-inline: auto;
+  text-align: center;
+}
+
+.output-empty > span {
+  color: var(--recipe-rule-solid);
+  font: clamp(2rem, 6vw, 4rem)/1 "Geist Mono", monospace;
+}
+
+.output-empty h4 {
+  margin-block: 1rem 0.4rem;
+  font-family: "Instrument Serif", serif;
+  font-size: 1.7rem;
+  font-weight: 400;
+}
+
+.output-empty p,
+.output-step > p {
+  color: var(--recipe-muted);
+}
+
+.output-step {
+  margin-block: 1.5rem;
+}
+
+.step-heading {
+  align-items: center;
+  margin-block-end: 0.5rem;
+}
+
+.step-heading h4 {
+  margin: 0;
+  color: var(--recipe-ink);
+  font: 600 0.82rem/1.4 "Geist Mono", monospace;
+}
+
+.output-step pre {
+  box-sizing: border-box;
+  max-width: 100%;
+  margin: 0.8rem 0 0;
+  padding: 1rem;
+  border: 1px solid var(--recipe-rule-solid);
+  border-radius: 0;
+  background: var(--recipe-ink);
+  color: var(--recipe-paper);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.output-step code {
+  font: 0.72rem/1.65 "Geist Mono", monospace;
+}
+
+.copy-button {
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--recipe-rule-solid);
+  background: var(--recipe-paper);
+  color: var(--recipe-muted);
+}
+
+.download-list {
+  display: grid;
+  gap: 0.5rem;
+  padding-block-start: 1rem;
+  border-block-start: 1px solid var(--recipe-rule);
+}
+
+.download-row {
+  align-items: stretch;
+}
+
+.download-button {
+  flex: 1;
+  padding: 0.7rem 0.8rem;
+  background: var(--recipe-link);
+  color: #f7fbfd;
+  text-align: start;
+}
+
+.noscript-note {
+  margin-block-start: 1rem;
+}
+
+.diagram-frame {
+  margin-block: 2rem;
+  border: 1px solid var(--recipe-rule-solid);
+  background: var(--recipe-paper);
+  overflow: hidden;
+}
+
+.diagram-frame iframe {
+  display: block;
+  width: 100%;
+  height: 620px;
+  border: 0;
+}
+
+.starlight-aside {
+  border-radius: 0;
+}
+
+@keyframes recipe-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+main > .content-panel:first-child,
+.hero {
+  animation: recipe-reveal 520ms ease-out both;
+}
+
+@keyframes builder-reveal {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 0.75rem);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.recipe-builder {
+  animation: builder-reveal 520ms 100ms ease-out both;
+}
+
+@media (max-width: 60rem) {
+  .site-intro,
+  .builder-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .builder-form {
+    border-inline-end: 0;
+    border-block-end: 1px solid var(--recipe-rule-solid);
+  }
+
+  .fact-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .recipe-builder {
+    margin-inline: 50%;
+  }
+}
+
+@media (max-width: 40rem) {
+  .release-strip,
+  .recipe-card-grid,
+  .fact-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .release-strip code {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .hero::before {
+    font-size: 2rem;
+  }
+
+  .builder-heading,
+  .output-toolbar,
+  .download-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .builder-status {
+    max-width: none;
+  }
+
+  .segmented {
+    grid-template-columns: 1fr;
+  }
+
+  .segmented label + label {
+    border-inline-start: 0;
+    border-block-start: 1px solid var(--recipe-rule-solid);
+  }
+
+  .diagram-frame iframe {
+    height: 820px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+@media (forced-colors: active) {
+  .choice-card:has(input:checked),
+  .segmented input:checked + span,
+  .generate-button,
+  .download-button {
+    border: 2px solid ButtonText;
+  }
+}

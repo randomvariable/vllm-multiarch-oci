@@ -1,0 +1,106 @@
+name: Recipe site
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+  schedule:
+    - cron: "17 * * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "24"
+  CRANE_VERSION: "0.22.1"
+  CRANE_LINUX_X86_64_SHA256: "0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0"
+  IMAGE_REPOSITORY: ghcr.io/randomvariable/vllm-b12x-multi
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: recipes-site/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm --dir recipes-site install --frozen-lockfile
+
+      - name: Use deterministic image metadata for pull requests
+        if: github.event_name == 'pull_request'
+        run: cp recipes-site/tests/fixtures/latest-image.json recipes-site/public/latest-image.json
+
+      - name: Install checksum-verified crane
+        if: github.event_name != 'pull_request'
+        env:
+          CRANE_ARCHIVE: go-containerregistry_Linux_x86_64.tar.gz
+        run: |
+          set -euo pipefail
+          url="https://github.com/google/go-containerregistry/releases/download/v${CRANE_VERSION}/${CRANE_ARCHIVE}"
+          curl --fail --location --proto '=https' --tlsv1.2 --output "$RUNNER_TEMP/$CRANE_ARCHIVE" "$url"
+          echo "$CRANE_LINUX_X86_64_SHA256  $RUNNER_TEMP/$CRANE_ARCHIVE" | sha256sum --check --strict
+          tar --extract --gzip --file "$RUNNER_TEMP/$CRANE_ARCHIVE" --directory "$RUNNER_TEMP" crane
+          mkdir -p "$RUNNER_TEMP/bin"
+          install -m 0755 "$RUNNER_TEMP/crane" "$RUNNER_TEMP/bin/crane"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Resolve latest public recipe image
+        if: github.event_name != 'pull_request'
+        run: >-
+          python3 scripts/resolve-recipe-image.py
+          --repository "$IMAGE_REPOSITORY"
+          --output recipes-site/public/latest-image.json
+
+      - name: Test image resolver
+        run: python3 -m unittest scripts/resolve_recipe_image_test.py
+
+      - name: Test recipe renderer
+        run: pnpm --dir recipes-site test
+
+      - name: Build static site
+        run: pnpm --dir recipes-site build
+
+      - name: Configure GitHub Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: recipes-site/dist
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

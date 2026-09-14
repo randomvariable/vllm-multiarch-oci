@@ -1,0 +1,20 @@
+---
+title: Image releases
+description: How the site presents the latest immutable vLLM image publication.
+---
+
+import LatestImage from "../../../components/LatestImage.astro";
+
+<p class="eyebrow">Release channel</p>
+
+# Latest is publication state, not recipe proof
+
+The trusted Pages build resolves the public repository's `latest` tag to a Linux ARM64 digest, finds the matching immutable publication tag, and records the resolution time. The recipe generator consumes that static record and always emits a digest-qualified reference.
+
+The selected recipe's validated digest remains the default. Choosing **Latest published image** displays an explicit warning because publication does not prove that the new image completed the recipe's two-node runtime acceptance.
+
+<LatestImage />
+
+:::note[Freshness]
+The resolver runs hourly and on manual deployment. The displayed timestamp records when registry metadata was resolved, rather than implying immediate consistency with a just-finished publication.
+:::

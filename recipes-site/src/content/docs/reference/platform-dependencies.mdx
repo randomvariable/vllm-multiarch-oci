@@ -1,0 +1,62 @@
+---
+title: Platform dependency matrix
+description: Exact version, source, owner, dependency and readiness contract for the recipe platform.
+---
+
+This is the human-readable companion to the authored build data in `src/data/platform-dependencies.yaml`. Missing pins or sources are build errors.
+
+:::caution[Combination status]
+The image and TP=2 LWS are accepted on a non-k3s kubeadm/Cilium cluster. The complete k3s lane is not end-to-end validated on GB10 hardware. Pins marked tested below may have production evidence as individual parts without proving the k3s combination.
+:::
+
+| Layer | Exact pin | Installer / owner | Depends on | Readiness gate | Evidence |
+|---|---|---|---|---|---|
+| DGX OS / Ubuntu | 24.04 arm64 | host operator | firmware/repositories | `dpkg --print-architecture` | tested host lane |
+| 64 KiB kernel | `7.0.0-1016-nvidia-64k` | host operator | DGX OS packages | `uname -r`; page size 65536 | tested host lane; availability must be checked |
+| NVIDIA open fork | 615.71.09, release `spark-615.71.09-1`, commit `c5296e2…f96c42` | DKMS `nvidia-open` | exact kernel headers | five module versions/paths, `nvidia-smi`, CUDA allocation | tested host lane |
+| NVIDIA Container Toolkit | `1.17.8-1` | host operator | NVIDIA driver/userspace | `nvidia-container-runtime` visible to k3s service | source-observed pin |
+| k3s | `v1.34.6+k3s1` | k3s | toolkit before agent start | three Nodes Ready after Cilium | newly verified release; combination untested |
+| Gateway API CRDs | `v1.5.0` | cluster operator | k3s API | Gateway and HTTPRoute CRDs exist | release matched to Inference Extension v1.5.0 |
+| Cilium | `1.19.4` | primary CNI/policy | k3s custom-CNI config | `cilium status --wait`; connectivity test | newly verified; production uses Cilium on kubeadm |
+| CoreDNS | k3s-bundled | k3s | working Cilium | Deployment Available, DNS lookup | combination untested |
+| NFD | bundled with GPU Operator 26.7.0 | GPU Operator on fresh lane | Nodes | NVIDIA feature label | one-owner rule; combination untested |
+| GPU Operator | `26.7.0` | GPU Operator | NFD, host toolkit/driver | operands ready, one GPU/node, CUDA sample | source-observed family; k3s combination untested |
+| Multus thick plugin | `v4.2.2` | cluster operator | working Cilium | DaemonSet ready, primary traffic still works | newly verified release |
+| macvlan | k3s-bundled CNI plugins | k3s | Multus | secondary interface appears | combination untested |
+| Whereabouts | `v0.9.2` | cluster operator | Multus, non-overlap subnet | DaemonSet/CRDs ready, unique secondary IPs | newly verified release |
+| Network Operator | `26.7.0` | RDMA allocator only | NFD + host mlx5 + Multus | policy ready; `rdma.com/roce` allocatable | source-observed family; combination untested |
+| cert-manager | `v1.21.2` | cluster operator | DNS/network | all deployments Available | source-observed pin |
+| LeaderWorkerSet | `v0.10.0` | LWS controller | cert-manager | controller/webhook Available | tested deployment API; k3s untested |
+| Inference Extension | `v1.5.0` | CRDs + per-model EPP | Gateway API | InferencePool CRD; EPP healthy | tested routing config |
+| Envoy Gateway | `1.8.3` | Envoy Gateway | cert-manager, Gateway API | controller Available; class Accepted | tested routing config |
+| Envoy AI Gateway | `v1.1.0` | AI Gateway controller | Envoy Gateway, cert-manager | CRDs/controller Available | tested routing config |
+| Model snapshot | `6821d6ad…0a380` | `vllm-image model-sync` | token, 200 GiB storage | config and indexed shards validated | tested recipe |
+| Model/JIT storage | operator-supplied absolute host paths; 200 GiB model minimum | host and cluster operator | model snapshot, topology | both directories exist and free-space gate passes | tested storage shape; paths site-specific |
+
+## Source index
+
+- [DGX OS 7 user guide](https://docs.nvidia.com/dgx/dgx-os-7-user-guide/index.html)
+- [Driver fork at the exact accepted commit](https://github.com/randomvariable/open-gpu-kernel-modules/tree/c5296e2d92f2cdb23cd10df25ec6e989b5f96c42)
+- [NVIDIA Container Toolkit installation](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
+- [k3s v1.34.6+k3s1 release](https://github.com/k3s-io/k3s/releases/tag/v1.34.6%2Bk3s1), [requirements](https://docs.k3s.io/installation/requirements), [custom CNI](https://docs.k3s.io/networking/basic-network-options#custom-cni), [Multus](https://docs.k3s.io/networking/multus-ipams)
+- [Gateway API v1.5.0](https://github.com/kubernetes-sigs/gateway-api/releases/tag/v1.5.0)
+- [Cilium 1.19.4 release](https://github.com/cilium/cilium/releases/tag/v1.19.4), [k3s installation](https://docs.cilium.io/en/stable/installation/k3s/), [Helm reference](https://docs.cilium.io/en/stable/helm-reference/)
+- [GPU Operator release notes](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/release-notes.html), [platform support](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/platform-support.html)
+- [Multus v4.2.2](https://github.com/k8snetworkplumbingwg/multus-cni/releases/tag/v4.2.2), [Whereabouts v0.9.2](https://github.com/k8snetworkplumbingwg/whereabouts/releases/tag/v0.9.2), [macvlan](https://www.cni.dev/plugins/current/main/macvlan/)
+- [Network Operator 26.7.0 release notes](https://docs.nvidia.com/networking/display/kubernetes2670/release-notes.html), [GPUDirect RDMA test](https://docs.nvidia.com/networking/display/gpudirectrdmav18/testing+gpudirect+rdma)
+- [cert-manager Helm installation](https://cert-manager.io/docs/installation/helm/)
+- [LWS v0.10.0](https://github.com/kubernetes-sigs/lws/releases/tag/v0.10.0)
+- [Inference Extension v1.5.0](https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/tag/v1.5.0)
+- [Envoy Gateway 1.8.3](https://github.com/envoyproxy/gateway/releases/tag/v1.8.3)
+- [Envoy AI Gateway v1.1.0](https://github.com/envoyproxy/ai-gateway/releases/tag/v1.1.0)
+- [Pinned model snapshot](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-Vision-Exp/tree/6821d6ad3681a4b137b066b76094fa82ebd0a380)
+- [Kubernetes hostPath volume semantics](https://kubernetes.io/docs/concepts/storage/volumes/#hostpath)
+
+## Hard ownership invariants
+
+- The host, not GPU Operator, owns driver and toolkit.
+- Exactly one NFD installation owns feature labels.
+- Cilium owns the primary CNI; Multus adds secondary networks and must coexist non-exclusively.
+- Network Operator advertises RDMA only; it does not install OFED or replace the host driver.
+- LWS owns group lifecycle; EPP/Gateway own endpoint selection and routing.
+- Tokens exist only in local environment/Secrets, never recipe data or browser state.

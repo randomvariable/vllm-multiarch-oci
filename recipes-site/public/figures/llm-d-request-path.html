@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>llm-d request path</title>
+  <style>
+    :root{--paper:#faf7f2;--paper-2:#f1ece4;--ink:#252b32;--muted:#56616b;--soft:#6d747b;--rule:rgba(37,43,50,.16);--rule-solid:#c8c2b8;--accent:#a94e2b;--accent-tint:rgba(169,78,43,.08);--link:#285f82}
+    *{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--paper);color:var(--ink)}body{font-family:"Geist",sans-serif}main{width:100%;padding:24px;overflow:hidden}.figure{width:min(100%,1280px);margin:0 auto}.diagram-scroll{width:100%;overflow-x:auto;overscroll-behavior-x:contain;border:1px solid var(--rule);border-radius:8px;background:var(--paper)}.schematic{display:block;width:100%;min-width:960px;height:auto}.notes{display:grid;grid-template-columns:1.2fr .8fr;gap:16px;margin-top:16px}.note{padding:16px 20px;border:1px solid var(--rule);border-radius:8px;background:#fff}.note:nth-child(2){background:var(--paper-2)}.note h2{margin:0 0 8px;font:400 24px/1.1 "Instrument Serif",serif}.note p{margin:0;color:var(--muted);font-size:14px;line-height:1.55}.note code{color:var(--ink);font:500 12px "Geist Mono",monospace}footer{display:flex;justify-content:space-between;gap:16px;margin-top:16px;padding-top:12px;border-top:1px solid var(--rule);color:var(--soft);font:400 11px/1.5 "Geist Mono",monospace}footer a{color:var(--link)}@media(max-width:700px){main{padding:12px}.notes{grid-template-columns:1fr}.note{padding:14px 16px}footer{display:block}.diagram-scroll{border-radius:6px}}
+  </style>
+</head>
+<body>
+<main>
+  <figure class="figure">
+    <div class="diagram-scroll" tabindex="0" aria-label="Scrollable llm-d request-routing diagram">
+      <svg class="schematic" viewBox="0 0 1280 720" role="img" aria-labelledby="llmd-request-title llmd-request-desc" xmlns="http://www.w3.org/2000/svg">
+        <title id="llmd-request-title">llm-d request path</title>
+        <desc id="llmd-request-desc">Envoy AI Gateway asks the endpoint picker for a rank-zero destination, then sends the inference payload directly to that endpoint while rank one participates only through tensor-parallel collectives.</desc>
+        <defs>
+          <marker id="llmd-request-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#56616b"/></marker>
+          <marker id="llmd-request-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#a94e2b"/></marker>
+          <marker id="llmd-request-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#285f82"/></marker>
+          <symbol id="llmd-request-envoy-mark" viewBox="0 0 432 432"><path fill="#b047a8" d="M109.8 210.6l.6 25.4 26.8 16.6-.6-25.4zm65.4 105.8-.6-24.9-23.5-14.6.6 25zM91.5 350l-61.3-38-1.5-63.7 30.1-13-.6-25.5-48 20.7c-3.7 1.6-5.9 5-5.8 8.9l1.8 76.5c.1 3.9 2.5 7.8 6.3 10.2L86 371.7c3.4 2.1 7.6 2.7 11 1.6l45.1-19.8-24.5-15.2z"/><path fill="#d163ce" d="M289.6 209.1c-.1-4.6-2.9-9.1-7.3-11.9L193 141.9l-2.8 1.2.6 26.8 70.7 43.8 1.7 71.6 27 16.7 1.5-.6zM182.7 334.8l-82.9-51.4-2-86.3 37.8-16.3-.7-29.7-58.7 25.3c-4.3 1.9-6.9 5.8-6.8 10.4L71.7 288c.1 4.6 2.9 9.1 7.3 11.8l97.2 60.3c4 2.5 8.8 3.1 12.9 1.9l58.6-25.2-28.6-17.7z"/><path fill="#e13eaf" d="M415.9 138.3 291.3 61c-4.6-2.8-10.1-3.6-16.2-1.6l-121.6 52.4c-4.9 2.1-7.9 6.6-7.8 11.9l3.1 129.6c.1 5.3 3.3 10.4 8.4 13.5L281.8 344c4.6 2.8 10.1 3.6 16.1 1.6l121.6-52.4c4.9-2.1 7.9-6.7 7.8-11.9l-3-129.6c-.1-5.1-3.3-10.3-8.4-13.4zM289.3 315.2 181 248.1l-2.7-112.7 105.6-45.5L392.2 157l2.7 112.7z"/></symbol>
+          <symbol id="llmd-request-service-icon" viewBox="0 0 20 20"><path fill="#326ce5" d="M10 1.4 17.6 5l1.9 8.1-5.2 6.4H5.7L.5 13.1 2.4 5z"/><path fill="#fff" d="M7.1 5.4h5.8v2H7.1zM4.3 12.2h3.4v2.2H4.3zm5.3 0H13v2.2H9.6zm5.2 0h3.4v2.2h-3.4zM9.5 7.4v2H6v2.8h1V10.4h6v1.8h1V9.4h-3.5v-2z"/></symbol>
+          <symbol id="llmd-request-pod-icon" viewBox="0 0 20 20"><path fill="#326ce5" d="M10 1.4 17.6 5l1.9 8.1-5.2 6.4H5.7L.5 13.1 2.4 5z"/><path fill="#fff" d="m5.9 7.1 4.1-1.2 4.1 1.2-4.1 1.2zm0 .5 3.8 1.1v5.2l-3.8-2.1zm8.2 0v4.2l-3.8 2.1V8.7z"/></symbol>
+        </defs>
+        <rect width="1280" height="720" fill="#faf7f2"/>
+        <text x="48" y="44" fill="#a94e2b" font-family="'Geist Mono',monospace" font-size="8" font-weight="600" letter-spacing=".16em">ARCHITECTURE / GATEWAY API INFERENCE EXTENSION</text>
+        <text x="48" y="84" fill="#252b32" font-family="'Instrument Serif',serif" font-size="28">The picker chooses; the gateway carries the payload.</text>
+        <text x="48" y="112" fill="#56616b" font-family="'Geist',sans-serif" font-size="12">LWS runs the model group. EPP advises endpoint selection. These are separate responsibilities.</text>
+
+        <rect x="280" y="160" width="912" height="416" rx="8" fill="rgba(37,43,50,.02)" stroke="rgba(37,43,50,.16)"/>
+        <rect x="296" y="156" width="148" height="16" rx="2" fill="#faf7f2"/>
+        <text x="304" y="168" fill="#6d747b" font-family="'Geist Mono',monospace" font-size="8" letter-spacing=".12em">KUBERNETES CLUSTER</text>
+
+        <!-- Request and control paths, before nodes. -->
+        <line x1="240" y1="284" x2="328" y2="284" stroke="#285f82" stroke-width="2" marker-end="url(#llmd-request-arrow-link)"/>
+        <rect x="244" y="260" width="80" height="12" rx="2" fill="#faf7f2"/>
+        <text x="284" y="268" fill="#285f82" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">HTTP :10080</text>
+
+        <path d="M 488 260 H 536 Q 544 260 544 252 V 224 Q 544 216 552 216 H 640" fill="none" stroke="#56616b" stroke-width="1" stroke-dasharray="5 4" marker-end="url(#llmd-request-arrow)"/>
+        <rect x="508" y="232" width="72" height="12" rx="2" fill="#faf7f2"/>
+        <text x="544" y="240" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">PICK gRPC</text>
+
+        <path d="M 640 256 H 568 Q 560 256 560 264 V 304 Q 560 312 552 312 H 488" fill="none" stroke="#56616b" stroke-width="1" stroke-dasharray="5 4" marker-end="url(#llmd-request-arrow)"/>
+        <rect x="572" y="272" width="104" height="12" rx="2" fill="#faf7f2"/>
+        <text x="624" y="280" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">SELECT ENDPOINT</text>
+
+        <path d="M 408 332 V 376 Q 408 384 416 384 H 792 Q 800 384 800 392 V 416" fill="none" stroke="#285f82" stroke-width="2" marker-end="url(#llmd-request-arrow-link)"/>
+        <rect x="568" y="360" width="136" height="12" rx="2" fill="#faf7f2"/>
+        <text x="636" y="368" fill="#285f82" font-family="'Geist Mono',monospace" font-size="8" font-weight="600" text-anchor="middle">INFERENCE PAYLOAD</text>
+
+        <path d="M 800 416 V 352 Q 800 344 792 344 H 744 Q 736 344 736 336 V 304" fill="none" stroke="#56616b" stroke-width="1" stroke-dasharray="5 4" marker-end="url(#llmd-request-arrow)"/>
+        <rect x="748" y="320" width="104" height="12" rx="2" fill="#faf7f2"/>
+        <text x="800" y="328" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">METRICS :9002</text>
+
+        <path d="M 928 452 H 1000" fill="none" stroke="#a94e2b" stroke-width="2" marker-end="url(#llmd-request-arrow-accent)"/>
+        <path d="M 1000 476 H 928" fill="none" stroke="#a94e2b" stroke-width="2" marker-end="url(#llmd-request-arrow-accent)"/>
+        <rect x="932" y="440" width="64" height="12" rx="2" fill="#faf7f2"/>
+        <text x="964" y="448" fill="#a94e2b" font-family="'Geist Mono',monospace" font-size="8" font-weight="600" text-anchor="middle">TP=2</text>
+
+        <!-- Client -->
+        <rect x="48" y="240" width="192" height="92" rx="6" fill="#fff" stroke="#252b32"/>
+        <rect x="60" y="252" width="48" height="16" rx="2" fill="none" stroke="rgba(37,43,50,.40)"/>
+        <text x="84" y="264" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">CLIENT</text>
+        <text x="144" y="288" fill="#252b32" font-family="'Geist',sans-serif" font-size="12" font-weight="600" text-anchor="middle">OpenAI client</text>
+        <text x="144" y="308" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">x-ai-eg-model header</text>
+
+        <!-- Gateway -->
+        <rect x="328" y="232" width="160" height="100" rx="6" fill="rgba(169,78,43,.08)" stroke="#a94e2b" stroke-width="2"/>
+        <use href="#llmd-request-envoy-mark" x="344" y="248" width="36" height="36"/>
+        <rect x="392" y="244" width="64" height="16" rx="2" fill="none" stroke="rgba(169,78,43,.52)"/>
+        <text x="424" y="256" fill="#a94e2b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">GATEWAY</text>
+        <text x="408" y="288" fill="#252b32" font-family="'Geist',sans-serif" font-size="12" font-weight="600" text-anchor="middle">Envoy AI Gateway</text>
+        <text x="408" y="308" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">Gateway + AIGatewayRoute</text>
+
+        <!-- EPP -->
+        <rect x="640" y="176" width="192" height="128" rx="6" fill="#fff" stroke="#252b32"/>
+        <rect x="652" y="188" width="32" height="16" rx="2" fill="none" stroke="rgba(37,43,50,.40)"/>
+        <text x="668" y="200" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">EPP</text>
+        <text x="736" y="224" fill="#252b32" font-family="'Geist',sans-serif" font-size="12" font-weight="600" text-anchor="middle">Endpoint picker</text>
+        <text x="736" y="244" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">queue 2 / KV 2 / prefix 3</text>
+        <text x="736" y="264" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">failureMode: FailClose</text>
+        <text x="736" y="284" fill="#6d747b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">payload never enters EPP</text>
+
+        <!-- Pool -->
+        <rect x="896" y="192" width="248" height="96" rx="6" fill="#fff" stroke="#252b32"/>
+        <rect x="908" y="204" width="96" height="16" rx="2" fill="none" stroke="rgba(37,43,50,.40)"/>
+        <text x="956" y="216" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">INFERENCEPOOL</text>
+        <text x="1020" y="244" fill="#252b32" font-family="'Geist',sans-serif" font-size="12" font-weight="600" text-anchor="middle">Eligible API endpoints</text>
+        <text x="1020" y="264" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">selector: worker-index=0</text>
+        <line x1="832" y1="240" x2="896" y2="240" stroke="#56616b" stroke-width="1" marker-end="url(#llmd-request-arrow)"/>
+        <rect x="840" y="216" width="48" height="12" rx="2" fill="#faf7f2"/>
+        <text x="864" y="224" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">WATCH</text>
+
+        <!-- Rank 0 -->
+        <rect x="672" y="416" width="256" height="112" rx="6" fill="#fff" stroke="#252b32"/>
+        <use href="#llmd-request-pod-icon" x="688" y="436" width="32" height="32"/>
+        <rect x="732" y="428" width="32" height="16" rx="2" fill="none" stroke="rgba(37,43,50,.40)"/>
+        <text x="748" y="440" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">POD</text>
+        <text x="800" y="468" fill="#252b32" font-family="'Geist',sans-serif" font-size="12" font-weight="600" text-anchor="middle">vLLM rank 0</text>
+        <text x="800" y="488" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">API :8888 / selected endpoint</text>
+        <text x="800" y="508" fill="#6d747b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">LeaderWorkerSet member</text>
+
+        <!-- Rank 1 -->
+        <rect x="1000" y="416" width="144" height="112" rx="6" fill="#f1ece4" stroke="#56616b"/>
+        <use href="#llmd-request-pod-icon" x="1016" y="436" width="32" height="32"/>
+        <rect x="1060" y="428" width="32" height="16" rx="2" fill="none" stroke="rgba(37,43,50,.40)"/>
+        <text x="1076" y="440" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">POD</text>
+        <text x="1072" y="468" fill="#252b32" font-family="'Geist',sans-serif" font-size="12" font-weight="600" text-anchor="middle">vLLM rank 1</text>
+        <text x="1072" y="488" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">headless</text>
+        <text x="1072" y="508" fill="#6d747b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">never pooled</text>
+
+        <!-- Debug service -->
+        <rect x="352" y="456" width="200" height="72" rx="6" fill="rgba(37,43,50,.02)" stroke="rgba(37,43,50,.24)" stroke-dasharray="4 4"/>
+        <use href="#llmd-request-service-icon" x="368" y="476" width="32" height="32"/>
+        <text x="452" y="484" fill="#252b32" font-family="'Geist',sans-serif" font-size="12" font-weight="600" text-anchor="middle">Debug Service</text>
+        <text x="452" y="504" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">bypasses scheduled routing</text>
+        <path d="M 552 492 H 608 Q 616 492 616 484 V 480 Q 616 472 624 472 H 672" fill="none" stroke="#56616b" stroke-width="1" stroke-dasharray="5 4" marker-end="url(#llmd-request-arrow)"/>
+
+        <line x1="48" y1="616" x2="1232" y2="616" stroke="rgba(37,43,50,.16)"/>
+        <text x="48" y="644" fill="#6d747b" font-family="'Geist Mono',monospace" font-size="8" letter-spacing=".14em">LEGEND</text>
+        <line x1="144" y1="640" x2="184" y2="640" stroke="#285f82" stroke-width="2" marker-end="url(#llmd-request-arrow-link)"/>
+        <text x="196" y="644" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8">REQUEST PAYLOAD</text>
+        <line x1="352" y1="640" x2="392" y2="640" stroke="#56616b" stroke-dasharray="5 4" marker-end="url(#llmd-request-arrow)"/>
+        <text x="404" y="644" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8">CONTROL / METRICS</text>
+        <line x1="596" y1="640" x2="636" y2="640" stroke="#a94e2b" stroke-width="2" marker-start="url(#llmd-request-arrow-accent)" marker-end="url(#llmd-request-arrow-accent)"/>
+        <text x="648" y="644" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8">GPU COLLECTIVE</text>
+      </svg>
+    </div>
+    <figcaption class="notes">
+      <section class="note"><h2>Endpoint selection is out of band</h2><p>The Gateway asks EPP over gRPC. EPP scores endpoints represented by the <code>InferencePool</code> and returns a choice; it does not proxy the image or text payload.</p></section>
+      <section class="note"><h2>One TP group means one choice</h2><p>Only rank zero is eligible. With a single two-rank group, prefix-aware scoring has no second replica to choose; rank one contributes compute through collectives.</p></section>
+    </figcaption>
+    <footer><span>LWS is orchestration, not the router.</span><span>Icons: CNCF Envoy artwork and Kubernetes Community resources (Apache-2.0); geometry embedded and sanitized.</span></footer>
+  </figure>
+</main>
+</body>
+</html>

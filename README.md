@@ -23,6 +23,8 @@ just load
 
 ## Documentation
 
+The public [deployment recipe site](https://randomvariable.github.io/vllm-multiarch-oci/) provides the tested DeepSeek configuration, generated Kubernetes and Docker instructions, and the guided cluster setup path.
+
 | Need | Document |
 | --- | --- |
 | Learn the build graph | [Inspect Your First Build](docs/tutorials/first-build.md) |

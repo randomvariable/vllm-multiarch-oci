@@ -1,0 +1,421 @@
+---
+interface Props {
+  slug?: string;
+}
+
+const { slug = "deepseek-v4-flash-vision-tp2" } = Astro.props;
+const base = import.meta.env.BASE_URL;
+---
+
+<section class="recipe-builder" data-recipe-builder data-slug={slug} data-base={base} aria-labelledby="recipe-builder-title">
+  <div class="builder-heading">
+    <div>
+      <p class="eyebrow">Recipe generator</p>
+      <h2 id="recipe-builder-title">Make the deployment yours</h2>
+      <p>
+        Choose a target and supply the details that belong to your hosts or cluster.
+        Values stay in this page and are never sent to a service.
+      </p>
+    </div>
+    <p class="builder-status" data-builder-status role="status" aria-live="polite">Loading recipe definition...</p>
+  </div>
+
+  <div class="builder-shell">
+    <form class="builder-form" data-builder-form novalidate>
+      <fieldset class="target-picker">
+        <legend>Deployment target</legend>
+        <div class="segmented" role="radiogroup" aria-label="Deployment target">
+          <label>
+            <input type="radio" name="target" value="lws" checked />
+            <span>Kubernetes LWS</span>
+          </label>
+          <label>
+            <input type="radio" name="target" value="docker" />
+            <span>Bare Docker</span>
+          </label>
+        </div>
+        <p class="field-hint" data-target-note>
+          The two-node LeaderWorkerSet deployment is the runtime-verified path.
+        </p>
+      </fieldset>
+
+      <fieldset class="image-picker">
+        <legend>Container image</legend>
+        <label class="choice-card">
+          <input type="radio" name="image-mode" value="validated" checked />
+          <span>
+            <strong>Validated recipe image</strong>
+            <small>Accepted with this exact TP=2 recipe</small>
+          </span>
+        </label>
+        <label class="choice-card">
+          <input type="radio" name="image-mode" value="latest" />
+          <span>
+            <strong>Latest published image</strong>
+            <small data-latest-label>Resolved independently from recipe validation</small>
+          </span>
+        </label>
+        <p class="image-warning" data-image-warning hidden>
+          The latest image is digest-pinned, but has not been runtime-validated for this recipe.
+        </p>
+      </fieldset>
+
+      <div class="parameter-fields" data-parameter-fields aria-live="polite">
+        <p class="loading-copy">Loading deployment parameters...</p>
+      </div>
+
+      <button class="generate-button" type="submit" disabled data-generate>
+        Generate deployment
+      </button>
+      <p class="form-note">
+        Required values gate all copy and download controls. No partial deployment is offered.
+      </p>
+    </form>
+
+    <section class="builder-output" aria-labelledby="generated-output-title">
+      <div class="output-toolbar">
+        <div>
+          <p class="eyebrow">Rendered output</p>
+          <h3 id="generated-output-title">Operator steps</h3>
+        </div>
+        <span class="validation-badge" data-validation-badge>Verified LWS path</span>
+      </div>
+
+      <div class="output-empty" data-output-empty>
+        <span aria-hidden="true">01 / 02</span>
+        <h4>Complete the site-specific fields</h4>
+        <p>
+          Once every required field is valid, the renderer will produce ordered steps and downloadable files here.
+        </p>
+      </div>
+      <div class="output-error" data-output-error role="alert" hidden></div>
+      <div class="rendered-output" data-rendered-output hidden>
+        <div class="output-steps" data-output-steps></div>
+        <div class="download-list" data-download-list></div>
+      </div>
+    </section>
+  </div>
+
+  <noscript>
+    <div class="noscript-note">
+      Recipe facts and guides remain available without JavaScript. Enable JavaScript only to validate parameters and generate downloads in your browser.
+    </div>
+  </noscript>
+</section>
+
+<script>
+  import { renderRecipe } from "../render.js";
+
+  const builders = document.querySelectorAll("[data-recipe-builder]:not([data-ready])");
+
+  for (const root of builders) {
+    if (!(root instanceof HTMLElement)) continue;
+    root.dataset.ready = "true";
+
+    const form = root.querySelector("[data-builder-form]");
+    const fields = root.querySelector("[data-parameter-fields]");
+    const status = root.querySelector("[data-builder-status]");
+    const generate = root.querySelector("[data-generate]");
+    const targetNote = root.querySelector("[data-target-note]");
+    const latestLabel = root.querySelector("[data-latest-label]");
+    const imageWarning = root.querySelector("[data-image-warning]");
+    const validationBadge = root.querySelector("[data-validation-badge]");
+    const outputEmpty = root.querySelector("[data-output-empty]");
+    const outputError = root.querySelector("[data-output-error]");
+    const renderedOutput = root.querySelector("[data-rendered-output]");
+    const outputSteps = root.querySelector("[data-output-steps]");
+    const downloadList = root.querySelector("[data-download-list]");
+
+    if (!(form instanceof HTMLFormElement) || !fields || !status || !(generate instanceof HTMLButtonElement)) continue;
+
+    const base = root.dataset.base || "/";
+    const slug = root.dataset.slug;
+    /** @type {any} */
+    let recipe;
+    /** @type {any} */
+    let latest;
+    /** @type {[string, any][]} */
+    let visibleParameters = [];
+
+    /** @param {unknown} value */
+    const toText = (value) => {
+      if (value == null) return "";
+      if (typeof value === "object" && !Array.isArray(value)) {
+        return Object.entries(value).map(([key, item]) => `${key}=${item}`).join("\n");
+      }
+      return String(value);
+    };
+    /** @param {any} value */
+    const parameterEntries = (value) =>
+      Array.isArray(value) ? value.map((entry) => [entry.name, entry]) : Object.entries(value || {});
+
+    /** @param {string} name */
+    function selected(name) {
+      const input = form.elements.namedItem(name);
+      if (input instanceof RadioNodeList) return input.value;
+      return input instanceof HTMLInputElement ? input.value : "";
+    }
+
+    /** @param {any} definition @param {string} target */
+    function isApplicable(definition, target) {
+      const targets = definition.targets || definition.target;
+      if (Array.isArray(targets)) return targets.includes(target);
+      if (typeof targets === "string") return targets === target;
+      return true;
+    }
+
+    /** @param {string} value */
+    function parseStringMap(value) {
+      const result = {};
+      for (const line of value.split(/[,\n]/)) {
+        if (!line.trim()) continue;
+        const split = line.indexOf("=");
+        if (split < 1 || split === line.length - 1) throw new Error("Use key=value pairs separated by commas or new lines.");
+        result[line.slice(0, split).trim()] = line.slice(split + 1).trim();
+      }
+      return result;
+    }
+
+    /** @param {string} name @param {any} definition */
+    function fieldValue(name, definition) {
+      const input = form.elements.namedItem(name);
+      if (!(input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement)) return undefined;
+      const value = input.value.trim();
+      if (definition.type === "integer") return value === "" ? undefined : Number(value);
+      if (definition.type === "stringMap") return value === "" ? {} : parseStringMap(value);
+      return value;
+    }
+
+    /** @param {string} name @param {any} definition */
+    function validateField(name, definition) {
+      const input = form.elements.namedItem(name);
+      const error = form.querySelector(`[data-error-for="${CSS.escape(name)}"]`);
+      if (!(input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement)) return true;
+
+      input.setCustomValidity("");
+      let message = "";
+      const value = input.value.trim();
+      if (definition.required && !value) message = `${definition.label || name} is required for this target.`;
+      if (!message && definition.type === "integer" && value && (!Number.isInteger(Number(value)) || Number(value) < 0)) {
+        message = "Enter a whole number of zero or more.";
+      }
+      if (!message && definition.type === "stringMap" && value) {
+        try { parseStringMap(value); } catch (cause) { message = cause instanceof Error ? cause.message : "Enter valid key=value pairs."; }
+      }
+      if (!message && ["model_storage_path", "jit_storage_path"].includes(name) && value && !value.startsWith("/")) {
+        message = "Enter an absolute host path beginning with /.";
+      }
+      input.setCustomValidity(message);
+      if (error) error.textContent = message;
+      return !message;
+    }
+
+    function validateForm(showErrors = false) {
+      const imageValid = selected("image-mode") !== "latest" || Boolean(latest?.reference);
+      const valid = imageValid && visibleParameters.every(([name, definition]) => validateField(name, definition));
+      generate.disabled = !valid;
+      if (showErrors && !valid) form.reportValidity();
+      return valid;
+    }
+
+    function renderFields() {
+      const target = selected("target");
+      visibleParameters = parameterEntries(recipe?.deployment?.parameters).filter(([, definition]) => isApplicable(definition, target));
+      fields.replaceChildren();
+
+      for (const [name, definition] of visibleParameters) {
+        const group = document.createElement("div");
+        group.className = "field-group";
+        const label = document.createElement("label");
+        label.htmlFor = `recipe-${name}`;
+        const labelText = document.createElement("span");
+        labelText.textContent = definition.label || name.replaceAll("_", " ");
+        label.append(labelText);
+        if (definition.required) {
+          const required = document.createElement("span");
+          required.className = "required-marker";
+          required.textContent = "Required";
+          label.append(required);
+        }
+
+        const input = definition.type === "stringMap" ? document.createElement("textarea") : document.createElement("input");
+        input.id = `recipe-${name}`;
+        input.name = name;
+        input.required = Boolean(definition.required);
+        input.value = toText(definition.default);
+        input.setAttribute("aria-describedby", `recipe-${name}-hint recipe-${name}-error`);
+        if (input instanceof HTMLInputElement) {
+          input.type = definition.type === "integer" ? "number" : "text";
+          if (definition.type === "integer") input.min = "0";
+        } else {
+          input.rows = 2;
+          input.placeholder = "key=value, another=value";
+        }
+
+        const hint = document.createElement("small");
+        hint.id = `recipe-${name}-hint`;
+        hint.className = "field-hint";
+        hint.textContent = definition.description || "";
+        const error = document.createElement("small");
+        error.id = `recipe-${name}-error`;
+        error.className = "field-error";
+        error.dataset.errorFor = name;
+        error.setAttribute("aria-live", "polite");
+        group.append(label, input, hint, error);
+        fields.append(group);
+      }
+
+      if (targetNote) targetNote.textContent = target === "docker"
+        ? "Docker uses the same engine definition, but this two-host path is not yet runtime-validated."
+        : "The two-node LeaderWorkerSet deployment is the runtime-verified path.";
+      if (validationBadge) validationBadge.textContent = target === "docker" ? "Docker unverified" : "Verified LWS path";
+      validateForm();
+      resetOutput();
+    }
+
+    function imageReference() {
+      if (selected("image-mode") === "latest") return latest?.reference;
+      return recipe?.validation?.image;
+    }
+
+    function syncImageChoice() {
+      const useLatest = selected("image-mode") === "latest";
+      if (imageWarning instanceof HTMLElement) imageWarning.hidden = !useLatest;
+      validateForm();
+      resetOutput();
+    }
+
+    function resetOutput() {
+      if (outputEmpty instanceof HTMLElement) outputEmpty.hidden = false;
+      if (renderedOutput instanceof HTMLElement) renderedOutput.hidden = true;
+      if (outputError instanceof HTMLElement) outputError.hidden = true;
+    }
+
+    /** @param {HTMLButtonElement} button @param {string} text */
+    async function copyText(button, text) {
+      try {
+        if (!navigator.clipboard) throw new Error("clipboard unavailable");
+        await navigator.clipboard.writeText(text);
+        const original = button.textContent;
+        button.textContent = "Copied";
+        window.setTimeout(() => { button.textContent = original; }, 1600);
+      } catch {
+        button.textContent = "Copy failed";
+      }
+    }
+
+    /** @param {string} name @param {string} text */
+    function downloadFile(name, text) {
+      const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = name;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    }
+
+    /** @param {{files: Record<string, string>, steps: {title: string, text?: string, command?: string}[]}} result */
+    function renderResult(result) {
+      outputSteps?.replaceChildren();
+      downloadList?.replaceChildren();
+
+      for (const [index, step] of (result.steps || []).entries()) {
+        const article = document.createElement("article");
+        article.className = "output-step";
+        const heading = document.createElement("div");
+        heading.className = "step-heading";
+        const title = document.createElement("h4");
+        title.textContent = `${String(index + 1).padStart(2, "0")} — ${step.title}`;
+        heading.append(title);
+        if (step.command) {
+          const copy = document.createElement("button");
+          copy.type = "button";
+          copy.className = "copy-button";
+          copy.textContent = "Copy";
+          copy.addEventListener("click", () => copyText(copy, step.command));
+          heading.append(copy);
+        }
+        article.append(heading);
+        if (step.text) {
+          const description = document.createElement("p");
+          description.textContent = step.text;
+          article.append(description);
+        }
+        if (step.command) {
+          const pre = document.createElement("pre");
+          const code = document.createElement("code");
+          code.textContent = step.command;
+          pre.append(code);
+          article.append(pre);
+        }
+        outputSteps?.append(article);
+      }
+
+      for (const [name, text] of Object.entries(result.files || {})) {
+        const row = document.createElement("div");
+        row.className = "download-row";
+        const copy = document.createElement("button");
+        copy.type = "button";
+        copy.className = "copy-button";
+        copy.textContent = "Copy";
+        copy.addEventListener("click", () => copyText(copy, String(text)));
+        const download = document.createElement("button");
+        download.type = "button";
+        download.className = "download-button";
+        download.textContent = `Download ${name}`;
+        download.addEventListener("click", () => downloadFile(name, String(text)));
+        row.append(download, copy);
+        downloadList?.append(row);
+      }
+
+      if (outputEmpty instanceof HTMLElement) outputEmpty.hidden = true;
+      if (renderedOutput instanceof HTMLElement) renderedOutput.hidden = false;
+    }
+
+    form.addEventListener("input", () => validateForm());
+    form.addEventListener("change", (event) => {
+      const input = event.target;
+      if (input instanceof HTMLInputElement && input.name === "target") renderFields();
+      if (input instanceof HTMLInputElement && input.name === "image-mode") syncImageChoice();
+    });
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (!validateForm(true)) return;
+      try {
+        const parameters = Object.fromEntries(visibleParameters.map(([name, definition]) => [name, fieldValue(name, definition)]));
+        const result = renderRecipe(recipe, parameters, imageReference(), selected("target"));
+        renderResult(result);
+        if (outputError instanceof HTMLElement) outputError.hidden = true;
+      } catch (cause) {
+        if (outputError instanceof HTMLElement) {
+          outputError.textContent = cause instanceof Error ? cause.message : "The deployment could not be rendered.";
+          outputError.hidden = false;
+        }
+      }
+    });
+
+    try {
+      const [recipesResponse, latestResponse] = await Promise.all([
+        fetch(`${base}recipes.json`),
+        fetch(`${base}latest-image.json`),
+      ]);
+      if (!recipesResponse.ok) throw new Error("Recipe catalog is unavailable.");
+      const catalog = await recipesResponse.json();
+      recipe = (Array.isArray(catalog) ? catalog : catalog.recipes || []).find((candidate) => candidate?.meta?.slug === slug);
+      if (!recipe) throw new Error("This recipe is not present in the generated catalog.");
+      if (latestResponse.ok) latest = await latestResponse.json();
+      if (latestLabel && latest) latestLabel.textContent = `${latest.tag} · resolved ${new Date(latest.resolved_at).toLocaleString()}`;
+      const latestInput = form.querySelector('input[name="image-mode"][value="latest"]');
+      if (latestInput instanceof HTMLInputElement && !latest?.reference) latestInput.disabled = true;
+      status.textContent = "Ready — fields are processed locally in your browser.";
+      renderFields();
+    } catch (cause) {
+      status.textContent = cause instanceof Error ? cause.message : "Recipe data could not be loaded.";
+      fields.replaceChildren();
+      const message = document.createElement("p");
+      message.className = "output-error";
+      message.textContent = "Generation is disabled until complete published recipe data is available.";
+      fields.append(message);
+    }
+  }
+</script>

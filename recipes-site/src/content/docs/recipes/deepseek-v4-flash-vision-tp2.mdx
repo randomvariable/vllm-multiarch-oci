@@ -1,0 +1,60 @@
+---
+title: DeepSeek V4 Flash Vision · TP=2
+description: The tested two-node DeepSeek-V4-Flash-Vision-Exp deployment recipe.
+sidebar:
+  label: DeepSeek V4 Flash Vision
+---
+
+import RecipeBuilder from "../../../components/RecipeBuilder.astro";
+
+<p class="eyebrow">Runtime recipe · DeepSeek</p>
+
+# DeepSeek V4 Flash Vision on two GB10 nodes
+
+This is the public, parameterized form of the accepted two-node deployment. The recipe fixes the model revision, engine flags, environment, topology, and validated image. You supply the details that belong to your cluster or Docker hosts.
+
+<div class="release-strip" aria-label="Recipe validation status">
+  <span>Validated image</span>
+  <code>ghcr.io/randomvariable/vllm-b12x-multi@sha256:42d5d72bd79a371c3b5a756fe2a1814f3c9393dd9a73d65bcefa01eb8f28d726</code>
+  <a href="#recipe-builder-title">Configure</a>
+</div>
+
+<dl class="fact-grid">
+  <div><dt>Model</dt><dd>deepseek-ai/DeepSeek-V4-Flash-Vision-Exp</dd></div>
+  <div><dt>Model revision</dt><dd>6821d6ad3681a4b137b066b76094fa82ebd0a380</dd></div>
+  <div><dt>Topology</dt><dd>2 nodes · TP=2 · one GB10 per node</dd></div>
+  <div><dt>Context</dt><dd>1,000,000 tokens</dd></div>
+</dl>
+
+## What is fixed
+
+The authored recipe preserves the accepted runtime command and tuning: B12X attention and linear backends, InstantTensor, a graph cap of 16 with capture sizes `1, 2, 3, 4, 8, 12, 16`, GPU utilization `0.81`, four sequences, and an 8,192-token batch budget. It does not present these constants as a general tuning matrix.
+
+The LWS target is **verified** against the recorded live acceptance. The Docker target uses the same engine definition and is rendered and syntax-checkable, but remains **not yet runtime-validated** on two free hosts.
+
+:::caution[Allocator units are not physical devices]
+Kubernetes extended-resource counts are values published by the cluster's device plugins. A site may advertise more allocator units than physical hardware. The beginner path requests one GPU and one RDMA unit per rank; experienced operators must match the generated requests to their own allocator policy.
+:::
+
+## Two traffic paths
+
+The rank-zero API receives requests on port `8888`. The second rank is headless and participates in tensor-parallel collectives over the configured secondary network. Control and probe traffic stays on the primary pod network; the Multus attachment carries collective traffic.
+
+<div class="diagram-frame">
+  <iframe
+    title="Two-node tensor parallel deployment"
+    src={`${import.meta.env.BASE_URL}figures/tp2-deployment.html`}
+    loading="lazy"
+  ></iframe>
+</div>
+
+<a href={`${import.meta.env.BASE_URL}figures/tp2-deployment.html`}>Open the deployment figure on its own page</a>.
+
+<RecipeBuilder />
+
+## Before applying output
+
+- For Kubernetes, complete the <a href={`${import.meta.env.BASE_URL}guides/cluster-prerequisites/`}>cluster prerequisite checklist</a> and confirm the NVIDIA runtime, LWS controller, CNI, Multus, and RDMA allocator are ready.
+- For Docker, synchronize the model on both hosts before starting either serving container. Start rank zero first, then let the worker's rendezvous check succeed before its headless server starts.
+- Stop a GB10 serving container gracefully with a 120-second timeout. Long kernel execution is not grounds for force-killing a GPU process.
+- A digest-qualified latest image is newer, not equivalent to the validated recipe image. Selecting it changes the validation status shown by the generator.

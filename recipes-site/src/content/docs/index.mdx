@@ -1,0 +1,69 @@
+---
+title: vLLM multi-arch recipes
+description: Reproducible deployments for consumer Blackwell hardware.
+template: splash
+hero:
+  title: Recipes for the machines between workstation and cluster.
+  tagline: Digest-pinned images, authored runtime definitions, and deployment instructions that say exactly what has been proved.
+  actions:
+    - text: Open the DeepSeek recipe
+      link: /recipes/deepseek-v4-flash-vision-tp2/
+      icon: right-arrow
+      variant: primary
+    - text: Follow the beginner route
+      link: /tutorials/k3s-to-deepseek/
+      icon: open-book
+      variant: minimal
+---
+
+import ReleaseStrip from "../../components/ReleaseStrip.astro";
+
+<ReleaseStrip />
+
+<section class="site-intro" aria-labelledby="site-purpose">
+  <div class="intro-copy">
+    <p class="eyebrow">One source, two deployment forms</p>
+    <h2 id="site-purpose" class="large-copy">A recipe is a runtime claim, not a bag of flags.</h2>
+    <p>
+      Each page keeps the tested image separate from the newest publication, then renders Kubernetes and Docker artifacts from one authored definition. Site-specific network, storage, and resource values remain yours to supply.
+    </p>
+  </div>
+  <div class="topology-card" aria-label="Two-node tensor parallel topology">
+    <p class="eyebrow">Seed topology</p>
+    <h2>Two GB10 nodes. One model server.</h2>
+    <div class="topology-node">
+      <span class="rank">R0</span>
+      <strong>Leader · OpenAI API</strong>
+      <small>GB10</small>
+    </div>
+    <div class="collective-line" aria-hidden="true"></div>
+    <div class="topology-node">
+      <span class="rank">R1</span>
+      <strong>Worker · headless</strong>
+      <small>GB10</small>
+    </div>
+  </div>
+</section>
+
+## Start from evidence
+
+<div class="recipe-card-grid">
+  <article class="recipe-card">
+    <p class="recipe-status">LWS · runtime verified</p>
+    <h3>DeepSeek V4 Flash Vision</h3>
+    <p>One million token context, tensor parallel size two, one physical GB10 on each node, and the exact digest accepted live.</p>
+    <div class="card-meta">
+      <span>TP 2</span><span>2 nodes</span><span>ARM64</span>
+    </div>
+    <a class="recipe-link" href={`${import.meta.env.BASE_URL}recipes/deepseek-v4-flash-vision-tp2/`}>Build this deployment →</a>
+  </article>
+  <article class="recipe-card">
+    <p class="recipe-status">Guided path · k3s</p>
+    <h3>From bare hosts to routed inference</h3>
+    <p>A linear route through the 64 KiB kernel driver, Cilium, GPU and RDMA dependencies, LWS, and inference-aware routing.</p>
+    <div class="card-meta">
+      <span>Cilium</span><span>Multus</span><span>llm-d</span>
+    </div>
+    <a class="recipe-link" href={`${import.meta.env.BASE_URL}tutorials/k3s-to-deepseek/`}>Begin the walkthrough →</a>
+  </article>
+</div>
