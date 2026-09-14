@@ -15,7 +15,7 @@ dependencies:
     notes: "Worked host lane only; use repositories already configured by DGX OS."
   - id: kernel
     name: NVIDIA 64 KiB-page kernel and headers
-    version: "7.0.0-1016-nvidia-64k"
+    version: "7.0.0-1019-nvidia-64k"
     source: https://packages.ubuntu.com/
     owner: host operator
     depends_on: [dgx-os]

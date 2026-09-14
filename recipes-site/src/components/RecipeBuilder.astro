@@ -10,8 +10,7 @@ const base = import.meta.env.BASE_URL;
 <section class="recipe-builder" data-recipe-builder data-slug={slug} data-base={base} aria-labelledby="recipe-builder-title">
   <div class="builder-heading">
     <div>
-      <p class="eyebrow">Recipe generator</p>
-      <h2 id="recipe-builder-title">Make the deployment yours</h2>
+      <h2 id="recipe-builder-title">Manifest generator</h2>
       <p>
         Choose a target and supply the details that belong to your hosts or cluster.
         Values stay in this page and are never sent to a service.
@@ -35,7 +34,7 @@ const base = import.meta.env.BASE_URL;
           </label>
         </div>
         <p class="field-hint" data-target-note>
-          The two-node LeaderWorkerSet deployment is the runtime-verified path.
+          This is the two-node LeaderWorkerSet deployment I run.
         </p>
       </fieldset>
 
@@ -44,19 +43,19 @@ const base = import.meta.env.BASE_URL;
         <label class="choice-card">
           <input type="radio" name="image-mode" value="validated" checked />
           <span>
-            <strong>Validated recipe image</strong>
-            <small>Accepted with this exact TP=2 recipe</small>
+            <strong>Image used by this recipe</strong>
+            <small>This is the image running in the TP=2 deployment</small>
           </span>
         </label>
         <label class="choice-card">
           <input type="radio" name="image-mode" value="latest" />
           <span>
             <strong>Latest published image</strong>
-            <small data-latest-label>Resolved independently from recipe validation</small>
+            <small data-latest-label>The newest image published by the nightly build</small>
           </span>
         </label>
         <p class="image-warning" data-image-warning hidden>
-          The latest image is digest-pinned, but has not been runtime-validated for this recipe.
+          This image is newer than the one currently running with this recipe. Use it when you want to try the latest build.
         </p>
       </fieldset>
 
@@ -65,7 +64,7 @@ const base = import.meta.env.BASE_URL;
       </div>
 
       <button class="generate-button" type="submit" disabled data-generate>
-        Generate deployment
+        Generate manifests
       </button>
       <p class="form-note">
         Required values gate all copy and download controls. No partial deployment is offered.
@@ -78,15 +77,12 @@ const base = import.meta.env.BASE_URL;
           <p class="eyebrow">Rendered output</p>
           <h3 id="generated-output-title">Operator steps</h3>
         </div>
-        <span class="validation-badge" data-validation-badge>Verified LWS path</span>
+        <span class="validation-badge" data-validation-badge>Current LWS setup</span>
       </div>
 
       <div class="output-empty" data-output-empty>
-        <span aria-hidden="true">01 / 02</span>
-        <h4>Complete the site-specific fields</h4>
-        <p>
-          Once every required field is valid, the renderer will produce ordered steps and downloadable files here.
-        </p>
+        <h4>No manifests generated</h4>
+        <p>Complete the required fields, then select <strong>Generate manifests</strong>.</p>
       </div>
       <div class="output-error" data-output-error role="alert" hidden></div>
       <div class="rendered-output" data-rendered-output hidden>
@@ -247,6 +243,17 @@ const base = import.meta.env.BASE_URL;
         if (input instanceof HTMLInputElement) {
           input.type = definition.type === "integer" ? "number" : "text";
           if (definition.type === "integer") input.min = "0";
+          if (Array.isArray(definition.suggestions)) {
+            const list = document.createElement("datalist");
+            list.id = `recipe-${name}-suggestions`;
+            for (const value of definition.suggestions) {
+              const option = document.createElement("option");
+              option.value = value;
+              list.append(option);
+            }
+            input.setAttribute("list", list.id);
+            group.append(list);
+          }
         } else {
           input.rows = 2;
           input.placeholder = "key=value, another=value";
@@ -256,6 +263,13 @@ const base = import.meta.env.BASE_URL;
         hint.id = `recipe-${name}-hint`;
         hint.className = "field-hint";
         hint.textContent = definition.description || "";
+        if (definition.help) {
+          hint.append(" ");
+          const help = document.createElement("a");
+          help.href = `${base}${definition.help.href}`;
+          help.textContent = definition.help.label;
+          hint.append(help);
+        }
         const error = document.createElement("small");
         error.id = `recipe-${name}-error`;
         error.className = "field-error";
@@ -266,9 +280,9 @@ const base = import.meta.env.BASE_URL;
       }
 
       if (targetNote) targetNote.textContent = target === "docker"
-        ? "Docker uses the same engine definition, but this two-host path is not yet runtime-validated."
-        : "The two-node LeaderWorkerSet deployment is the runtime-verified path.";
-      if (validationBadge) validationBadge.textContent = target === "docker" ? "Docker unverified" : "Verified LWS path";
+        ? "Docker uses the same engine settings. I run the Kubernetes version, so treat the Docker scripts as a starting point for two hosts."
+        : "This is the two-node LeaderWorkerSet deployment I run.";
+      if (validationBadge) validationBadge.textContent = target === "docker" ? "Docker instructions" : "Current LWS setup";
       validateForm();
       resetOutput();
     }
@@ -293,14 +307,27 @@ const base = import.meta.env.BASE_URL;
 
     /** @param {HTMLButtonElement} button @param {string} text */
     async function copyText(button, text) {
+      const original = button.textContent;
       try {
-        if (!navigator.clipboard) throw new Error("clipboard unavailable");
-        await navigator.clipboard.writeText(text);
-        const original = button.textContent;
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          const textarea = document.createElement("textarea");
+          textarea.value = text;
+          textarea.setAttribute("readonly", "");
+          textarea.style.position = "fixed";
+          textarea.style.opacity = "0";
+          document.body.append(textarea);
+          textarea.select();
+          const copied = document.execCommand("copy");
+          textarea.remove();
+          if (!copied) throw new Error("copy unavailable");
+        }
         button.textContent = "Copied";
         window.setTimeout(() => { button.textContent = original; }, 1600);
       } catch {
-        button.textContent = "Copy failed";
+        button.textContent = "Select text to copy";
+        window.setTimeout(() => { button.textContent = original; }, 2400);
       }
     }
 
@@ -370,6 +397,8 @@ const base = import.meta.env.BASE_URL;
 
       if (outputEmpty instanceof HTMLElement) outputEmpty.hidden = true;
       if (renderedOutput instanceof HTMLElement) renderedOutput.hidden = false;
+      if (status) status.textContent = `Generated ${result.steps.length} operator steps and ${Object.keys(result.files).length} files.`;
+      document.getElementById("generated-output-title")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
     form.addEventListener("input", () => validateForm());

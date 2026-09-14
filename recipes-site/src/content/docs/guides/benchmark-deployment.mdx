@@ -1,0 +1,40 @@
+---
+title: Benchmark a deployment
+description: Run llm-inference-bench against the OpenAI-compatible API and interpret the result.
+---
+
+Use [`local-inference-lab/llm-inference-bench`](https://github.com/local-inference-lab/llm-inference-bench) from a workstation that can reach the model's OpenAI-compatible API. The benchmark is an external client. It is not included in the serving image.
+
+## Open a connection to the model
+
+For a Kubernetes deployment, forward the rank-zero Service to the workstation:
+
+```bash
+kubectl -n <namespace> port-forward service/<service> 8888:8888
+```
+
+Keep that terminal open. If the API is already reachable, use its host and port instead.
+
+## Run the benchmark
+
+Clone the benchmark repository and use `uv` to run it with its declared dependencies:
+
+```bash
+git clone https://github.com/local-inference-lab/llm-inference-bench.git
+cd llm-inference-bench
+uv run --with httpx --with rich --with psutil llm_decode_bench.py \
+  --host 127.0.0.1 \
+  --port 8888 \
+  --model deepseek-v4-flash-vision \
+  --test-profile estonia \
+  --profile-concurrency 1 \
+  --profile-runs 3 \
+  --max-tokens 40000 \
+  --output deepseek-v4-flash-vision.json \
+  --display-mode plain \
+  --no-hw-monitor
+```
+
+Set `--model` to the served model name returned by `/v1/models`. Keep the JSON result with the image digest, model revision, engine arguments, concurrency, prompt profile and date. Those inputs are required to compare later runs.
+
+Use several runs and control the image, model, load, temperature, cache state and competing node activity before treating measurements as a performance baseline. Individual recipes may publish smaller smoke measurements from the configuration they describe.

@@ -18,16 +18,39 @@ The rank-zero pod owns the HTTP API on port 8888. The rank-one pod is headless a
 
 ## Render a complete artifact
 
+### Storage paths
+
+`model_storage_path` is a durable root shared by model downloads. The default `/var/lib/models` is safe because `model-sync` keeps snapshots revision-specific and publishes this recipe below `/models/deepseek-v4-flash-vision` in the container. `jit_storage_path` must be model-specific because generated kernels and compiler artifacts depend on the model and engine configuration. The default is `/var/cache/vllm/deepseek-v4-flash-vision`. Create both paths on each GPU node and ensure the container runtime can write to them.
+
+### Node placement
+
+List labels before choosing a selector or topology contract:
+
+```bash
+kubectl get nodes --show-labels
+kubectl get nodes -L kubernetes.io/arch,nvidia.com/gpu.product
+```
+
+`node_selector` uses `key=value` entries and must select both GB10 nodes. `topology_key` is a label key whose values distinguish the eligible failure domains. `topology_values` is the comma-separated set accepted for this group. Add deliberate site labels if the standard labels do not express the pair. Do not use hostnames as a topology scheme unless pinning the deployment to those exact machines is intentional.
+
+### Runtime network interfaces
+
+Kubernetes pods use `eth0` for Gloo coordination and NCCL socket bootstrap, so the LWS generator fixes both variables to that primary pod interface. `NCCL_IB_HCA` separately selects the RDMA devices used for GPU collectives. Its `rocep1s0f1,roceP2p1s0f1` preset is the pair used by this DeepSeek deployment, not a hardware guarantee: another workload in the same cluster exposes a differently named second device. Use the [Multus and RDMA guide](/vllm-multiarch-oci/guides/multus-rdma/#advertise-one-rdma-unit-per-node) to inspect both hosts and type over the preset when their enumeration differs.
+
+### Docker host values
+
+Docker uses host networking. Set `leader_ip` and `worker_ip` to stable host addresses that reach each other. Set the socket and Gloo interfaces to real host interfaces, and the HCA list to the host RDMA devices mounted into each container. Kubernetes NetworkAttachmentDefinition names and extended-resource keys do not apply to Docker.
+
 Open the [recipe builder](/vllm-multiarch-oci/recipes/deepseek-v4-flash-vision-tp2/), select **Kubernetes / LeaderWorkerSet**, and supply:
 
 - namespace and workload name;
 - absolute model and JIT host paths;
 - Hugging Face Secret name and key;
-- NetworkAttachmentDefinition, HCA, GID index, socket and Gloo interfaces;
+- NetworkAttachmentDefinition, HCA, GID index and control interface;
 - exact node selector, topology key and allowed topology values;
-- GPU and RDMA extended-resource keys and allocator-unit counts.
+- the RDMA extended-resource key and allocator-unit count.
 
-Do not copy resource keys or high allocator counts from another site unless your own device plugins expose that contract. On the fresh lane, one rank requests one GPU and one RDMA unit.
+Each rank requests one `nvidia.com/gpu`; the fresh GPU Operator setup guarantees that contract, so it is not a form field. The generator defaults the secondary attachment to `roce-net`, the RDMA resource to `rdma.com/roce`, its allocator count to one, and the GID index to 3. These match the setup guides but remain editable because network policy and GID tables are site-specific. Do not copy resource keys or high allocator counts from another site unless your own device plugins expose that contract.
 
 The builder withholds copy/download actions when required values are missing or invalid. It never asks for a token. Keep **Validated recipe image** selected for the accepted digest; selecting the resolved latest image is explicitly unvalidated for this recipe.
 
@@ -94,12 +117,12 @@ curl --fail --silent http://127.0.0.1:8888/v1/models
 
 Then make three real requests against `deepseek-ai/DeepSeek-V4-Flash-Vision-Exp`: a text completion, a tool-call request with an explicit tool schema, and a vision request whose message includes one valid image. Require valid OpenAI-compatible JSON and the expected content/tool result for each.
 
-This direct Service proves the rank-zero API and both-rank engine group. It bypasses EPP selection and is therefore not routing proof. Continue with [llm-d-style routing](/vllm-multiarch-oci/guides/llm-d-routing/).
+This direct Service checks the rank-zero API and both-rank engine group. It bypasses EPP selection. Continue with [request routing](/vllm-multiarch-oci/guides/llm-d-routing/) to configure the Gateway path.
 
 ## Operational stop
 
 A healthy distributed group may spend a long time in GPU kernels. Never force-delete its pods or force-kill GB10 processes merely because a request or shutdown is slow. Use ordinary Kubernetes deletion and allow the generated 120-second termination grace. If maintenance is required, drain requests, remove the complete group gracefully, verify no GPU holders, then proceed.
 
 :::note[Docker lane]
-The same recipe can render two host-network Docker scripts, but that path is **not yet runtime-validated**. Syntax/rendering is not two-host acceptance. It requires two free GB10 hosts and the same model/RDMA/interface contract.
+The same recipe renders two host-network Docker scripts. I run the Kubernetes version, so the Docker form is a starting point for two GB10 hosts with the same model, RDMA and interface setup.
 :::

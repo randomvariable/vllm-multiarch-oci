@@ -1,12 +1,12 @@
 ---
 title: Install GPU Operator in host-owned mode
-description: Advertise one GB10 GPU without replacing the pinned host driver or toolkit.
+description: Advertise one DGX Spark GPU without replacing the pinned host driver or toolkit.
 ---
 
 The host owns NVIDIA kernel modules, GSP firmware, userspace and Container Toolkit. GPU Operator 26.7.0 owns discovery, validation, CDI and the device plugin only. Never enable its driver or RDMA-driver containers on the custom-fork lane.
 
-:::caution[Validation boundary]
-Version 26.7.0 is pinned from the released NVIDIA chart and meets its documented Kubernetes minimum, but this complete k3s/GB10 combination is not end-to-end validated here. The accepted production workload uses a different kubeadm cluster.
+:::note[What I run]
+I use GPU Operator 26.7.0 with host-managed drivers on a kubeadm cluster. The k3s setup below uses the same ownership split, but I have not run that complete combination.
 :::
 
 ## Choose the sole NFD owner
@@ -62,7 +62,7 @@ kubectl -n gpu-operator get daemonset
 
 Expected values are exactly `driver.enabled: false` and `toolkit.enabled: false`. No operator driver DaemonSet may run. Diagnose operands that are CrashLoopBackOff before continuing; common boundaries are missing host modules, missing CDI/runtime integration or unsatisfied NFD labels.
 
-## Require one allocatable GPU on each GB10
+## Require one allocatable GPU on each DGX Spark
 
 ```bash
 kubectl get nodes -o custom-columns=NAME:.metadata.name,GPU:.status.allocatable.nvidia\.com/gpu

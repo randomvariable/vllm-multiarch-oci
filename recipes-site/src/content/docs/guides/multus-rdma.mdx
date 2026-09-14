@@ -5,8 +5,8 @@ description: Attach a separate macvlan RoCE network while Cilium remains the pri
 
 Cilium must already pass its connectivity test. Multus is a CNI multiplexer: it adds a secondary macvlan interface to a pod after Cilium creates the primary interface. Whereabouts allocates secondary IPs. NVIDIA Network Operator 26.7.0 is used only to advertise a narrow RDMA shared-device resource backed by inbox `mlx5`; it must not install OFED, NFD, Multus or other CNI components.
 
-:::caution[Security and validation boundary]
-Cilium policy governs the primary interface; it does not automatically secure the Multus/macvlan interface. Isolate the secondary subnet physically and by host/network controls. This k3s lane is not yet proven by a two-GB10 GPU RDMA transfer.
+:::caution[Separate network policy]
+Cilium policy governs the primary interface; it does not automatically secure the Multus/macvlan interface. Isolate the secondary subnet physically and with host and network controls. I have not run the two-GB10 RDMA transfer on this k3s setup.
 :::
 
 ## Discover the k3s CNI paths
@@ -138,6 +138,18 @@ EOF
 The documented fabric is L2-only, so the manifest omits `gateway`. If your routed secondary network requires one, add the real address selected by the network operator rather than inventing it.
 
 ## Advertise one RDMA unit per node
+
+### Identify the runtime network values
+
+The manifest generator needs the resource key created by the policy below, the HCA names selected by that policy, and the GID index for the RoCE address family and VLAN. Inspect them on each GPU host:
+
+```bash
+ibdev2netdev
+show_gids
+rdma link show
+```
+
+Use the same verified GID index on both ranks. Stop if the selected HCA does not map to the intended secondary-network interface or if the two hosts expose different mappings.
 
 Find the actual netdevice names and PCI driver on both hosts:
 

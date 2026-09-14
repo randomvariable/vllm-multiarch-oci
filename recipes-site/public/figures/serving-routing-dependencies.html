@@ -15,7 +15,7 @@
 </defs>
 <rect width="1280" height="720" fill="#faf7f2"/>
 <text x="48" y="44" fill="#a94e2b" font-family="'Geist Mono',monospace" font-size="8" font-weight="600" letter-spacing=".16em">DEPENDENCY GRAPH / CONTROL PLANE TO REQUEST</text>
-<text x="48" y="84" fill="#252b32" font-family="'Instrument Serif',serif" font-size="28">Install contracts before controllers; prove controllers before traffic.</text>
+<text x="48" y="84" fill="#252b32" font-family="'Geist',sans-serif" font-size="28" font-weight="650">Serving and request-routing dependencies</text>
 <text x="48" y="112" fill="#56616b" font-family="'Geist',sans-serif" font-size="12">The routing stack composes released APIs. LeaderWorkerSet remains the model orchestration layer.</text>
 
 <!-- Rank guide -->
@@ -57,6 +57,6 @@
 
 <line x1="48" y1="656" x2="1232" y2="656" stroke="rgba(37,43,50,.16)"/><text x="48" y="684" fill="#6d747b" font-family="'Geist Mono',monospace" font-size="8" letter-spacing=".14em">INSTALL ORDER RISES FROM CONTRACTS TO TRAFFIC</text><text x="1232" y="684" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="end">ARROWS MEAN “REQUIRES”</text>
 </svg></div>
-<figcaption class="notes"><section class="note"><h2>Three systems, three jobs</h2><p><code>LeaderWorkerSet</code> creates the distributed model group. Inference Extension supplies pool semantics and EPP. Envoy Gateway and Envoy AI Gateway accept and forward requests.</p></section><section class="note"><h2>Readiness gates the next rank</h2><p>Install CRDs before controllers, wait for controller deployments and accepted classes, then create the model and routing resources. A CRD existing alone is not controller readiness.</p></section></figcaption>
+<figcaption class="notes"><section class="note"><h2>Component responsibilities</h2><p><code>LeaderWorkerSet</code> creates the distributed model group. Inference Extension supplies pool semantics and EPP. Envoy Gateway and Envoy AI Gateway accept and forward requests.</p></section><section class="note"><h2>Installation order</h2><p>Install CRDs before controllers, wait for controller deployments and accepted classes, then create the model and routing resources. A CRD existing alone is not controller readiness.</p></section></figcaption>
 <footer>Official CNCF Envoy artwork and Kubernetes Community Deployment icon (Apache-2.0). Geometry embedded and sanitized.</footer>
 </figure></main></body></html>

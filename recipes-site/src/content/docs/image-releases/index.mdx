@@ -1,13 +1,13 @@
 ---
-title: Image releases
-description: How the site presents the latest immutable vLLM image publication.
+title: Latest image publication
+description: Immutable ARM64 images built from local-inference-lab/vLLM for NVIDIA DGX Spark.
 ---
 
 import LatestImage from "../../../components/LatestImage.astro";
 
-<p class="eyebrow">Release channel</p>
+Every image on this page packages a pinned revision of [`local-inference-lab/vLLM`](https://github.com/local-inference-lab/vllm) and its DGX Spark dependency set. These are not generic upstream vLLM images.
 
-# Latest is publication state, not recipe proof
+<p class="eyebrow">Release channel</p>
 
 The trusted Pages build resolves the public repository's `latest` tag to a Linux ARM64 digest, finds the matching immutable publication tag, and records the resolution time. The recipe generator consumes that static record and always emits a digest-qualified reference.
 

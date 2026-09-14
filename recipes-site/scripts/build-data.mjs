@@ -48,6 +48,12 @@ function validateRecipe(recipe, source) {
     if (parameter.type === "string") assert(typeof parameter.default === "string", `${source}: ${name} default must be a string`);
     if (parameter.type === "integer") assert(Number.isSafeInteger(parameter.default), `${source}: ${name} default must be an integer`);
     if (parameter.type === "stringMap") assert(parameter.default && typeof parameter.default === "object" && !Array.isArray(parameter.default) && Object.values(parameter.default).every((value) => typeof value === "string"), `${source}: ${name} default must be a string mapping`);
+    if (parameter.help) {
+      assert(typeof parameter.help.label === "string" && typeof parameter.help.href === "string" && !parameter.help.href.startsWith("/"), `${source}: ${name} help must have a label and site-relative href`);
+    }
+    if (parameter.suggestions) {
+      assert(parameter.type === "string" && Array.isArray(parameter.suggestions) && parameter.suggestions.length > 0 && parameter.suggestions.every((value) => typeof value === "string" && value), `${source}: ${name} suggestions must be non-empty strings for a string parameter`);
+    }
   }
   assert(DIGEST_REFERENCE.test(recipe.validation.image) && !recipe.validation.image.includes("internal.randomvariable"), `${source}: validation image must be a public digest-qualified reference`);
   assert(recipe.validation.lws === "verified" && recipe.validation.docker === "unverified" && typeof recipe.validation.evidence === "string", `${source}: validation status and evidence are required`);

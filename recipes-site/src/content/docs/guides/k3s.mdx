@@ -1,12 +1,12 @@
 ---
 title: Install k3s with Cilium on a GPU cluster
-description: Bootstrap one k3s server and two GB10 agents with custom CNI and NVIDIA runtime discovery.
+description: Bootstrap one k3s server and two DGX Spark agents with custom CNI and NVIDIA runtime discovery.
 ---
 
 This guide creates a fresh, non-HA k3s `v1.34.6+k3s1` cluster: one separate control-plane host and two DGX Spark agents. Cilium 1.19.4 is the only primary CNI path. kube-proxy stays enabled.
 
-:::caution[Not production-proven here]
-The author's accepted TP=2 deployment runs on kubeadm/Cilium, not k3s. These pinned k3s instructions have not completed the GPU/RDMA end-to-end hardware gates.
+:::note[What I run]
+My TP=2 deployment runs on kubeadm with Cilium. This page shows the equivalent k3s setup. I have not run the complete GPU and RDMA path on k3s.
 :::
 
 ## Network and host prerequisites

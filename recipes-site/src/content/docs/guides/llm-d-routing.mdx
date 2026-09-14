@@ -3,12 +3,14 @@ title: Route requests with EPP and Envoy AI Gateway
 description: Install a per-model Endpoint Picker and route only to the TP group's rank-zero API.
 ---
 
-This is an **llm-d-style routing stack**, not installation of an llm-d router chart. LeaderWorkerSet orchestrates the two-rank serving group. Gateway API Inference Extension's Endpoint Picker (EPP) selects a ready API endpoint. Envoy AI Gateway forwards the actual OpenAI request.
+This setup uses LeaderWorkerSet for the two-rank serving group, the Gateway API Inference Extension's Endpoint Picker (EPP) to select a ready API endpoint, and Envoy AI Gateway to forward the OpenAI request. It installs these components directly rather than through an llm-d chart.
+
+Use this stack when clients need one model-aware endpoint, operators need shared Gateway policy, or the deployment has multiple independent TP groups and should select between their rank-zero APIs using queue, KV-cache and prefix-cache state. For one TP group with no Gateway policy requirement, the generated rank-zero Service is sufficient and has fewer moving parts. [Why Envoy AI Gateway and EPP exist](/vllm-multiarch-oci/explanation/llm-d-request-path/#why-add-these-components) explains that trade-off before the installation steps.
 
 <iframe
   class="doc-figure"
   src={`${import.meta.env.BASE_URL}figures/llm-d-request-path.html`}
-  title="llm-d request routing architecture"
+  title="Inference request routing architecture"
   loading="lazy"
 ></iframe>
 

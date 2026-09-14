@@ -1,14 +1,12 @@
 ---
-title: Recipe catalog
-description: Digest-pinned vLLM deployments with explicit validation status.
+title: Validated deployments
+description: Digest-pinned local-inference-lab/vLLM deployments for NVIDIA DGX Spark.
 ---
 
 import RecipeCatalog from "../../../components/RecipeCatalog.astro";
 
 <p class="eyebrow">Recipe catalog</p>
 
-# Deployments with receipts
-
-A recipe fixes the engine behavior that was accepted. Host paths, network devices, allocatable resource names, selectors, and credentials remain deployment inputs. The validated image is always the default; a newer publication is offered separately and never inherits the recipe's acceptance status.
+These recipes run the [`local-inference-lab/vLLM`](https://github.com/local-inference-lab/vllm) fork built for NVIDIA DGX Spark. A recipe fixes the engine behavior that was accepted. Host paths, network devices, allocatable resource names, selectors, and credentials remain deployment inputs. The validated image is always the default; a newer publication is offered separately and never inherits the recipe's acceptance status.
 
 <RecipeCatalog />

@@ -12,7 +12,7 @@ The image and TP=2 LWS are accepted on a non-k3s kubeadm/Cilium cluster. The com
 | Layer | Exact pin | Installer / owner | Depends on | Readiness gate | Evidence |
 |---|---|---|---|---|---|
 | DGX OS / Ubuntu | 24.04 arm64 | host operator | firmware/repositories | `dpkg --print-architecture` | tested host lane |
-| 64 KiB kernel | `7.0.0-1016-nvidia-64k` | host operator | DGX OS packages | `uname -r`; page size 65536 | tested host lane; availability must be checked |
+| 64 KiB kernel | `7.0.0-1019-nvidia-64k` | host operator | DGX OS packages | `uname -r`; page size 65536 | current host lane; availability must be checked |
 | NVIDIA open fork | 615.71.09, release `spark-615.71.09-1`, commit `c5296e2…f96c42` | DKMS `nvidia-open` | exact kernel headers | five module versions/paths, `nvidia-smi`, CUDA allocation | tested host lane |
 | NVIDIA Container Toolkit | `1.17.8-1` | host operator | NVIDIA driver/userspace | `nvidia-container-runtime` visible to k3s service | source-observed pin |
 | k3s | `v1.34.6+k3s1` | k3s | toolkit before agent start | three Nodes Ready after Cilium | newly verified release; combination untested |

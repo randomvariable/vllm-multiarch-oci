@@ -7,8 +7,18 @@ kind: PipelineRun
 metadata:
   name: vllmb12x-nightly
   annotations:
-    pipelinesascode.tekton.dev/on-event: "[incoming]"
-    pipelinesascode.tekton.dev/on-target-branch: "[main]"
+    # The incoming nightly resolves main and exposes its changed-file set. Do
+    # not spend the ARM64 build pool on commits that only change the website,
+    # prose, or recipe-renderer definitions; GitHub Pages handles those paths.
+    pipelinesascode.tekton.dev/on-cel-expression: |
+      event == "incoming"
+      && target_branch == "main"
+      && !files.all.all(path,
+        path.matches('^recipes-site/')
+        || path.matches('^docs/')
+        || path.matches('^recipes/')
+        || path.matches('(^|/)README\\.md$')
+        || path == '.github/workflows/recipes-pages.yaml')
     pipelinesascode.tekton.dev/max-keep-runs: "3"
     # Two nightlies cannot run at once: they share the remote workers, the
     # ccache volume, and the publication Lease. A newer commit supersedes an

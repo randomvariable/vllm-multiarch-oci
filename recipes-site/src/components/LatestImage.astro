@@ -6,8 +6,8 @@ const base = import.meta.env.BASE_URL;
   <p class="eyebrow">Published metadata</p>
   <h2 id="latest-image-title">Resolved immutable image</h2>
   <dl class="fact-grid">
-    <div><dt>Immutable tag</dt><dd data-latest-tag>Loading...</dd></div>
-    <div><dt>Digest reference</dt><dd data-latest-reference>Loading...</dd></div>
+    <div><dt>Immutable tag</dt><dd><span data-latest-tag>Loading...</span><button type="button" class="fact-copy" data-copy-latest="tag">Copy</button></dd></div>
+    <div><dt>Digest reference</dt><dd><span data-latest-reference>Loading...</span><button type="button" class="fact-copy" data-copy-latest="reference">Copy</button></dd></div>
     <div><dt>Resolved at</dt><dd data-latest-time>Loading...</dd></div>
     <div><dt>Recipe status</dt><dd>Not inherited</dd></div>
   </dl>
@@ -21,6 +21,29 @@ const base = import.meta.env.BASE_URL;
     if (!(panel instanceof HTMLElement)) continue;
     panel.dataset.ready = "true";
     const field = (name) => panel.querySelector(`[data-latest-${name}]`);
+    const copyText = async (button, text) => {
+      const original = button.textContent;
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          const textarea = document.createElement("textarea");
+          textarea.value = text;
+          textarea.setAttribute("readonly", "");
+          textarea.style.position = "fixed";
+          textarea.style.opacity = "0";
+          document.body.append(textarea);
+          textarea.select();
+          const copied = document.execCommand("copy");
+          textarea.remove();
+          if (!copied) throw new Error("copy unavailable");
+        }
+        button.textContent = "Copied";
+      } catch {
+        button.textContent = "Select text";
+      }
+      window.setTimeout(() => { button.textContent = original; }, 1600);
+    };
     fetch(`${panel.dataset.base || "/"}latest-image.json`)
       .then((response) => {
         if (!response.ok) throw new Error("Latest image metadata is unavailable.");
@@ -30,6 +53,11 @@ const base = import.meta.env.BASE_URL;
         if (field("tag")) field("tag").textContent = latest.tag;
         if (field("reference")) field("reference").textContent = latest.reference;
         if (field("time")) field("time").textContent = new Date(latest.resolved_at).toLocaleString();
+        for (const button of panel.querySelectorAll("[data-copy-latest]")) {
+          if (!(button instanceof HTMLButtonElement)) continue;
+          const value = latest[button.dataset.copyLatest];
+          button.addEventListener("click", () => copyText(button, String(value)));
+        }
       })
       .catch((cause) => {
         const error = field("error");

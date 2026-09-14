@@ -137,26 +137,30 @@ deployment:
       default: vllm
       targets: [lws, llm-d-routing]
       description: Namespace for the model and its routing resources.
+      help: {label: Namespace and Secret setup, href: guides/deploy-tp2/#create-namespace-and-credential}
     name:
       label: Deployment name
       type: string
       required: true
       default: deepseek-v4-flash-vision
       description: DNS-compatible base name for resources and Docker containers.
+      help: {label: Deployment walkthrough, href: guides/deploy-tp2/}
     model_storage_path:
       label: Model storage path
       type: string
       required: true
-      default: ""
+      default: /var/lib/models
       targets: [lws, docker]
       description: Absolute persistent host path on each GPU node for the model cache and published snapshot.
+      help: {label: Storage layout, href: guides/deploy-tp2/#storage-paths}
     jit_storage_path:
       label: JIT cache path
       type: string
       required: true
-      default: ""
+      default: /var/cache/vllm/deepseek-v4-flash-vision
       targets: [lws, docker]
       description: Absolute persistent host path on each GPU node for compiler and kernel caches.
+      help: {label: Storage layout, href: guides/deploy-tp2/#storage-paths}
     hf_secret:
       label: Hugging Face Secret
       type: string
@@ -164,6 +168,7 @@ deployment:
       default: huggingface-token
       targets: [lws]
       description: Kubernetes Secret created from the operator's local HF_TOKEN environment variable.
+      help: {label: Create the Secret, href: guides/deploy-tp2/#create-namespace-and-credential}
     hf_secret_key:
       label: Hugging Face Secret key
       type: string
@@ -171,13 +176,15 @@ deployment:
       default: HF_TOKEN
       targets: [lws]
       description: Data key in the Kubernetes Secret; the browser never accepts or stores the token itself.
+      help: {label: Create the Secret, href: guides/deploy-tp2/#create-namespace-and-credential}
     network_attachment:
       label: RoCE network attachment
       type: string
       required: true
-      default: ""
+      default: roce-net
       targets: [lws]
       description: Multus NetworkAttachmentDefinition name for the secondary collective network.
+      help: {label: Create and inspect the attachment, href: guides/multus-rdma/#define-the-secondary-network}
     node_selector:
       label: GPU node selector
       type: stringMap
@@ -185,6 +192,7 @@ deployment:
       default: {}
       targets: [lws]
       description: Site-specific labels selecting the two GB10 nodes; arm64 is enforced separately.
+      help: {label: Find node labels, href: guides/deploy-tp2/#node-placement}
     topology_key:
       label: Exclusive topology key
       type: string
@@ -192,6 +200,7 @@ deployment:
       default: ""
       targets: [lws]
       description: Site label that groups the two nodes allowed to form this TP group.
+      help: {label: Configure topology labels, href: guides/deploy-tp2/#node-placement}
     topology_values:
       label: Allowed topology values
       type: string
@@ -199,27 +208,15 @@ deployment:
       default: ""
       targets: [lws]
       description: Comma-separated values accepted for the exclusive topology key.
-    gpu_resource:
-      label: GPU extended resource
-      type: string
-      required: true
-      default: nvidia.com/gpu
-      targets: [lws]
-      description: Device-plugin resource key; requested units are allocator units, not a physical GPU count.
-    gpu_units:
-      label: GPU allocator units
-      type: integer
-      required: true
-      default: 1
-      targets: [lws]
-      description: Extended-resource units allocated per rank; the fresh-cluster path exposes one unit per GB10.
+      help: {label: Configure topology labels, href: guides/deploy-tp2/#node-placement}
     rdma_resource:
       label: RDMA extended resource
       type: string
       required: true
-      default: ""
+      default: rdma.com/roce
       targets: [lws]
       description: RDMA shared-device-plugin resource key for the selected host interfaces.
+      help: {label: Configure the RDMA resource, href: guides/multus-rdma/#advertise-one-rdma-unit-per-node}
     rdma_units:
       label: RDMA allocator units
       type: integer
@@ -227,13 +224,17 @@ deployment:
       default: 1
       targets: [lws]
       description: Extended-resource allocator units per rank, not the number of HCAs or ports.
+      help: {label: Inspect RDMA allocation, href: guides/multus-rdma/#advertise-one-rdma-unit-per-node}
     hca:
       label: NCCL HCA list
       type: string
       required: true
-      default: ""
+      default: rocep1s0f1,roceP2p1s0f1
+      suggestions:
+        - rocep1s0f1,roceP2p1s0f1
       targets: [lws, docker]
-      description: Comma-separated real host RDMA device names exposed to the pod or Docker container.
+      description: Comma-separated RDMA devices. The preset is the pair used by this GB10 deployment; type over it if host enumeration differs.
+      help: {label: Find HCA names, href: guides/multus-rdma/#advertise-one-rdma-unit-per-node}
     gid_index:
       label: RoCE GID index
       type: integer
@@ -241,20 +242,15 @@ deployment:
       default: 3
       targets: [lws, docker]
       description: GID index verified for the site's RoCE VLAN and address family.
-    socket_interface:
-      label: NCCL socket interface
+      help: {label: Select the GID, href: guides/multus-rdma/#identify-the-runtime-network-values}
+    control_interface:
+      label: Host control network interface
       type: string
       required: true
       default: ""
-      targets: [lws, docker]
-      description: Control-plane interface name used by NCCL socket bootstrap on each target.
-    gloo_interface:
-      label: Gloo socket interface
-      type: string
-      required: true
-      default: ""
-      targets: [lws, docker]
-      description: Control-plane interface name used by Gloo on each target.
+      targets: [docker]
+      description: Docker host interface used by Gloo coordination and NCCL socket bootstrap; Kubernetes uses the primary pod interface eth0.
+      help: {label: Find host interfaces, href: guides/deploy-tp2/#runtime-network-interfaces}
     leader_ip:
       label: Leader host IP
       type: string
@@ -262,6 +258,7 @@ deployment:
       default: ""
       targets: [docker]
       description: Docker-only rank-zero address reachable from the worker over the host network.
+      help: {label: Docker host networking, href: guides/deploy-tp2/#docker-host-values}
     worker_ip:
       label: Worker host IP
       type: string
@@ -269,6 +266,7 @@ deployment:
       default: ""
       targets: [docker]
       description: Docker-only rank-one address used as that rank's VLLM_HOST_IP.
+      help: {label: Docker host networking, href: guides/deploy-tp2/#docker-host-values}
     gateway_class:
       label: GatewayClass name
       type: string
@@ -276,6 +274,7 @@ deployment:
       default: ""
       targets: [llm-d-routing]
       description: Routing-only accepted Envoy GatewayClass supplied by the cluster operator.
+      help: {label: Install or inspect GatewayClass, href: guides/cluster-prerequisites/#install-envoy-gateway-183}
 validation:
   image: ghcr.io/randomvariable/vllm-b12x-multi@sha256:42d5d72bd79a371c3b5a756fe2a1814f3c9393dd9a73d65bcefa01eb8f28d726
   lws: verified

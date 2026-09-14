@@ -10,6 +10,8 @@ import { renderRecipe } from "../src/render.js";
 const siteRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const recipe = parseAllDocuments(readFileSync(resolve(siteRoot, "../recipes/deepseek-ai/DeepSeek-V4-Flash-Vision-Exp.yaml"), "utf8"))[0].toJS();
 const image = recipe.validation.image;
+assert.equal(recipe.deployment.parameters.model_storage_path.default, "/var/lib/models");
+assert.equal(recipe.deployment.parameters.jit_storage_path.default, "/var/cache/vllm/deepseek-v4-flash-vision");
 const parameters = {
   namespace: "public-models",
   name: "deepseek-vision",
@@ -21,14 +23,11 @@ const parameters = {
   node_selector: { "node.example.com/accelerator": "gb10" },
   topology_key: "node.example.com/roce-pair",
   topology_values: "pair-a,pair-b",
-  gpu_resource: "nvidia.com/gpu",
-  gpu_units: 1,
   rdma_resource: "rdma.example.com/roce",
   rdma_units: 1,
   hca: "mlx5_0,mlx5_1",
   gid_index: 3,
-  socket_interface: "eno1",
-  gloo_interface: "eno1",
+  control_interface: "eno1",
   leader_ip: "192.0.2.10",
   worker_ip: "192.0.2.11",
   gateway_class: "public-ai-gateway",
@@ -86,7 +85,8 @@ test("LWS renders explicit rank templates from one fixed runtime definition", ()
   assert.deepEqual(leaderEnv, workerEnv);
   assert.deepEqual(Object.fromEntries(Object.entries(leaderEnv).filter(([key]) => Object.hasOwn(recipe.runtime.base_env, key))), recipe.runtime.base_env);
   assert.equal(leaderEnv.NCCL_IB_HCA, parameters.hca);
-  assert.equal(leaderEnv.NCCL_SOCKET_IFNAME, parameters.socket_interface);
+  assert.equal(leaderEnv.NCCL_SOCKET_IFNAME, "eth0");
+  assert.equal(leaderEnv.GLOO_SOCKET_IFNAME, "eth0");
   assert.equal(leader.env.find((entry) => entry.name === "VLLM_HOST_IP").valueFrom.fieldRef.fieldPath, "status.podIP");
 
   const leaderInit = lws.spec.leaderWorkerTemplate.leaderTemplate.spec.initContainers;
@@ -104,7 +104,7 @@ test("LWS renders explicit rank templates from one fixed runtime definition", ()
     assert.equal(server.startupProbe.failureThreshold, 240);
     assert.equal(server.readinessProbe.failureThreshold, 6);
     assert.equal(server.resources.limits.memory, undefined);
-    assert.equal(server.resources.requests[parameters.gpu_resource], "1");
+    assert.equal(server.resources.requests["nvidia.com/gpu"], "1");
     assert.equal(server.resources.requests[parameters.rdma_resource], "1");
     assert.equal(pod.terminationGracePeriodSeconds, 120);
     assert.deepEqual(pod.volumes.find((volume) => volume.name === "shm").emptyDir, { medium: "Memory", sizeLimit: "64Gi" });
@@ -116,7 +116,7 @@ test("LWS renders explicit rank templates from one fixed runtime definition", ()
   assert(!serialized.includes("dspark.rv"));
   assert(!serialized.includes("rdma/dgx_roce"));
   for (const pod of [lws.spec.leaderWorkerTemplate.leaderTemplate.spec, lws.spec.leaderWorkerTemplate.workerTemplate.spec]) {
-    assert.deepEqual(pod.containers[0].resources.limits, { [parameters.gpu_resource]: "1", [parameters.rdma_resource]: "1" });
+    assert.deepEqual(pod.containers[0].resources.limits, { "nvidia.com/gpu": "1", [parameters.rdma_resource]: "1" });
   }
 });
 
@@ -199,4 +199,14 @@ test("required target fields and digest-only images fail before output", () => {
   assert.throws(() => renderRecipe(recipe, parameters, "ghcr.io/randomvariable/vllm-b12x-multi:latest", "lws"), /digest-qualified/);
   assert.throws(() => renderRecipe(recipe, { ...parameters, namespace: "x; touch /tmp/leak" }, image, "lws"), /namespace must be a DNS label/);
   assert.throws(() => renderRecipe(recipe, { ...parameters, hca: "mlx5_0; touch /tmp/leak" }, image, "docker"), /hca contains unsupported characters/);
+});
+
+test("GB10 HCA preset remains an editable recipe value", () => {
+  const definition = recipe.deployment.parameters.hca;
+  assert.equal(definition.default, "rocep1s0f1,roceP2p1s0f1");
+  assert.deepEqual(definition.suggestions, [definition.default]);
+  const rendered = renderRecipe(recipe, { ...parameters, hca: definition.default }, image, "lws");
+  const manifests = documents(rendered.files["deepseek-vision-lws.yaml"]);
+  const server = findDocument(manifests, "LeaderWorkerSet").spec.leaderWorkerTemplate.leaderTemplate.spec.containers[0];
+  assert.equal(Object.fromEntries(server.env.map((entry) => [entry.name, entry.value])).NCCL_IB_HCA, definition.default);
 });

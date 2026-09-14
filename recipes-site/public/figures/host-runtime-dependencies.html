@@ -8,7 +8,7 @@
 <body><main><figure class="figure"><div class="diagram-scroll" tabindex="0" aria-label="Scrollable host and runtime dependency layers">
 <svg viewBox="0 0 1280 720" role="img" aria-labelledby="host-runtime-title host-runtime-desc" xmlns="http://www.w3.org/2000/svg">
 <title id="host-runtime-title">Host and runtime dependencies</title>
-<desc id="host-runtime-desc">Five ranked layers show firmware and the 64 KiB kernel supporting the NVIDIA driver, container runtime integration, k3s agents, and the vLLM serving pod.</desc>
+<desc id="host-runtime-desc">Five ranked layers show firmware and the 64 KiB kernel supporting the NVIDIA driver, container runtime integration, k3s agents, and a local-inference-lab/vLLM serving pod on GB10.</desc>
 <defs>
 <marker id="host-runtime-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#56616b"/></marker>
 <marker id="host-runtime-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#a94e2b"/></marker>
@@ -17,7 +17,7 @@
 </defs>
 <rect width="1280" height="720" fill="#faf7f2"/>
 <text x="48" y="44" fill="#a94e2b" font-family="'Geist Mono',monospace" font-size="8" font-weight="600" letter-spacing=".16em">DEPENDENCY LAYERS / EACH GPU HOST</text>
-<text x="48" y="84" fill="#252b32" font-family="'Instrument Serif',serif" font-size="28">The container inherits a working host, not a driver stack.</text>
+<text x="48" y="84" fill="#252b32" font-family="'Geist',sans-serif" font-size="28" font-weight="650">DGX Spark host and container runtime dependencies</text>
 <text x="48" y="112" fill="#56616b" font-family="'Geist',sans-serif" font-size="12">Build bottom-up. Stop when any layer fails before proceeding to the next.</text>
 
 <!-- Layer backgrounds -->
@@ -29,7 +29,7 @@
 <!-- Layer 1 -->
 <rect x="64" y="164" width="88" height="48" rx="6" fill="#fff" stroke="#56616b"/><text x="108" y="184" fill="#6d747b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">LAYER 01</text><text x="108" y="200" fill="#252b32" font-family="'Geist',sans-serif" font-size="12" font-weight="600" text-anchor="middle">Platform</text>
 <rect x="176" y="160" width="296" height="56" rx="6" fill="#fff" stroke="#252b32"/><text x="192" y="180" fill="#6d747b" font-family="'Geist Mono',monospace" font-size="8">FIRMWARE</text><text x="324" y="192" fill="#252b32" font-family="'Geist',sans-serif" font-size="12" font-weight="600" text-anchor="middle">GSP + device firmware</text><text x="324" y="208" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">version aligned: 615.71.09</text>
-<rect x="496" y="160" width="360" height="56" rx="6" fill="#fff" stroke="#252b32"/><text x="512" y="180" fill="#6d747b" font-family="'Geist Mono',monospace" font-size="8">KERNEL</text><text x="676" y="192" fill="#252b32" font-family="'Geist',sans-serif" font-size="12" font-weight="600" text-anchor="middle">Ubuntu NVIDIA 64 KiB kernel</text><text x="676" y="208" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">7.0.0-1016-nvidia-64k / pagesize 65536</text>
+<rect x="496" y="160" width="360" height="56" rx="6" fill="#fff" stroke="#252b32"/><text x="512" y="180" fill="#6d747b" font-family="'Geist Mono',monospace" font-size="8">KERNEL</text><text x="676" y="192" fill="#252b32" font-family="'Geist',sans-serif" font-size="12" font-weight="600" text-anchor="middle">Ubuntu NVIDIA 64 KiB kernel</text><text x="676" y="208" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">7.0.0-1019-nvidia-64k / pagesize 65536</text>
 <rect x="880" y="160" width="256" height="56" rx="6" fill="#fff" stroke="#252b32"/><text x="896" y="180" fill="#6d747b" font-family="'Geist Mono',monospace" font-size="8">BUILD INPUT</text><text x="1008" y="192" fill="#252b32" font-family="'Geist',sans-serif" font-size="12" font-weight="600" text-anchor="middle">Matching headers</text><text x="1008" y="208" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">DKMS build tree present</text>
 
 <!-- Layer 2 -->
@@ -52,7 +52,7 @@
 
 <!-- Layer 5 -->
 <rect x="64" y="548" width="88" height="48" rx="6" fill="#faf7f2" stroke="#a94e2b"/><text x="108" y="568" fill="#a94e2b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">LAYER 05</text><text x="108" y="584" fill="#252b32" font-family="'Geist',sans-serif" font-size="12" font-weight="600" text-anchor="middle">Workload</text>
-<rect x="176" y="544" width="448" height="56" rx="6" fill="#fff" stroke="#a94e2b"/><text x="192" y="564" fill="#a94e2b" font-family="'Geist Mono',monospace" font-size="8">SERVING POD</text><text x="400" y="576" fill="#252b32" font-family="'Geist',sans-serif" font-size="12" font-weight="600" text-anchor="middle">vLLM modelserver</text><text x="400" y="592" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">runtimeClassName: nvidia / GPU request: 1</text>
+<rect x="176" y="544" width="448" height="56" rx="6" fill="#fff" stroke="#a94e2b"/><text x="192" y="564" fill="#a94e2b" font-family="'Geist Mono',monospace" font-size="8">SERVING POD</text><text x="400" y="576" fill="#252b32" font-family="'Geist',sans-serif" font-size="12" font-weight="600" text-anchor="middle">local-inference-lab/vLLM</text><text x="400" y="592" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">GB10 / runtimeClassName: nvidia / GPU: 1</text>
 <rect x="648" y="544" width="488" height="56" rx="6" fill="#faf7f2" stroke="#a94e2b"/><text x="664" y="564" fill="#a94e2b" font-family="'Geist Mono',monospace" font-size="8">OWNERSHIP BOUNDARY</text><text x="892" y="576" fill="#252b32" font-family="'Geist',sans-serif" font-size="12" font-weight="600" text-anchor="middle">Container carries CUDA application libraries</text><text x="892" y="592" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">host supplies kernel modules + device access</text>
 
 <line x1="48" y1="652" x2="1232" y2="652" stroke="rgba(37,43,50,.16)"/><text x="48" y="680" fill="#6d747b" font-family="'Geist Mono',monospace" font-size="8" letter-spacing=".14em">READ BOTTOM-UP: PLATFORM → DRIVER → RUNTIME → CLUSTER → WORKLOAD</text><text x="1232" y="680" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="end">ARROWS MEAN “REQUIRES”</text>

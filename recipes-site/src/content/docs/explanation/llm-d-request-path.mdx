@@ -1,9 +1,19 @@
 ---
-title: How the llm-d request path works
+title: How inference request routing works
 description: Separate endpoint selection, inference payload flow and two-rank GPU collectives.
 ---
 
-The public stack borrows llm-d's Gateway API Inference Extension pattern, but it is not a monolithic llm-d installation. Four control responsibilities stay deliberately separate.
+The setup combines Gateway API Inference Extension with Envoy AI Gateway. Four components have separate responsibilities.
+
+## Why add these components
+
+You can expose one vLLM server with a Kubernetes `Service`. That is the simpler choice when callers already know the backend and there is only one replica. Envoy AI Gateway and EPP become useful when the cluster must route by model, apply one set of traffic policy, or choose among several serving replicas without putting that logic in every client.
+
+Envoy AI Gateway provides the client-facing routing layer. It understands model-oriented routes, so a request can name a served model while the Gateway maps it to an `InferencePool`. It also gives operators one place for route timeouts, request-size limits and, when configured separately, edge controls such as TLS and authentication. Clients keep using an OpenAI-compatible endpoint instead of discovering pod or Service addresses.
+
+EPP provides the endpoint-selection layer. Kubernetes load balancing normally treats ready endpoints as interchangeable. LLM replicas are not interchangeable under load: one may have a shorter queue, enough KV-cache capacity, or a useful prefix already cached. EPP receives metadata about the eligible endpoints, scores those signals, and returns a rank-zero endpoint to Envoy. Envoy still carries the request body directly to vLLM; EPP is not a proxy in the data path.
+
+This recipe currently has one TP=2 group, hence one eligible rank-zero endpoint. EPP cannot improve placement until another independent TP group exists. It still establishes the same routing contract that supports additional replicas later. If the deployment will remain a single group and needs no model-aware gateway policy, use the rank-zero Service and omit this routing stack.
 
 <iframe
   class="doc-figure"

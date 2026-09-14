@@ -1,6 +1,6 @@
-# Bazel Builder for Consumer Blackwell vLLM
+# Bazel Builder for local-inference-lab/vLLM on NVIDIA DGX Spark
 
-This repository is a Bazel builder for [local-inference-lab/vllm](https://github.com/local-inference-lab/vllm), targeting consumer Blackwell GPUs. It packages that fork and its source-built dependencies into an Open Container Initiative (OCI) image. It is not the vLLM fork itself or a general-purpose builder for arbitrary vLLM releases.
+This repository is the Bazel builder and deployment recipe site for [local-inference-lab/vLLM](https://github.com/local-inference-lab/vllm) on NVIDIA DGX Spark. It packages that fork and its source-built dependencies into an Open Container Initiative (OCI) image. It is not the vLLM fork itself, an upstream `vllm-project/vllm` image, or a general-purpose builder for arbitrary vLLM releases.
 
 The local build path targets DGX Spark. Bazel compiles PyTorch and CUDA extensions from source, then assembles their wheels into layered Python runtimes.
 

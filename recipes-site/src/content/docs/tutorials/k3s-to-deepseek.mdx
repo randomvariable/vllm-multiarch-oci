@@ -1,12 +1,12 @@
 ---
-title: From bare GB10 hosts to routed DeepSeek
+title: From bare DGX Spark hosts to routed DeepSeek
 description: A linear, beginner-safe path from two fresh DGX Spark hosts to a TP=2 vision endpoint.
 ---
 
 This tutorial connects every layer needed to serve **DeepSeek-V4-Flash-Vision-Exp** across two GB10 nodes. It assumes one separate control-plane machine and two DGX Spark GPU agents. It does **not** promise a highly available control plane.
 
-:::caution[Validation boundary]
-The image and two-node LeaderWorkerSet were accepted live on 14 September 2026 on the author's existing **kubeadm/Cilium** cluster. The k3s path below is assembled from the pinned upstream releases and is **not end-to-end validated on k3s or spare GB10 hosts**. A CPU-only k3s/controller check is not GPU or RDMA proof.
+:::note[What I run]
+I run the image and two-node LeaderWorkerSet on a kubeadm/Cilium cluster. This tutorial adapts that setup to k3s. I have not run the complete k3s path on two spare GB10 hosts; the CPU-only controller checks do not exercise GPU or RDMA traffic.
 :::
 
 ## What you will build
@@ -45,7 +45,7 @@ You also need:
 
 ## 1. Establish the host contract
 
-Perform the [64 KiB kernel and driver procedure](/vllm-multiarch-oci/guides/gb10-64k-driver/) on **each GPU host**. The gate is not merely `nvidia-smi`: require kernel `7.0.0-1016-nvidia-64k`, page size `65536`, all five module artifacts at 615.71.09, and a CUDA allocation/synchronization test.
+Perform the [64 KiB kernel and driver procedure](/vllm-multiarch-oci/guides/gb10-64k-driver/) on **each GPU host**. The gate is not merely `nvidia-smi`: require kernel `7.0.0-1019-nvidia-64k`, page size `65536`, all five module artifacts at 615.71.09, and a CUDA allocation/synchronization test.
 
 ## 2. Bootstrap the cluster
 
@@ -86,7 +86,7 @@ Follow [deploy the TP=2 group](/vllm-multiarch-oci/guides/deploy-tp2/) for Secre
 
 ## 7. Add scheduled routing
 
-Render the routing bundle and follow [llm-d-style request routing](/vllm-multiarch-oci/guides/llm-d-routing/). The result is LWS orchestration plus an InferencePool, EPP and Envoy AI Gateway; it is not an llm-d router chart.
+Render the routing bundle and follow [request routing with EPP and Envoy AI Gateway](/vllm-multiarch-oci/guides/llm-d-routing/).
 
 **Gate:** EPP is Available, Gateway conditions are `Accepted=True` and `Programmed=True`, and a request through Gateway port 10080 with `x-ai-eg-model: deepseek-ai/DeepSeek-V4-Flash-Vision-Exp` succeeds for text, tool and vision inputs. A direct debug-Service `/v1/models` request is not routing proof.
 

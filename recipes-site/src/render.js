@@ -8,10 +8,10 @@ const SAFE_INTERFACE = /^[A-Za-z0-9_.:,=-]+$/;
 const TARGET_FIELDS = {
   lws: [
     "namespace", "name", "model_storage_path", "jit_storage_path", "hf_secret", "hf_secret_key",
-    "network_attachment", "node_selector", "topology_key", "topology_values", "gpu_resource", "gpu_units",
-    "rdma_resource", "rdma_units", "hca", "gid_index", "socket_interface", "gloo_interface",
+    "network_attachment", "node_selector", "topology_key", "topology_values",
+    "rdma_resource", "rdma_units", "hca", "gid_index",
   ],
-  docker: ["name", "model_storage_path", "jit_storage_path", "hca", "gid_index", "socket_interface", "gloo_interface", "leader_ip", "worker_ip"],
+  docker: ["name", "model_storage_path", "jit_storage_path", "hca", "gid_index", "control_interface", "leader_ip", "worker_ip"],
   "llm-d-routing": ["namespace", "name", "gateway_class"],
 };
 
@@ -72,10 +72,10 @@ function normalizedParameters(recipe, supplied, target) {
   for (const path of [values.model_storage_path, values.jit_storage_path].filter(Boolean)) {
     if (!String(path).startsWith("/")) fail("storage paths must be absolute");
   }
-  for (const field of ["gpu_resource", "rdma_resource", "topology_key"]) {
+  for (const field of ["rdma_resource", "topology_key"]) {
     if (hasValue(values[field], "string") && !RESOURCE_NAME.test(values[field])) fail(`${field} is not a valid Kubernetes resource or label name`);
   }
-  for (const field of ["hca", "socket_interface", "gloo_interface"]) {
+  for (const field of ["hca", "control_interface"]) {
     if (hasValue(values[field], "string") && !SAFE_INTERFACE.test(values[field])) fail(`${field} contains unsupported characters`);
   }
   return values;
@@ -97,13 +97,13 @@ function modelSyncArgs(recipe) {
   return args;
 }
 
-function commonRuntimeEnv(recipe, parameters) {
+function commonRuntimeEnv(recipe, parameters, controlInterface) {
   return {
     ...recipe.runtime.base_env,
     NCCL_IB_HCA: parameters.hca,
     NCCL_IB_GID_INDEX: String(parameters.gid_index),
-    NCCL_SOCKET_IFNAME: parameters.socket_interface,
-    GLOO_SOCKET_IFNAME: parameters.gloo_interface,
+    NCCL_SOCKET_IFNAME: controlInterface,
+    GLOO_SOCKET_IFNAME: controlInterface,
   };
 }
 
@@ -171,7 +171,7 @@ function podTemplate(recipe, parameters, imageReference, rank) {
     "llm-d.ai/model": parameters.name,
     "llm-d.ai/engine-type": "vllm",
   };
-  const environment = commonRuntimeEnv(recipe, parameters);
+  const environment = commonRuntimeEnv(recipe, parameters, "eth0");
   environment.VLLM_HOST_IP = undefined;
   const modelserver = {
     name: "modelserver",
@@ -189,8 +189,8 @@ function podTemplate(recipe, parameters, imageReference, rank) {
       { name: "rdzv", containerPort: 25000, protocol: "TCP" },
     ],
     resources: {
-      requests: { cpu: "8", memory: "96Gi", "ephemeral-storage": "128Gi", [parameters.gpu_resource]: String(parameters.gpu_units), [parameters.rdma_resource]: String(parameters.rdma_units) },
-      limits: { [parameters.gpu_resource]: String(parameters.gpu_units), [parameters.rdma_resource]: String(parameters.rdma_units) },
+      requests: { cpu: "8", memory: "96Gi", "ephemeral-storage": "128Gi", "nvidia.com/gpu": "1", [parameters.rdma_resource]: String(parameters.rdma_units) },
+      limits: { "nvidia.com/gpu": "1", [parameters.rdma_resource]: String(parameters.rdma_units) },
     },
     startupProbe: healthProbe("startup"),
     readinessProbe: healthProbe("readiness"),
@@ -268,7 +268,7 @@ function renderLws(recipe, parameters, imageReference) {
 }
 
 function dockerEnvironment(recipe, parameters, hostIp) {
-  return { ...commonRuntimeEnv(recipe, parameters), VLLM_HOST_IP: hostIp };
+  return { ...commonRuntimeEnv(recipe, parameters, parameters.control_interface), VLLM_HOST_IP: hostIp };
 }
 
 function dockerModelSync(recipe, parameters, imageReference) {
@@ -312,7 +312,7 @@ function renderDocker(recipe, parameters, imageReference) {
   return {
     files: { [leaderFile]: dockerScript(recipe, parameters, imageReference, 0), [workerFile]: dockerScript(recipe, parameters, imageReference, 1) },
     steps: [
-      { title: "Not yet runtime-validated", text: "These two-host Docker instructions preserve the verified engine configuration but have not completed a two-host runtime acceptance.", command: "" },
+      { title: "Docker setup", text: "These scripts use the same engine settings as the Kubernetes deployment. I run the Kubernetes version, not this two-host Docker form.", command: "" },
       { title: "Start rank zero", text: "Copy the rendered leader script to the leader host, make it executable, and run it without positional arguments.", command: shellCommand(["sh", leaderFile]) },
       { title: "Start rank one", text: "After rank zero opens port 25000, run the rendered worker script on the worker host.", command: shellCommand(["sh", workerFile]) },
       { title: "Follow logs", text: "Long kernel work is not grounds for force-killing a GB10 process.", command: shellCommand(["docker", "logs", "--follow", `${parameters.name}-rank0`]) },

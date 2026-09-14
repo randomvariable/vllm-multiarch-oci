@@ -9,8 +9,8 @@ export default defineConfig({
   build: { format: "directory" },
   integrations: [
     starlight({
-      title: "vLLM multi-arch recipes",
-      description: "Reproducible vLLM deployments for consumer Blackwell hardware.",
+      title: "local-inference-lab/vLLM for DGX Spark",
+      description: "Build and deployment recipes for the local-inference-lab vLLM fork on NVIDIA DGX Spark.",
       social: [
         {
           icon: "github",
@@ -43,6 +43,7 @@ export default defineConfig({
           label: "Image releases",
           items: [{ label: "Latest image", link: "/image-releases/" }],
         },
+        { label: "About the author", link: "/about/" },
       ],
       customCss: ["./src/styles/recipes.css"],
       pagination: false,

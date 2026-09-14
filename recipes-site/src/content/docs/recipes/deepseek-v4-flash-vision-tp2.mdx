@@ -1,5 +1,5 @@
 ---
-title: DeepSeek V4 Flash Vision · TP=2
+title: DeepSeek V4 Flash Vision on two DGX Spark systems
 description: The tested two-node DeepSeek-V4-Flash-Vision-Exp deployment recipe.
 sidebar:
   label: DeepSeek V4 Flash Vision
@@ -9,9 +9,7 @@ import RecipeBuilder from "../../../components/RecipeBuilder.astro";
 
 <p class="eyebrow">Runtime recipe · DeepSeek</p>
 
-# DeepSeek V4 Flash Vision on two GB10 nodes
-
-This is the public, parameterized form of the accepted two-node deployment. The recipe fixes the model revision, engine flags, environment, topology, and validated image. You supply the details that belong to your cluster or Docker hosts.
+This is the public, parameterized form of the accepted two-node NVIDIA DGX Spark deployment. Its image contains the pinned [`local-inference-lab/vLLM`](https://github.com/local-inference-lab/vllm) fork rather than an arbitrary upstream vLLM release. The recipe fixes the model revision, engine flags, environment, topology, and validated image. You supply the details that belong to your cluster or Docker hosts.
 
 <div class="release-strip" aria-label="Recipe validation status">
   <span>Validated image</span>
@@ -22,7 +20,7 @@ This is the public, parameterized form of the accepted two-node deployment. The 
 <dl class="fact-grid">
   <div><dt>Model</dt><dd>deepseek-ai/DeepSeek-V4-Flash-Vision-Exp</dd></div>
   <div><dt>Model revision</dt><dd>6821d6ad3681a4b137b066b76094fa82ebd0a380</dd></div>
-  <div><dt>Topology</dt><dd>2 nodes · TP=2 · one GB10 per node</dd></div>
+  <div><dt>Topology</dt><dd>2 nodes · TP=2 · one DGX Spark per node</dd></div>
   <div><dt>Context</dt><dd>1,000,000 tokens</dd></div>
 </dl>
 
@@ -30,7 +28,62 @@ This is the public, parameterized form of the accepted two-node deployment. The 
 
 The authored recipe preserves the accepted runtime command and tuning: B12X attention and linear backends, InstantTensor, a graph cap of 16 with capture sizes `1, 2, 3, 4, 8, 12, 16`, GPU utilization `0.81`, four sequences, and an 8,192-token batch budget. It does not present these constants as a general tuning matrix.
 
-The LWS target is **verified** against the recorded live acceptance. The Docker target uses the same engine definition and is rendered and syntax-checkable, but remains **not yet runtime-validated** on two free hosts.
+This is the LWS configuration I run. The Docker target uses the same engine definition, but I have not run it on two separate hosts.
+
+The [deployment benchmark guide](/vllm-multiarch-oci/guides/benchmark-deployment/) explains how to run the benchmark against another deployment.
+
+## Measured performance
+
+<div class="benchmark-panel">
+  <div class="benchmark-context">
+    <span>Estonia profile</span>
+    <span>134,240 prompt tokens</span>
+    <span>Benchmark v0.6.2</span>
+    <span>Warm starts</span>
+    <span>One wave per concurrency</span>
+  </div>
+  <div class="benchmark-table" role="table" aria-label="DeepSeek deployment benchmark results">
+    <div class="benchmark-row benchmark-header" role="row">
+      <span role="columnheader">Concurrency</span>
+      <span role="columnheader">Start time / TTFT</span>
+      <span role="columnheader">Per-request decode</span>
+      <span role="columnheader">Mean request</span>
+      <span role="columnheader">Completed</span>
+    </div>
+    <div class="benchmark-row" role="row">
+      <strong role="cell">1</strong>
+      <span role="cell" class="benchmark-primary"><b>73.72</b> s<small>Cold prefill</small><small>Warm TTFT: 0.72 s</small></span>
+      <span role="cell"><b>47.93</b> tok/s</span>
+      <span role="cell"><b>83.88</b> s</span>
+      <span role="cell">1 / 1</span>
+    </div>
+    <div class="benchmark-row" role="row">
+      <strong role="cell">2</strong><span role="cell"><b>1.33</b> s</span><span role="cell"><b>39.61</b> tok/s</span><span role="cell"><b>107.78</b> s</span><span role="cell">2 / 2</span>
+    </div>
+    <div class="benchmark-row" role="row">
+      <strong role="cell">4</strong><span role="cell"><b>1.76</b> s</span><span role="cell"><b>26.56</b> tok/s</span><span role="cell"><b>99.15</b> s</span><span role="cell">4 / 4</span>
+    </div>
+    <div class="benchmark-row" role="row">
+      <strong role="cell">8</strong><span role="cell"><b>53.07</b> s</span><span role="cell"><b>26.17</b> tok/s</span><span role="cell"><b>168.75</b> s</span><span role="cell">8 / 8</span>
+    </div>
+    <div class="benchmark-row" role="row">
+      <strong role="cell">16</strong><span role="cell"><b>251.78</b> s</span><span role="cell"><b>22.39</b> tok/s</span><span role="cell"><b>415.30</b> s</span><span role="cell">16 / 16</span>
+    </div>
+    <div class="benchmark-row benchmark-degraded" role="row">
+      <strong role="cell">30</strong><span role="cell"><b>281.51</b> s</span><span role="cell"><b>22.91</b> tok/s</span><span role="cell"><b>404.02</b> s</span><span role="cell">21 / 30</span>
+    </div>
+    <div class="benchmark-row benchmark-degraded" role="row">
+      <strong role="cell">48</strong><span role="cell"><b>253.56</b> s</span><span role="cell"><b>22.93</b> tok/s</span><span role="cell"><b>421.60</b> s</span><span role="cell">17 / 48</span>
+    </div>
+    <div class="benchmark-row benchmark-degraded" role="row">
+      <strong role="cell">64</strong><span role="cell"><b>242.58</b> s</span><span role="cell"><b>22.69</b> tok/s</span><span role="cell"><b>353.98</b> s</span><span role="cell">24 / 64</span>
+    </div>
+  </div>
+  <p class="benchmark-note"><strong>Cold prefill:</strong> the earlier concurrency-one run processed the 134,240-token prompt in 73.72 seconds at 1,821 tokens/s. Its three subsequent requests used the warm prefix cache and averaged 0.94 seconds TTFT.</p>
+  <p class="benchmark-note"><strong>Warm concurrency sweep:</strong> the identical 707,468-character prompt had already been processed before every result in the table. Every completed request passed. Per-request decode slowed as concurrency increased. The TTFT cliff began at concurrency 8. Concurrency 16 was the largest complete batch; at 30 and above, every incomplete request stalled before its first token.</p>
+  <p class="benchmark-note">The benchmark reports this decode value as <code>aggregate_gen_tok_s</code>, calculated as total generated tokens divided by the sum of each completed request's generation duration. Concurrent intervals overlap, so this is a duration-weighted per-request rate, not total server throughput.</p>
+  <p class="benchmark-note">The later scout completed in 0.67 seconds because it hit the warm prefix cache. Its apparent 200,114 tokens/s is not physical prefill throughput. This is a one-wave warm-start concurrency characterization, not a stable statistical performance baseline.</p>
+</div>
 
 :::caution[Allocator units are not physical devices]
 Kubernetes extended-resource counts are values published by the cluster's device plugins. A site may advertise more allocator units than physical hardware. The beginner path requests one GPU and one RDMA unit per rank; experienced operators must match the generated requests to their own allocator policy.

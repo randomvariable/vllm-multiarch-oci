@@ -1,9 +1,9 @@
 ---
-title: Install the GB10 64 KiB kernel driver
+title: Install the DGX Spark 64 KiB kernel driver
 description: Build the pinned NVIDIA open-driver fork with DKMS on Ubuntu 24.04 DGX OS arm64.
 ---
 
-This is the fresh-host path for Ubuntu 24.04 DGX OS on arm64. It combines kernel ABI `7.0.0-1016-nvidia-64k`, NVIDIA userspace and GSP firmware 615.71.09, and the already-patched [`spark-615.71.09` fork](https://github.com/randomvariable/open-gpu-kernel-modules/tree/c5296e2d92f2cdb23cd10df25ec6e989b5f96c42).
+This is the fresh-host path for Ubuntu 24.04 DGX OS on arm64. It combines kernel ABI `7.0.0-1019-nvidia-64k`, NVIDIA userspace and GSP firmware 615.71.09, and the already-patched [`spark-615.71.09` fork](https://github.com/randomvariable/open-gpu-kernel-modules/tree/c5296e2d92f2cdb23cd10df25ec6e989b5f96c42).
 
 The fork returns pooled GB10 system memory when the final CUDA client exits and carries integrated-GPU ATS/THP changes. Those are mechanisms, not benchmark claims. Do not apply the patches again: commit `c5296e2d92f2cdb23cd10df25ec6e989b5f96c42` already contains them.
 
@@ -22,7 +22,7 @@ On an existing host, gracefully quiesce the entire distributed group, verify tha
 test "$(dpkg --print-architecture)" = arm64
 . /etc/os-release; test "$VERSION_ID" = 24.04
 mokutil --sb-state
-apt-cache policy linux-image-7.0.0-1016-nvidia-64k linux-headers-7.0.0-1016-nvidia-64k \
+apt-cache policy linux-image-7.0.0-1019-nvidia-64k linux-headers-7.0.0-1019-nvidia-64k \
   nvidia-open nvidia-driver-open nvidia-dkms-open nvidia-kernel-source-open \
   nvidia-kernel-common nvidia-firmware
 apt-cache madison nvidia-open | grep 615.71.09
@@ -50,7 +50,7 @@ efibootmgr -v
 
 ```bash
 apt-get update
-apt-get install linux-image-7.0.0-1016-nvidia-64k linux-headers-7.0.0-1016-nvidia-64k \
+apt-get install linux-image-7.0.0-1019-nvidia-64k linux-headers-7.0.0-1019-nvidia-64k \
   build-essential dkms git mokutil
 NVIDIA_PACKAGE_VERSION=$(apt-cache madison nvidia-open | awk '$3 ~ /^615\.71\.09-1ubuntu1([~+].*)?$/ {print $3; exit}')
 test -n "$NVIDIA_PACKAGE_VERSION"
@@ -71,7 +71,7 @@ apt-mark hold nvidia-open nvidia-driver-open nvidia-dkms-open \
 Check the intended build tree before proceeding:
 
 ```bash
-KERNEL_RELEASE=7.0.0-1016-nvidia-64k
+KERNEL_RELEASE=7.0.0-1019-nvidia-64k
 test -d "/lib/modules/$KERNEL_RELEASE"
 test -r "/lib/modules/$KERNEL_RELEASE/build/Makefile"
 ```
@@ -127,13 +127,13 @@ DEST_MODULE_LOCATION[4]="/updates/dkms"
 EOF
 ```
 
-This follows the fork's [DKMS procedure](https://github.com/randomvariable/open-gpu-kernel-modules/blob/c5296e2d92f2cdb23cd10df25ec6e989b5f96c42/README.md). Register, build and install only for the pinned ABI:
+This follows the fork's [DKMS procedure](https://github.com/randomvariable/open-gpu-kernel-modules/blob/c5296e2d92f2cdb23cd10df25ec6e989b5f96c42/README.md). Register the module, then re-run the pinned kernel package's post-install lifecycle. Ubuntu's kernel hooks invoke DKMS for registered modules before regenerating that kernel's initramfs:
 
 ```bash
 dkms add -m nvidia-open -v 615.71.09
-dkms build -m nvidia-open -v 615.71.09 -k 7.0.0-1016-nvidia-64k
-dkms install -m nvidia-open -v 615.71.09 -k 7.0.0-1016-nvidia-64k
-dkms status -m nvidia-open -v 615.71.09 -k 7.0.0-1016-nvidia-64k
+KERNEL_RELEASE=7.0.0-1019-nvidia-64k
+dpkg-reconfigure "linux-image-${KERNEL_RELEASE}"
+dkms status -m nvidia-open -v 615.71.09 -k "$KERNEL_RELEASE"
 ```
 
 Expected status contains `installed`. Stop on build warnings promoted to errors, missing modules, signing rejection, or a second DKMS owner for the same NVIDIA module names.
@@ -142,16 +142,16 @@ Expected status contains `installed`. Stop on build warnings promoted to errors,
 
 ```bash
 for module in nvidia nvidia-uvm nvidia-modeset nvidia-drm nvidia-peermem; do
-  path=$(modinfo -k 7.0.0-1016-nvidia-64k -F filename "$module")
-  version=$(modinfo -k 7.0.0-1016-nvidia-64k -F version "$module")
+  path=$(modinfo -k "$KERNEL_RELEASE" -F filename "$module")
+  version=$(modinfo -k "$KERNEL_RELEASE" -F version "$module")
   test -f "$path"
-  case "$path" in /lib/modules/7.0.0-1016-nvidia-64k/updates/dkms/*) ;; *) exit 1 ;; esac
+  case "$path" in "/lib/modules/$KERNEL_RELEASE/updates/dkms/"*) ;; *) exit 1 ;; esac
   test "$version" = 615.71.09
   printf '%-18s %s %s\n' "$module" "$version" "$path"
 done
-depmod -a 7.0.0-1016-nvidia-64k
-update-initramfs -u -k 7.0.0-1016-nvidia-64k
 ```
+
+Do not run `update-initramfs` as a substitute for the package lifecycle: it includes modules already installed on disk but does not build missing DKMS modules.
 
 Verify disk-first boot and absence of one-shot override again:
 
@@ -160,7 +160,7 @@ Verify disk-first boot and absence of one-shot override again:
 efibootmgr -v | grep -E '^BootOrder:|^Boot[0-9A-Fa-f]{4}'
 ```
 
-Select `7.0.0-1016-nvidia-64k` using the host's normal GRUB/DGX OS mechanism, then perform an operator-controlled reboot. Do not script a blind reboot from copied documentation.
+Select `7.0.0-1019-nvidia-64k` using the host's normal GRUB/DGX OS mechanism, then perform an operator-controlled reboot. Do not script a blind reboot from copied documentation.
 
 ## 5. Prove activation
 
@@ -169,7 +169,7 @@ Select `7.0.0-1016-nvidia-64k` using the host's normal GRUB/DGX OS mechanism, th
 **Stop:** if any version/path differs; do not start k3s workloads.
 
 ```bash
-test "$(uname -r)" = 7.0.0-1016-nvidia-64k
+test "$(uname -r)" = 7.0.0-1019-nvidia-64k
 test "$(getconf PAGESIZE)" = 65536
 test "$(modinfo -F version nvidia)" = 615.71.09
 for module in nvidia nvidia-uvm nvidia-modeset nvidia-drm nvidia-peermem; do

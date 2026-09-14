@@ -16,7 +16,7 @@
     .notes { display:grid; grid-template-columns:1.15fr .85fr; gap:16px; margin-top:16px; }
     .note { padding:16px 20px; border:1px solid var(--rule); border-radius:8px; background:#fff; }
     .note:nth-child(2) { background:var(--paper-2); }
-    .note h2 { margin:0 0 8px; font:400 24px/1.1 "Instrument Serif", serif; }
+    .note h2 { margin:0 0 8px; font:650 20px/1.2 "Geist", sans-serif; }
     .note p { margin:0; color:var(--muted); font-size:14px; line-height:1.55; }
     .note code { color:var(--ink); font:500 12px "Geist Mono", monospace; }
     footer { display:flex; justify-content:space-between; gap:16px; margin-top:16px; padding-top:12px; border-top:1px solid var(--rule); color:var(--soft); font:400 11px/1.5 "Geist Mono", monospace; }
@@ -47,7 +47,7 @@
         <rect width="1280" height="720" fill="#faf7f2"/>
 
         <text x="48" y="44" fill="#a94e2b" font-family="'Geist Mono',monospace" font-size="8" font-weight="600" letter-spacing=".16em">DEPLOYMENT / TESTED LWS SHAPE</text>
-        <text x="48" y="84" fill="#252b32" font-family="'Instrument Serif',serif" font-size="28">One model. Two GB10 nodes. One API endpoint.</text>
+        <text x="48" y="84" fill="#252b32" font-family="'Geist',sans-serif" font-size="28" font-weight="650">DeepSeek TP=2 deployment on two DGX Spark nodes</text>
         <text x="48" y="112" fill="#56616b" font-family="'Geist',sans-serif" font-size="12">LeaderWorkerSet fixes placement and startup; vLLM owns the TP=2 execution group.</text>
 
         <!-- Physical placement zones -->
