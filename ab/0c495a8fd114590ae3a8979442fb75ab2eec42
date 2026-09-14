@@ -1,0 +1,16 @@
+recipes-site/src/content/docs/recipes/deepseek-v4-flash-vision-tp2.mdx
+  h_15da545fc8cfbe 41-42,48-50,54-57,59-75,77-78,81-82
+recipes-site/src/styles/recipes.css
+  h_15da545fc8cfbe 331-334
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ab0c495a8fd114590ae3a8979442fb75ab2eec42",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
