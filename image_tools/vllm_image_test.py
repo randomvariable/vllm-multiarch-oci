@@ -120,6 +120,34 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(dead.returncode, vllm_image.EXIT_ENGINE)
         self.assertIn("is not alive", dead.stderr)
 
+    def test_health_derives_leader_url_from_environment(self):
+        with Server(http_server) as port:
+            worker = self.invoke(
+                "health", "--phase", "readiness", "--rank", "1",
+                "--leader-host-env", "TEST_LEADER", "--leader-port", str(port),
+                "--leader-path", "/v1/models", "--engine-pid", str(os.getpid()),
+                env={"TEST_LEADER": "127.0.0.1"},
+            )
+        self.assertEqual(worker.returncode, 0, worker.stderr)
+
+    def test_health_explicit_leader_url_precedes_environment(self):
+        with Server(http_server) as port:
+            worker = self.invoke(
+                "health", "--phase", "startup", "--rank", "1",
+                "--leader-url", f"http://127.0.0.1:{port}/v1/models",
+                "--leader-host-env", "TEST_LEADER", "--engine-pid", str(os.getpid()),
+                env={"TEST_LEADER": "invalid."},
+            )
+        self.assertEqual(worker.returncode, 0, worker.stderr)
+
+    def test_health_rejects_missing_leader_environment(self):
+        result = self.invoke(
+            "health", "--phase", "startup", "--rank", "1",
+            "--leader-host-env", "ABSENT_LEADER", "--engine-pid", str(os.getpid()),
+        )
+        self.assertEqual(result.returncode, vllm_image.EXIT_CONFIG)
+        self.assertIn("ABSENT_LEADER", result.stderr)
+
     def proc_tree(self, root: Path, children: list[tuple[int, str, str]]) -> None:
         parent = root / "1/task/1"
         parent.mkdir(parents=True)
@@ -197,6 +225,9 @@ class CommandTests(unittest.TestCase):
             saved = json.loads(marker.read_text())
             self.assertEqual(saved["revision"], revision)
             self.assertEqual(fake.call_args.kwargs["ignore_patterns"], ["examples/*"])
+            self.assertEqual(os.environ["HF_HOME"], str(root.resolve()))
+            self.assertEqual(os.environ["HF_HUB_CACHE"], str(root.resolve() / "hub"))
+            self.assertEqual(os.environ["HF_XET_CACHE"], str(root.resolve() / "xet"))
             self.assertEqual(list(root.glob(".published.tmp-*")), [])
 
     def test_model_sync_accepts_only_hub_full_commit_oid(self):

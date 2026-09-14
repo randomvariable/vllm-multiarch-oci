@@ -154,6 +154,18 @@ def _http_ready(url: str, timeout: float) -> None:
         raise CommandError(f"health HTTP failure: {url}: {error}", EXIT_HTTP) from error
 
 
+def _leader_url(args: argparse.Namespace) -> str:
+    if args.leader_url:
+        return args.leader_url
+    host = os.environ.get(args.leader_host_env, "") if args.leader_host_env else ""
+    if not host:
+        raise CommandError(
+            f"--leader-url is unset and leader host environment variable {args.leader_host_env!r} is empty",
+            EXIT_CONFIG,
+        )
+    return f"http://{host}:{args.leader_port}{args.leader_path}"
+
+
 def health(args: argparse.Namespace) -> None:
     rank = int(_value_or_env(args.rank, args.rank_env, "rank"))
     if rank < 0:
@@ -171,9 +183,7 @@ def health(args: argparse.Namespace) -> None:
             raise CommandError("--engine-pid or --engine-parent-pid is required for worker ranks", EXIT_CONFIG)
         if not _engine_alive(engine_pid):
             raise CommandError(f"health engine failure: PID {engine_pid} is not alive", EXIT_ENGINE)
-        if not args.leader_url:
-            raise CommandError("--leader-url is required for worker ranks", EXIT_CONFIG)
-        url = args.leader_url
+        url = _leader_url(args)
     _http_ready(url, args.timeout)
     print(f"health: {args.phase} rank {rank} ready", flush=True)
 
@@ -235,6 +245,9 @@ def model_sync(args: argparse.Namespace) -> None:
         raise CommandError("revision must be a full lowercase 40-hex Hugging Face commit OID", EXIT_CONFIG)
     root = args.storage_root.resolve()
     root.mkdir(parents=True, exist_ok=True)
+    os.environ["HF_HOME"] = str(root)
+    os.environ["HF_HUB_CACHE"] = str(root / "hub")
+    os.environ["HF_XET_CACHE"] = str(root / "xet")
     free = os.statvfs(root).f_bavail * os.statvfs(root).f_frsize
     minimum = args.min_free_bytes if args.min_free_bytes is not None else int(args.min_free_gib * 1024**3)
     if free < minimum:
@@ -311,6 +324,9 @@ def parser() -> argparse.ArgumentParser:
     probe.add_argument("--rank-env", default="LWS_WORKER_INDEX")
     probe.add_argument("--local-url")
     probe.add_argument("--leader-url")
+    probe.add_argument("--leader-host-env", default="LWS_LEADER_ADDRESS")
+    probe.add_argument("--leader-port", type=int, default=8000)
+    probe.add_argument("--leader-path", default="/v1/models")
     probe.add_argument("--engine-pid", type=int)
     probe.add_argument("--engine-parent-pid", type=int)
     probe.add_argument("--timeout", type=_duration, default=8)
