@@ -130,3 +130,80 @@ commandTests:
       - "-c"
       - "from b12x.comm.roce import _proxy; print('roce proxy', _proxy._build().name)"
     expectedOutput: ["roce proxy roce_proxy-[0-9a-f]+\\.so"]
+  # vLLM guards every optional b12x entry point with a `_require_b12x_*`
+  # function that getattrs the names it will later call. The pinned vLLM and
+  # the pinned b12x are separate sources, so a gate can name a symbol the
+  # shipped b12x does not export; that surfaces as an AttributeError during
+  # load_model on the serving node, after a full checkpoint load. The gates
+  # themselves refuse to run without a device, so this reads each gate's
+  # declared name set and the b12x module it guards, then resolves the names
+  # against the shipped runtime: importable off-GPU, so the build fails here
+  # instead.
+  - name: "B12X capability gates match the shipped runtime"
+    command: "/opt/venv/bin/python"
+    args:
+      - "-c"
+      - |
+        import ast, pathlib, sys
+
+        import vllm.utils.b12x as accessors
+
+        root = pathlib.Path("/opt/venv/lib/python3.12/site-packages/vllm")
+        failures, checked = [], 0
+        for path in sorted(root.rglob("*.py")):
+            try:
+                tree = ast.parse(path.read_text())
+            except (SyntaxError, UnicodeDecodeError):
+                continue
+            gates = [
+                node
+                for node in ast.walk(tree)
+                if isinstance(node, ast.FunctionDef)
+                and node.name.startswith("_require_b12x")
+            ]
+            origin = "vllm/" + path.relative_to(root).as_posix()
+            for gate in gates:
+                getters = sorted(
+                    {
+                        node.func.id
+                        for node in ast.walk(gate)
+                        if isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Name)
+                        and node.func.id.startswith("get_b12x_")
+                    }
+                )
+                required = sorted(
+                    {
+                        element.value
+                        for node in ast.walk(gate)
+                        if isinstance(node, (ast.Tuple, ast.List, ast.Set))
+                        for element in node.elts
+                        if isinstance(element, ast.Constant)
+                        and isinstance(element.value, str)
+                        and element.value.isidentifier()
+                    }
+                )
+                if not getters or not required:
+                    continue
+                for getter in getters:
+                    runtime = getattr(accessors, getter)()
+                    if runtime is None:
+                        failures.append(
+                            "%s %s: %s() resolved no b12x module"
+                            % (origin, gate.name, getter)
+                        )
+                        continue
+                    for name in required:
+                        checked += 1
+                        if not hasattr(runtime, name):
+                            failures.append(
+                                "%s %s: %s has no attribute %r"
+                                % (origin, gate.name, runtime.__name__, name)
+                            )
+        if failures:
+            print("b12x capability gates unsatisfied:")
+            for failure in failures:
+                print("  " + failure)
+            sys.exit(1)
+        print("b12x capability gates satisfied:", checked)
+    expectedOutput: ["b12x capability gates satisfied: [1-9][0-9]*"]
