@@ -3,7 +3,7 @@
   "source_ref": "refs/heads/dev/jovian-judgement",
   "sources": {
     "b12x": {
-      "commit": "9d02f38358ec61b56c7d0ad1e57ae64d3418631c",
+      "commit": "cacd21418bf38956324447517cb8a6cb6af2d3c3",
       "recursive_init_submodules": true,
       "remote": "https://github.com/randomvariable/b12x.git"
     },
@@ -59,9 +59,9 @@
     },
     "vllm": {
       "cargo_vendor": true,
-      "commit": "b40673cd006bf3496fdd70361dad2ad29eff54e7",
+      "commit": "746aef85a79271e742ee073d3b420168deb3e710",
       "recursive_init_submodules": true,
-      "remote": "https://github.com/local-inference-lab/vllm.git"
+      "remote": "https://github.com/randomvariable/vllm.git"
     },
     "vllm_cmake_cutlass": {
       "commit": "da5e086dab31d63815acafdac9a9c5893b1c69e2",
