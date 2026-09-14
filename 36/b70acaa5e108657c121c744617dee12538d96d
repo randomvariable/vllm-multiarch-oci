@@ -1,0 +1,74 @@
+.tekton/vllmb12x-nightly.yaml
+  h_15da545fc8cfbe 10-21
+README.md
+  h_15da545fc8cfbe 1,3
+recipes-site/astro.config.mjs
+  h_15da545fc8cfbe 12-13,46
+recipes-site/public/figures/gpu-network-dependencies.html
+  h_15da545fc8cfbe 18
+recipes-site/public/figures/host-runtime-dependencies.html
+  h_15da545fc8cfbe 11,20,32,55
+recipes-site/public/figures/llm-d-request-path.html
+  h_15da545fc8cfbe 29-30
+recipes-site/public/figures/serving-routing-dependencies.html
+  h_15da545fc8cfbe 18,60
+recipes-site/public/figures/tp2-deployment.html
+  h_15da545fc8cfbe 19,50
+recipes-site/scripts/build-data.mjs
+  h_15da545fc8cfbe 51-56
+recipes-site/src/components/LatestImage.astro
+  h_15da545fc8cfbe 9-10,24-46,56-60
+recipes-site/src/components/RecipeBuilder.astro
+  h_15da545fc8cfbe 13,37,46-47,54,58,67,80,84-85,246-256,266-272,283-285,310,312-325,329-330,400-401
+recipes-site/src/content/docs/about.mdx
+  h_15da545fc8cfbe 1-10
+recipes-site/src/content/docs/explanation/llm-d-request-path.mdx
+  h_15da545fc8cfbe 2,6-16
+recipes-site/src/content/docs/guides/benchmark-deployment.mdx
+  h_15da545fc8cfbe 1-40
+recipes-site/src/content/docs/guides/deploy-tp2.mdx
+  h_15da545fc8cfbe 21-43,49,51,53,120,127
+recipes-site/src/content/docs/guides/gb10-64k-driver.mdx
+  h_15da545fc8cfbe 2,6,25,53,74,130,134-136,145-146,148,154-155,163,172
+recipes-site/src/content/docs/guides/gpu-operator.mdx
+  h_15da545fc8cfbe 3,8-9,65
+recipes-site/src/content/docs/guides/k3s.mdx
+  h_15da545fc8cfbe 3,8-9
+recipes-site/src/content/docs/guides/llm-d-routing.mdx
+  h_15da545fc8cfbe 6-8,13
+recipes-site/src/content/docs/guides/multus-rdma.mdx
+  h_15da545fc8cfbe 8-9,142-153
+recipes-site/src/content/docs/image-releases/index.mdx
+  h_15da545fc8cfbe 2-3,8,10
+recipes-site/src/content/docs/index.mdx
+  h_15da545fc8cfbe 2-3,10-11,14-15,17,22,26,28,32,35-36,41
+recipes-site/src/content/docs/recipes/deepseek-v4-flash-vision-tp2.mdx
+  h_15da545fc8cfbe 2,12,23,31-86
+recipes-site/src/content/docs/recipes/index.mdx
+  h_15da545fc8cfbe 2-3,10
+recipes-site/src/content/docs/reference/platform-dependencies.mdx
+  h_15da545fc8cfbe 15
+recipes-site/src/content/docs/tutorials/k3s-to-deepseek.mdx
+  h_15da545fc8cfbe 2,8-9,48,89
+recipes-site/src/data/platform-dependencies.yaml
+  h_15da545fc8cfbe 18
+recipes-site/src/render.js
+  h_15da545fc8cfbe 11-12,14,75,78,100,105-106,174,192-193,271,315
+recipes-site/src/styles/recipes.css
+  h_15da545fc8cfbe 79-80,109-114,169,182-183,189,245-246,248,258-260,267-348,350,352,392,404,428-430,445-449,501-505,604,615,617,644,646,730-741,765,769,828-831
+recipes-site/tests/render.test.js
+  h_15da545fc8cfbe 13-14,30,88-89,107,119,203-212
+recipes/deepseek-ai/DeepSeek-V4-Flash-Vision-Exp.yaml
+  h_15da545fc8cfbe 140,147,152,155,160,163,171,179,184,187,195,203,211,216,219,227,232-234,236-237,245-247,251-253,261,269,277
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "36b70acaa5e108657c121c744617dee12538d96d",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
