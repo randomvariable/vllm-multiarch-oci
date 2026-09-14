@@ -18,6 +18,10 @@ fileExistenceTests:
     path: "/opt/venv/bin/vllm"
     shouldExist: true
     permissions: "-rwxr-xr-x"
+  - name: "Kubernetes image helper"
+    path: "/opt/venv/bin/vllm-image"
+    shouldExist: true
+    permissions: "-rwxr-xr-x"
   - name: "vLLM wheel package"
     path: "/opt/venv/lib/python3.12/site-packages/vllm/__init__.py"
     shouldExist: true
@@ -56,6 +60,14 @@ fileExistenceTests:
     shouldExist: true
 
 commandTests:
+  - name: "Generic image helper exposes stable commands"
+    command: "/opt/venv/bin/vllm-image"
+    args: ["--help"]
+    expectedOutput: ["rendezvous-wait,model-sync,health"]
+  - name: "Leader rendezvous exits without network wait"
+    command: "/opt/venv/bin/vllm-image"
+    args: ["rendezvous-wait", "--rank", "0", "--port", "25000"]
+    expectedOutput: ["leader rank 0; no wait required"]
   # Torch links cuDNN, cuBLAS, cuSPARSELt and NCCL, so a successful import is
   # the only proof that every runtime layer resolves through the loader.
   - name: "Torch resolves its CUDA runtime"

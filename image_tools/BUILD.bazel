@@ -1,0 +1,18 @@
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
+
+exports_files([
+    "vllm_image.py",
+    "vllm-image.sh",
+    "__init__.py",
+])
+
+py_test(
+    name = "vllm_image_test",
+    srcs = ["vllm_image_test.py"],
+    deps = [":vllm_image_lib"],
+)
+
+py_library(
+    name = "vllm_image_lib",
+    srcs = ["__init__.py", "vllm_image.py"],
+)

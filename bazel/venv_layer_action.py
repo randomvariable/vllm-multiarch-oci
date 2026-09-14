@@ -34,6 +34,8 @@ def main() -> None:
     parser.add_argument("--nccl-tar", required=True)
     parser.add_argument("--python-launcher", required=True)
     parser.add_argument("--vllm-launcher", required=True)
+    parser.add_argument("--image-helper", required=True)
+    parser.add_argument("--image-helper-launcher", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--include-python", action="store_true")
     parser.add_argument("--include-nccl", action="store_true")
@@ -65,10 +67,15 @@ def main() -> None:
         for source, destination in (
             (execroot / args.python_launcher, root / "opt/venv/bin/python"),
             (execroot / args.vllm_launcher, root / "opt/venv/bin/vllm"),
+            (execroot / args.image_helper_launcher, root / "opt/venv/bin/vllm-image"),
         ):
             shutil.copy2(source, destination)
             os.chmod(destination, 0o755)
         (site / "sitecustomize.py").write_text(_SITECUSTOMIZE)
+        helper_package = site / "image_tools"
+        helper_package.mkdir()
+        (helper_package / "__init__.py").write_text("")
+        shutil.copy2(execroot / args.image_helper, helper_package / "vllm_image.py")
 
     write_tar(execroot / args.output, root)
 
