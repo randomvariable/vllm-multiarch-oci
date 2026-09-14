@@ -25,6 +25,7 @@ ROOT: Final = Path(__file__).resolve().parents[1]
 PROFILE: Final = ROOT / "profiles/vllmb12x/profile.json"
 _COMMIT: Final = re.compile(r"[0-9a-f]{40}")
 _DATE: Final = re.compile(r"[0-9]{8}")
+_REF_PREFIX: Final = "refs/heads/"
 
 
 def utc_now() -> dt.datetime:
@@ -52,8 +53,21 @@ def is_expired(lease: dict[str, Any], now: dt.datetime) -> bool:
     return now >= parse_rfc3339(renewed) + dt.timedelta(seconds=duration)
 
 
-def allocate_tag(source_revision: str, build_revision: str, date: str, sequence: int) -> str:
-    """Create an immutable tag from the two revisions that define the build."""
+def source_branch(profile: Path) -> str:
+    ref = json.loads(profile.read_text()).get("source_ref")
+    if not isinstance(ref, str) or not ref.startswith(_REF_PREFIX):
+        raise ValueError(f"{profile} does not contain a full branch ref")
+    branch = ref.removeprefix(_REF_PREFIX)
+    slug = re.sub(r"[^a-z0-9]+", "-", branch.lower()).strip("-")
+    if not slug:
+        raise ValueError(f"invalid vLLM source branch: {ref!r}")
+    return slug
+
+
+def allocate_tag(source_branch: str, source_revision: str, build_revision: str, date: str, sequence: int) -> str:
+    """Create an immutable tag from the branch and revisions that define the build."""
+    if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", source_branch):
+        raise ValueError(f"invalid vLLM source branch slug: {source_branch!r}")
     if not _COMMIT.fullmatch(source_revision):
         raise ValueError(f"invalid vLLM source revision: {source_revision!r}")
     if not _COMMIT.fullmatch(build_revision):
@@ -62,7 +76,7 @@ def allocate_tag(source_revision: str, build_revision: str, date: str, sequence:
         raise ValueError(f"invalid UTC build date: {date!r}")
     if sequence < 1:
         raise ValueError(f"invalid publication sequence: {sequence!r}")
-    return f"vllmb12x-{date}-{source_revision[:12]}-{build_revision[:12]}-n{sequence}"
+    return f"vllmb12x-{source_branch}-{source_revision[:12]}-{build_revision[:12]}-{date}-n{sequence}"
 
 
 class Lease:
@@ -257,6 +271,7 @@ def main() -> None:
     if not re.fullmatch(r"[a-z0-9./_-]+", args.repository):
         parser.error("repository must not contain a registry tag or digest")
     revision = source_revision(args.profile)
+    branch = source_branch(args.profile)
     # The build holds no lock: only the registry mutation below is serialized.
     subprocess.run(
         [
@@ -272,7 +287,7 @@ def main() -> None:
     date = args.date or utc_now().strftime("%Y%m%d")
     lease = Lease(args.kubectl, args.namespace, args.lease_name, args.lease_duration)
     sequence = lease.acquire()
-    tag = allocate_tag(revision, args.build_revision, date, sequence)
+    tag = allocate_tag(branch, revision, args.build_revision, date, sequence)
     reference: str
     try:
         # Alongside the output base so the blob hard links stay on one filesystem.

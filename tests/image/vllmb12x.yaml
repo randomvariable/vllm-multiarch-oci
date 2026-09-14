@@ -3,6 +3,20 @@ schemaVersion: 2.0.0
 metadataTest:
   entrypoint: ["/opt/venv/bin/vllm"]
   workdir: "/root"
+  labels:
+    - key: "org.opencontainers.image.source"
+      value: "https://github.com/local-inference-lab/vllm"
+    - key: "org.opencontainers.image.revision"
+      value: "[0-9a-f]{40}"
+      isRegex: true
+    - key: "org.opencontainers.image.version"
+      value: "0\\.1\\.dev1\\+vllmb12x\\.g[0-9a-f]{12}"
+      isRegex: true
+    - key: "uk.co.randomvariable.vllmb12x.vllm-source-ref"
+      value: "refs/heads/.+"
+      isRegex: true
+    - key: "uk.co.randomvariable.vllmb12x.builder-source"
+      value: "https://github.com/randomvariable/vllm-multiarch-oci"
   envVars:
     - key: "CUDA_HOME"
       value: "/usr/local/cuda"

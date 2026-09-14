@@ -93,7 +93,7 @@ def source_version(commit: str) -> str:
     return "0.1.dev1"
 
 
-def version_module(public_version: str, commit: str) -> str:
+def version_module(public_version: str, source_ref: str, commit: str) -> str:
     build_version = f"{public_version}+vllmb12x.g{commit[:12]}"
     return "\n".join((
         "# SPDX-License-Identifier: Apache-2.0",
@@ -101,6 +101,7 @@ def version_module(public_version: str, commit: str) -> str:
         '"""PEP 440 distribution version for the vLLM wheel this profile builds."""',
         "",
         f'VLLM_BUILD_VERSION = "{build_version}"',
+        f'VLLM_SOURCE_REF = "{source_ref}"',
         f'VLLM_SOURCE_REVISION = "{commit}"',
         "",
     ))
@@ -119,6 +120,7 @@ def main() -> None:
         checkout(VLLM_REMOTE, args.ref, commit, checkout_root)
 
         updated = json.loads(json.dumps(manifest))
+        updated["source_ref"] = args.ref
         updated["sources"]["vllm"]["commit"] = commit
         for name, (relative_path, remote, variable) in CMAKE_SOURCES.items():
             source = checkout_root / relative_path
@@ -135,7 +137,7 @@ def main() -> None:
             resolve_ref(source["remote"], source["commit"])
 
         content = json.dumps(updated, indent=2, sort_keys=True) + "\n"
-        version = version_module(source_version(commit), commit)
+        version = version_module(source_version(commit), args.ref, commit)
         if args.dry_run:
             print(content, end="")
             print(version, end="")

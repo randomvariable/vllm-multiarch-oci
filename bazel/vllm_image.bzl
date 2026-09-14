@@ -3,7 +3,8 @@
 
 load("@rules_oci//oci:defs.bzl", "oci_image", "oci_load")
 
-SOURCE_REPOSITORY = "https://github.com/randomvariable/vllm-multiarch-oci"
+SOURCE_REPOSITORY = "https://github.com/local-inference-lab/vllm"
+BUILDER_REPOSITORY = "https://github.com/randomvariable/vllm-multiarch-oci"
 
 def vllm_image(
         name,
@@ -15,12 +16,13 @@ def vllm_image(
         title,
         local_tag,
         vllm_version,
+        vllm_source_ref,
         vllm_revision):
     """Create the image and the local loader.
 
     The release tag is allocated after the build, so it is not an input here.
-    `org.opencontainers.image.version` is stamped by the publisher; the build
-    records the vLLM distribution version and source commit it actually built.
+    The image records both builder and upstream vLLM source identities. The
+    registry tag adds the publication date and sequence after the build.
     """
     oci_image(
         name = name,
@@ -50,7 +52,11 @@ def vllm_image(
         labels = {
             "org.opencontainers.image.title": title,
             "org.opencontainers.image.source": SOURCE_REPOSITORY,
+            "org.opencontainers.image.revision": vllm_revision,
+            "org.opencontainers.image.version": vllm_version,
             "org.opencontainers.image.licenses": "Apache-2.0",
+            "uk.co.randomvariable.vllmb12x.builder-source": BUILDER_REPOSITORY,
+            "uk.co.randomvariable.vllmb12x.vllm-source-ref": vllm_source_ref,
             "uk.co.randomvariable.vllmb12x.vllm-version": vllm_version,
             "uk.co.randomvariable.vllmb12x.vllm-revision": vllm_revision,
         },
