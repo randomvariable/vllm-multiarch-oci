@@ -1,0 +1,28 @@
+MODULE.bazel
+  h_15da545fc8cfbe 120-123
+MODULE.bazel.lock
+  h_15da545fc8cfbe 279-280,282-283
+bazel/sources.bzl
+  h_15da545fc8cfbe 70-75,154-162,169,178
+scripts/BUILD.bazel
+  h_15da545fc8cfbe 13-22
+scripts/vllm-patches.py
+  h_15da545fc8cfbe 1-391
+scripts/vllm_patches_test.py
+  h_15da545fc8cfbe 1-259
+third_party/BUILD.bazel
+  h_15da545fc8cfbe 3-4
+third_party/vllm-patches.json
+  h_15da545fc8cfbe 1-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5f5103d4877ea2553933dedf34959fe191769319",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
