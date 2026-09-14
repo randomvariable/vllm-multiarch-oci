@@ -21,15 +21,16 @@ VERSION: Final = ROOT / "profiles/vllmb12x/version.bzl"
 VLLM_REMOTE: Final = "https://github.com/local-inference-lab/vllm.git"
 DEFAULT_REF: Final = "refs/heads/dev/jovian-judgement"
 
-# The vLLM branch imports source-owned Python modules from b12x directly (for
-# example b12x.preparation and b12x.sequence.engram._impl), so a vLLM bump is
-# only coherent when the paired b12x ships the same API surface. This maps
+# The vLLM branch imports source-owned Python modules from b12x directly
+# (b12x.preparation, b12x.sequence.engram._impl, and friends), so a vLLM bump
+# is only coherent when the paired b12x ships the same API surface. This maps
 # vLLM branches to the b12x branch carrying the matching side; a vLLM branch
-# absent from this map must be refreshed with an explicit --b12x-ref.
+# absent from this map must be refreshed with an explicit --b12x-ref. Both
+# sides are resolved from upstream (local-inference-lab); no forks.
 PAIRED_B12X_REFS: Final = {
-    "refs/heads/dev/jovian-judgement": "refs/heads/fix/gb10-mxfp4-cooperative-occupancy-vllmb12x",
+    "refs/heads/dev/jovian-judgement": "refs/heads/master",
 }
-B12X_REMOTE: Final = "https://github.com/randomvariable/b12x.git"
+B12X_REMOTE: Final = "https://github.com/local-inference-lab/b12x.git"
 
 # These are every CMake download that the CUDA profile replaces through an
 # explicit *_SRC_DIR. A new CMake source declaration must be classified here
@@ -136,6 +137,7 @@ def main() -> None:
 
         updated = json.loads(json.dumps(manifest))
         updated["source_ref"] = args.ref
+        updated["sources"]["vllm"]["remote"] = VLLM_REMOTE
         updated["sources"]["vllm"]["commit"] = commit
         if b12x_ref is not None:
             updated["sources"]["b12x"]["remote"] = B12X_REMOTE
