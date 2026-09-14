@@ -1,0 +1,20 @@
+recipes-site/src/content/docs/image-releases/index.mdx
+  h_15da545fc8cfbe 2
+recipes-site/src/content/docs/index.mdx
+  h_15da545fc8cfbe 2
+recipes-site/src/content/docs/recipes/deepseek-v4-flash-vision-tp2.mdx
+  h_15da545fc8cfbe 2
+recipes-site/src/content/docs/recipes/index.mdx
+  h_15da545fc8cfbe 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5635096edf68bb8bd9358d7b4ea873f9e5cf2ccb",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
