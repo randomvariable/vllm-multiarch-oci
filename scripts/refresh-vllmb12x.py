@@ -21,6 +21,16 @@ VERSION: Final = ROOT / "profiles/vllmb12x/version.bzl"
 VLLM_REMOTE: Final = "https://github.com/local-inference-lab/vllm.git"
 DEFAULT_REF: Final = "refs/heads/dev/jovian-judgement"
 
+# The vLLM branch imports source-owned Python modules from b12x directly (for
+# example b12x.preparation and b12x.sequence.engram._impl), so a vLLM bump is
+# only coherent when the paired b12x ships the same API surface. This maps
+# vLLM branches to the b12x branch carrying the matching side; a vLLM branch
+# absent from this map must be refreshed with an explicit --b12x-ref.
+PAIRED_B12X_REFS: Final = {
+    "refs/heads/dev/jovian-judgement": "refs/heads/fix/gb10-mxfp4-cooperative-occupancy-vllmb12x",
+}
+B12X_REMOTE: Final = "https://github.com/randomvariable/b12x.git"
+
 # These are every CMake download that the CUDA profile replaces through an
 # explicit *_SRC_DIR. A new CMake source declaration must be classified here
 # before it can enter the build lock.
@@ -110,10 +120,15 @@ def version_module(public_version: str, source_ref: str, commit: str) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--ref", default=DEFAULT_REF)
+    parser.add_argument(
+        "--b12x-ref",
+        help="override the b12x branch paired with the selected vLLM branch",
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     manifest = json.loads(PROFILE.read_text())
+    b12x_ref = args.b12x_ref or PAIRED_B12X_REFS.get(args.ref)
     with tempfile.TemporaryDirectory(prefix="refresh-vllmb12x-") as temporary:
         checkout_root = Path(temporary) / "vllm"
         commit = resolve_ref(VLLM_REMOTE, args.ref)
@@ -122,6 +137,9 @@ def main() -> None:
         updated = json.loads(json.dumps(manifest))
         updated["source_ref"] = args.ref
         updated["sources"]["vllm"]["commit"] = commit
+        if b12x_ref is not None:
+            updated["sources"]["b12x"]["remote"] = B12X_REMOTE
+            updated["sources"]["b12x"]["commit"] = resolve_ref(B12X_REMOTE, b12x_ref)
         for name, (relative_path, remote, variable) in CMAKE_SOURCES.items():
             source = checkout_root / relative_path
             if not source.is_file():
