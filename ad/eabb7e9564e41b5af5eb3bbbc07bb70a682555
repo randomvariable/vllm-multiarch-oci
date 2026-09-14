@@ -1,0 +1,36 @@
+README.md
+  h_15da545fc8cfbe 1,3
+recipes-site/astro.config.mjs
+  h_15da545fc8cfbe 12-13
+recipes-site/public/figures/host-runtime-dependencies.html
+  h_15da545fc8cfbe 20
+recipes-site/public/figures/tp2-deployment.html
+  h_15da545fc8cfbe 50
+recipes-site/src/content/docs/guides/gb10-64k-driver.mdx
+  h_15da545fc8cfbe 2
+recipes-site/src/content/docs/guides/gpu-operator.mdx
+  h_15da545fc8cfbe 3,65
+recipes-site/src/content/docs/guides/k3s.mdx
+  h_15da545fc8cfbe 3
+recipes-site/src/content/docs/image-releases/index.mdx
+  h_15da545fc8cfbe 3,8
+recipes-site/src/content/docs/index.mdx
+  h_15da545fc8cfbe 2-3,10,17,28
+recipes-site/src/content/docs/recipes/deepseek-v4-flash-vision-tp2.mdx
+  h_15da545fc8cfbe 2,12,23
+recipes-site/src/content/docs/recipes/index.mdx
+  h_15da545fc8cfbe 3,10
+recipes-site/src/content/docs/tutorials/k3s-to-deepseek.mdx
+  h_15da545fc8cfbe 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "adeabb7e9564e41b5af5eb3bbbc07bb70a682555",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
