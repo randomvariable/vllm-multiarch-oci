@@ -1,0 +1,36 @@
+README.md
+  h_15da545fc8cfbe 32
+bazel/vllm_image.bzl
+  h_15da545fc8cfbe 6-7,19,24-25,55-56,58-59
+docs/how-to/use-kubernetes-helpers.md
+  h_15da545fc8cfbe 1-117
+docs/reference/build-configuration.md
+  h_15da545fc8cfbe 51-59
+image/BUILD.bazel
+  h_15da545fc8cfbe 9,142
+profiles/vllmb12x/profile.json
+  h_15da545fc8cfbe 3
+profiles/vllmb12x/version.bzl
+  h_15da545fc8cfbe 6
+scripts/BUILD.bazel
+  h_15da545fc8cfbe 1-12
+scripts/publish-vllmb12x.py
+  h_15da545fc8cfbe 28,56-70,79,274,290
+scripts/publish_vllmb12x_test.py
+  h_15da545fc8cfbe 1-37
+scripts/refresh-vllmb12x.py
+  h_15da545fc8cfbe 96,104,123,140
+tests/image/vllmb12x.yaml
+  h_15da545fc8cfbe 6-19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5f3804361c05956f8c441b376684406b41d7562e",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
