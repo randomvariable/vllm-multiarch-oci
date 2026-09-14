@@ -1,0 +1,16 @@
+recipes-site/astro.config.mjs
+  h_15da545fc8cfbe 46
+recipes-site/src/content/docs/about.mdx
+  h_15da545fc8cfbe 2-3,6,8,10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "43d77aa94ed9fe8bcdd6374f4503ad3b7765bc0b",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
