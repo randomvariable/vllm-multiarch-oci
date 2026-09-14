@@ -1,0 +1,20 @@
+MODULE.bazel.lock
+  h_15da545fc8cfbe 282,288-289,398-399
+profiles/vllmb12x/profile.json
+  h_15da545fc8cfbe 6,8,62,64
+profiles/vllmb12x/version.bzl
+  h_15da545fc8cfbe 5,7
+scripts/refresh-vllmb12x.py
+  h_15da545fc8cfbe 24-26,28-29,31,33,140
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "76c0ab5ed2d8d52fa78e9383366955f94718833b",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
