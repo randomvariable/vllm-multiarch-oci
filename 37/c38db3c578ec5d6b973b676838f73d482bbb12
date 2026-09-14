@@ -1,0 +1,30 @@
+bazel/BUILD.bazel
+  h_15da545fc8cfbe 26
+bazel/venv_layer.bzl
+  h_15da545fc8cfbe 13-14,33-34,74-81
+bazel/venv_layer_action.py
+  h_15da545fc8cfbe 37-38,70,75-78
+image_tools/BUILD.bazel
+  h_15da545fc8cfbe 1-18
+image_tools/__init__.py
+  h_15da545fc8cfbe 1
+image_tools/vllm-image.sh
+  h_15da545fc8cfbe 1-3
+image_tools/vllm_image.py
+  h_15da545fc8cfbe 1-298
+image_tools/vllm_image_test.py
+  h_15da545fc8cfbe 1-182
+tests/image/vllmb12x.yaml
+  h_15da545fc8cfbe 21-24,63-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "37c38db3c578ec5d6b973b676838f73d482bbb12",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
