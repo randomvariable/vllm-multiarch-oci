@@ -3,9 +3,9 @@
   "source_ref": "refs/heads/dev/jovian-judgement",
   "sources": {
     "b12x": {
-      "commit": "9043b448622764a598969518d413b3fd8b3c0c07",
+      "commit": "9d02f38358ec61b56c7d0ad1e57ae64d3418631c",
       "recursive_init_submodules": true,
-      "remote": "https://github.com/local-inference-lab/b12x.git"
+      "remote": "https://github.com/randomvariable/b12x.git"
     },
     "cutlass": {
       "commit": "e6233cbac5d7c7a865c19c91cd684ceece19513c",

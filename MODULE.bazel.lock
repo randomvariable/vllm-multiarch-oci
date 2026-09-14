@@ -277,16 +277,16 @@
     "//bazel:sources.bzl%profile_sources": {
       "general": {
         "bzlTransitiveDigest": "cYRAG1Wvc9qQhccnL48v3YR195SbFEQVVKoELV8Ay+c=",
-        "usagesDigest": "5MHALgMWLOuIxFfdlFfLmh4I1Kti8uWhdBxEXwZLE/E=",
+        "usagesDigest": "rxaW+jr2eXbzAn0FjibFjpTHe7cm+06a6TTnXin5cnU=",
         "recordedInputs": [
-          "FILE:@@//profiles/vllmb12x/profile.json b6e1bfb0f90d93b72a944ec71082f77278313bfd92669deb974826f9fbaf88a2"
+          "FILE:@@//profiles/vllmb12x/profile.json 858e2de2a6ed973dd9a1eb9bd29e626684a4c57ca3613cf6b4074beae04125dd"
         ],
         "generatedRepoSpecs": {
           "vllmb12x_b12x": {
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
-              "remote": "https://github.com/local-inference-lab/b12x.git",
-              "commit": "9043b448622764a598969518d413b3fd8b3c0c07",
+              "remote": "https://github.com/randomvariable/b12x.git",
+              "commit": "9d02f38358ec61b56c7d0ad1e57ae64d3418631c",
               "recursive_init_submodules": true,
               "patches": [],
               "cargo_vendor": false
@@ -399,7 +399,8 @@
               "commit": "b40673cd006bf3496fdd70361dad2ad29eff54e7",
               "recursive_init_submodules": true,
               "patches": [
-                "@@//third_party:vllm_shm_broadcast_spin_grace.patch"
+                "@@//third_party:vllm_shm_broadcast_spin_grace.patch",
+                "@@//third_party:vllm_flash_attn_cute_namespace.patch"
               ],
               "cargo_vendor": true
             }
