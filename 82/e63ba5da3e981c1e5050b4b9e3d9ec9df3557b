@@ -1,0 +1,16 @@
+recipes-site/src/components/LatestImage.astro
+  h_15da545fc8cfbe 9-10,24-46,56-60
+recipes-site/src/styles/recipes.css
+  h_15da545fc8cfbe 245-246,248,258-260,267-281
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "82e63ba5da3e981c1e5050b4b9e3d9ec9df3557b",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
