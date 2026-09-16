@@ -18,3 +18,23 @@ The selected recipe's validated digest remains the default. Choosing **Latest pu
 :::note[Freshness]
 The resolver runs hourly and on manual deployment. The displayed timestamp records when registry metadata was resolved, rather than implying immediate consistency with a just-finished publication.
 :::
+
+## What each published lineage carries
+
+A publication pins one vLLM revision and one b12x revision together. The pairing matters: the fork's vLLM branches import source-owned b12x modules, so a stale b12x pin fails at model load rather than at build time.
+
+### Qwen3.8 Flash Next lineage
+
+`sha256:6391d8c2f20c3fd476606f28a45a92d6cbc0ae20486ef84769fc759046f244d3` · 16 September 2026
+
+- vLLM `5a70cefff7e011d909cb21a576333652ac2c05d9`, b12x `759e98370230e8488ac27482acf16feacb6a10dd`.
+- The vLLM revision passes the target model's positional overrides into the MTP draft model. Before it, the draft resolved 262,144 positions from the checkpoint while the target resolved 1,048,576, and a full-length prefill was rejected.
+- Restores the per-rank provider census and the symmetric-preparation guard, so a rank that fails to publish its providers raises a structured error instead of stalling the group.
+- Builder side: console scripts are now materialized into `/opt/venv/bin`, which is what makes `ninja` present for runtime C++ extension builds; the image contract and publisher accept a pinned commit rather than a branch name.
+- Pull requests: [vllm-multiarch-oci#25](https://github.com/randomvariable/vllm-multiarch-oci/pull/25) for the builder and recipe, [local-inference-lab/vllm#777](https://github.com/local-inference-lab/vllm/pull/777) for the MTP override fix upstream.
+
+### DeepSeek V4 Flash Vision lineage
+
+`sha256:42d5d72bd79a371c3b5a756fe2a1814f3c9393dd9a73d65bcefa01eb8f28d726`
+
+This is the image the DeepSeek recipe was accepted on. It remains the recipe's default; a newer publication is a different lineage, not an upgrade of this one.

@@ -27,9 +27,17 @@ export default defineConfig({
               label: "DeepSeek V4 Flash Vision",
               link: "/recipes/deepseek-v4-flash-vision-tp2/",
             },
+            {
+              label: "Qwen3.8 Flash Next",
+              link: "/recipes/qwen38-flash-next-tp2/",
+            },
           ],
         },
         { label: "Guides", items: [{ autogenerate: { directory: "guides" } }] },
+        {
+          label: "Explanations",
+          items: [{ autogenerate: { directory: "explanation" } }],
+        },
         {
           label: "Helpers",
           items: [

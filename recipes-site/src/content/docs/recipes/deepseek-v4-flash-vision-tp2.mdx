@@ -89,19 +89,7 @@ The [deployment benchmark guide](/vllm-multiarch-oci/guides/benchmark-deployment
 Kubernetes extended-resource counts are values published by the cluster's device plugins. A site may advertise more allocator units than physical hardware. The beginner path requests one GPU and one RDMA unit per rank; experienced operators must match the generated requests to their own allocator policy.
 :::
 
-## Two traffic paths
-
-The rank-zero API receives requests on port `8888`. The second rank is headless and participates in tensor-parallel collectives over the configured secondary network. Control and probe traffic stays on the primary pod network; the Multus attachment carries collective traffic.
-
-<div class="diagram-frame">
-  <iframe
-    title="Two-node tensor parallel deployment"
-    src={`${import.meta.env.BASE_URL}figures/tp2-deployment.html`}
-    loading="lazy"
-  ></iframe>
-</div>
-
-<a href={`${import.meta.env.BASE_URL}figures/tp2-deployment.html`}>Open the deployment figure on its own page</a>.
+Requests enter at rank zero and collectives cross the secondary network; the shape is the same for every recipe here and is described in <a href={`${import.meta.env.BASE_URL}explanation/tp2-traffic-paths/`}>traffic paths in a two-node TP=2 group</a>.
 
 <RecipeBuilder />
 

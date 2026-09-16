@@ -1,0 +1,30 @@
+---
+title: Traffic paths in a two-node TP=2 group
+description: How request, control, and collective traffic move through a two-node tensor-parallel deployment.
+sidebar:
+  label: TP=2 traffic paths
+---
+
+Every recipe on this site uses the same two-node shape, so this topology is described once here rather than redrawn per model.
+
+The rank-zero pod owns the HTTP API on port `8888`. The rank-one pod runs headless: it has no API listener and exists to take part in tensor-parallel collectives. A request therefore always enters at rank zero, and both ranks do the forward pass.
+
+Two networks carry different traffic. The primary pod network carries the API, kubelet probes, and the rendezvous socket the worker uses to find the leader. The Multus attachment carries tensor-parallel collectives over RDMA. Keeping them separate is what stops collective traffic from competing with control traffic, and it is why the RDMA device and GID values are deployment inputs rather than recipe constants.
+
+LeaderWorkerSet owns group lifecycle and leader-first startup. It does not schedule inference requests. Request-level decisions belong to the [inference routing path](/vllm-multiarch-oci/explanation/llm-d-request-path/), which is a separate layer you can add or leave out.
+
+<div class="diagram-frame">
+  <iframe
+    title="Two-node tensor parallel deployment"
+    src={`${import.meta.env.BASE_URL}figures/tp2-deployment.html`}
+    loading="lazy"
+  ></iframe>
+</div>
+
+<a href={`${import.meta.env.BASE_URL}figures/tp2-deployment.html`}>Open the deployment figure on its own page</a>.
+
+## Why probes branch on rank
+
+Only rank zero answers HTTP, so an HTTP probe against rank one can never pass and would have the kubelet kill a healthy worker, tearing down the tensor-parallel group mid-forward. The generated manifests branch on rank: the leader checks its own API, and the worker checks that the leader answers and that its own engine process is alive.
+
+There is deliberately no liveness probe. vLLM is PID 1 in the container, so engine death is container death already. An exec liveness probe on these deployments timed out under long GPU operations and killed healthy groups.
