@@ -1,0 +1,18 @@
+bazel/action_lib.py
+  h_15da545fc8cfbe 231-249
+bazel/venv_layer_action.py
+  h_15da545fc8cfbe 12,62-71
+tests/image/vllmb12x.yaml
+  h_15da545fc8cfbe 118-124
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5ba43749676af605654027c384622fd5186a8e35",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
