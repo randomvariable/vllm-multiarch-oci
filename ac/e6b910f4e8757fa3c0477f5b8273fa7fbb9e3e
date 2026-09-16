@@ -1,0 +1,18 @@
+recipes-site/astro.config.mjs
+  h_15da545fc8cfbe 30-33
+recipes-site/src/content/docs/recipes/qwen38-flash-next-tp2.mdx
+  h_15da545fc8cfbe 1-113
+recipes/local-inference-lab/Qwen3.8-Flash-Next-NVFP4.yaml
+  h_15da545fc8cfbe 1-284
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ace6b910f4e8757fa3c0477f5b8273fa7fbb9e3e",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
