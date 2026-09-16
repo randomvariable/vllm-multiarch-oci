@@ -228,6 +228,25 @@ def install_wheels(python: Path, destination: Path, wheels: Sequence[Path]) -> N
     )
 
 
+def wheel_scripts(wheel: Path, destination: Path) -> list[Path]:
+    """Materialize a wheel's packaged scripts for venv installation.
+
+    pip --target omits the .data/scripts tree, so console entry points such
+    as ninja's binary never reach the venv bin directory on their own.
+    """
+    prefix = ".data/scripts/"
+    scripts: list[Path] = []
+    with zipfile.ZipFile(wheel) as archive:
+        for name in archive.namelist():
+            if prefix not in name or name.endswith("/"):
+                continue
+            target = destination / Path(name).name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(archive.read(name))
+            scripts.append(target)
+    return scripts
+
+
 def extract_wheel_script(wheel: Path, script: str, destination: Path) -> Path:
     """Extract a wheel's packaged script, which pip --target omits."""
     suffix = "/scripts/" + script

@@ -5,16 +5,7 @@ description: Render, apply and accept the two-node LeaderWorkerSet without overs
 
 This deployment uses two nodes, one physical GB10 and one vLLM rank per node, with tensor parallel size 2. The model snapshot is pinned to `6821d6ad3681a4b137b066b76094fa82ebd0a380`. The default image is the exact digest accepted live on 14 September 2026.
 
-<iframe
-  class="doc-figure"
-  src={`${import.meta.env.BASE_URL}figures/tp2-deployment.html`}
-  title="Two-node tensor-parallel deployment"
-  loading="lazy"
-></iframe>
-
-<a href={`${import.meta.env.BASE_URL}figures/tp2-deployment.html`}>Open the deployment figure by itself</a>.
-
-The rank-zero pod owns the HTTP API on port 8888. The rank-one pod is headless and participates in GPU collectives. LWS controls group lifecycle and leader-first startup; it does not schedule inference requests. Cilium carries Kubernetes/control traffic, while the separately attached Multus network carries the configured collective path.
+The rank-zero pod owns the HTTP API on port 8888. The rank-one pod is headless and participates in GPU collectives. LWS controls group lifecycle and leader-first startup; it does not schedule inference requests. Cilium carries Kubernetes and control traffic, while the separately attached Multus network carries the configured collective path. The figure and the rest of that reasoning are in <a href={`${import.meta.env.BASE_URL}explanation/tp2-traffic-paths/`}>traffic paths in a two-node TP=2 group</a>.
 
 ## Render a complete artifact
 

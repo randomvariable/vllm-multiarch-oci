@@ -7,7 +7,7 @@ import ReleaseStrip from "../../components/ReleaseStrip.astro";
 
 <ReleaseStrip />
 
-This project builds [`local-inference-lab/vLLM`](https://github.com/local-inference-lab/vllm) and its source dependencies for NVIDIA DGX Spark. It publishes an ARM64 OCI image and generates Kubernetes and Docker configuration for the same DeepSeek V4 Flash Vision TP=2 setup used on two DGX Spark systems. It is not a builder or recipe catalog for upstream `vllm-project/vllm` releases.
+This project builds [`local-inference-lab/vLLM`](https://github.com/local-inference-lab/vllm) and its source dependencies for NVIDIA DGX Spark. It publishes an ARM64 OCI image and generates Kubernetes and Docker configuration for the two-node TP=2 deployments I run on two DGX Spark systems. It is not a builder or recipe catalog for upstream `vllm-project/vllm` releases.
 
 <section class="site-intro" aria-labelledby="site-purpose">
   <div class="intro-copy">
@@ -32,6 +32,15 @@ This project builds [`local-inference-lab/vLLM`](https://github.com/local-infere
     <a class="recipe-link" href={`${import.meta.env.BASE_URL}recipes/deepseek-v4-flash-vision-tp2/`}>Open recipe →</a>
   </article>
   <article class="recipe-card">
+    <p class="recipe-status">Running on LWS</p>
+    <h3>Qwen3.8 Flash Next</h3>
+    <p>NVFP4 weights, a 1,048,576-token context from a 4x YaRN override, MTP speculation at depth three, and PLE tables read from disk instead of memory.</p>
+    <div class="card-meta">
+      <span>TP 2</span><span>2 nodes</span><span>ARM64</span>
+    </div>
+    <a class="recipe-link" href={`${import.meta.env.BASE_URL}recipes/qwen38-flash-next-tp2/`}>Open recipe →</a>
+  </article>
+  <article class="recipe-card">
     <p class="recipe-status">k3s setup guide</p>
     <h3>Install the Kubernetes dependencies</h3>
     <p>A linear route through the 64 KiB kernel driver, Cilium, GPU and RDMA dependencies, LWS, and inference-aware routing.</p>
@@ -41,3 +50,8 @@ This project builds [`local-inference-lab/vLLM`](https://github.com/local-infere
     <a class="recipe-link" href={`${import.meta.env.BASE_URL}tutorials/k3s-to-deepseek/`}>Open setup guide →</a>
   </article>
 </div>
+
+## Open pull requests
+
+- [vllm-multiarch-oci#25](https://github.com/randomvariable/vllm-multiarch-oci/pull/25) moves the builder onto the Qwen3.8 Flash Next pins and adds that recipe. It also keeps the hermetic flash-attn patch, accepts a pinned commit instead of a branch name as the source ref, and installs wheel console scripts so `ninja` exists at runtime.
+- [local-inference-lab/vllm#777](https://github.com/local-inference-lab/vllm/pull/777) upstreams the fix the Qwen image carries: a target model's `hf_overrides` now reach the internally constructed MTP draft, so the draft keeps the same YaRN geometry and a 1,048,576-token prefill is accepted.

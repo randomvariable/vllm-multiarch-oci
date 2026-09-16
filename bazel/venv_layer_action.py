@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from action_lib import extract, install_wheels, work_root, write_tar
+from action_lib import extract, install_wheels, wheel_scripts, work_root, write_tar
 
 # The launchers put the venv on PYTHONPATH, and a PYTHONPATH entry is an
 # ordinary sys.path directory: CPython never processes the .pth files in it.
@@ -59,7 +59,16 @@ def main() -> None:
     if args.include_python:
         # Preserve the rules_python interpreter with its matching standard library.
         shutil.copytree(python_home, root / "opt/python", symlinks=False)
-    install_wheels(python, site, [execroot / wheel for wheel in args.wheel])
+    wheels = [execroot / wheel for wheel in args.wheel]
+    install_wheels(python, site, wheels)
+    bin_dir = root / "opt/venv/bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    scripts_dir = work / "wheel-scripts"
+    for wheel in wheels:
+        for script in wheel_scripts(wheel, scripts_dir):
+            destination = bin_dir / script.name
+            shutil.copy2(script, destination)
+            os.chmod(destination, 0o755)
     if args.include_nccl:
         extract(execroot / args.nccl_tar, root / "opt/nccl")
 

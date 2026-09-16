@@ -13,7 +13,7 @@ metadataTest:
       value: "0\\.1\\.dev1\\+vllmb12x\\.g[0-9a-f]{12}"
       isRegex: true
     - key: "uk.co.randomvariable.vllmb12x.vllm-source-ref"
-      value: "refs/heads/.+"
+      value: "(refs/heads/.+|[0-9a-f]{40})"
       isRegex: true
     - key: "uk.co.randomvariable.vllmb12x.builder-source"
       value: "https://github.com/randomvariable/vllm-multiarch-oci"
@@ -115,6 +115,13 @@ commandTests:
     command: "/opt/venv/bin/python"
     args: ["-c", "import cutlass; print('cutlass', cutlass.__file__)"]
     expectedOutput: ["cutlass /"]
+  # b12x preparation compiles C++ shims in the container at first use; torch
+  # cpp_extension requires the ninja binary, which pip --target installs of
+  # the ninja wheel omit unless the venv layer materializes them.
+  - name: "ninja binary available for runtime JIT"
+    command: "/opt/venv/bin/ninja"
+    args: ["--version"]
+    expectedOutput: ["1\\.[0-9]+"]
   - name: "B12X Lightning Indexer CuteDSL imports"
     command: "/opt/venv/bin/python"
     args:

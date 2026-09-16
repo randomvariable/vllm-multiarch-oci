@@ -1,0 +1,284 @@
+meta:
+  title: Qwen3.8 Flash Next NVFP4, two-node TP=2
+  slug: qwen38-flash-next-tp2
+  description: A fixed two-node, one-GB10-per-node Qwen3.8-Flash-Next-NVFP4 deployment with SSD-backed PLE tables and a 1,048,576-token context.
+model:
+  model_id: local-inference-lab/Qwen3.8-Flash-Next-NVFP4
+  revision: 629bc3218833a38b475b719f34aa571666f4a03e
+  served_name: qwen38-flash-next
+runtime:
+  command:
+    - /opt/venv/bin/python
+    - -m
+    - vllm.entrypoints.cli.main
+    - serve
+  base_args:
+    - --served-model-name
+    - qwen38-flash-next
+    - --host
+    - 0.0.0.0
+    - --port
+    - "8888"
+    - --pipeline-parallel-size
+    - "1"
+    - --distributed-executor-backend
+    - mp
+    - --master-port
+    - "25000"
+    - --mm-encoder-tp-mode
+    - data
+    - --limit-mm-per-prompt
+    - '{"image":4,"video":1}'
+    - --mamba-cache-mode
+    - align
+    - --enable-prefix-caching
+    - --enable-chunked-prefill
+    - --dtype
+    - bfloat16
+    - --kv-cache-dtype
+    - bfloat16
+    - --quantization
+    - modelopt_mixed
+    - --block-size
+    - "16"
+    - --load-format
+    - instanttensor
+    - --max-model-len
+    - "1048576"
+    - --max-num-seqs
+    - "4"
+    - --max-num-batched-tokens
+    - "4096"
+    - --gpu-memory-utilization
+    - "0.80"
+    - --speculative-config
+    - '{"method":"mtp","num_speculative_tokens":3}'
+    - --gdn-decode-kernel
+    - b12x
+    - --linear-backend
+    - b12x
+    - --moe-backend
+    - b12x
+    - --no-enable-flashinfer-autotune
+    - --additional-config
+    - '{"ple_table_memory":"disk"}'
+    # The checkpoint declares max_position_embeddings 262144 with rope_type
+    # "default". A 4x YaRN override reaches 1,048,576 exactly. mrope_section and
+    # mrope_interleaved must stay: get_rope() only preserves M-RoPE, which the
+    # vision position ids need, when mrope_section is present.
+    - --hf-overrides
+    - '{"text_config":{"rope_parameters":{"rope_type":"yarn","factor":4.0,"original_max_position_embeddings":262144,"mrope_interleaved":true,"mrope_section":[11,11,10],"partial_rotary_factor":0.25,"rope_theta":10000000}}}'
+    - --reasoning-parser
+    - qwen3
+    - --tool-call-parser
+    - qwen3_xml
+    - --enable-auto-tool-choice
+    - --disable-access-log-for-endpoints
+    - /metrics,/v1/models
+  base_env:
+    # Only the V2 model runner's model state calls prepare_disk() for the
+    # io_uring PLE table. Without it the first forward pass raises.
+    VLLM_USE_V2_MODEL_RUNNER: "1"
+    # Hard requirement of this model's GDN path.
+    VLLM_SSM_CONV_STATE_LAYOUT: DS
+    CUDA_DEVICE_ORDER: PCI_BUS_ID
+    VLLM_WORKER_MULTIPROC_METHOD: spawn
+    SAFETENSORS_FAST_GPU: "1"
+    VLLM_PLUGINS: ""
+    # nvidia-cutlass-dsl ships a .pth to put its dsl_packages directory on
+    # sys.path. RoCEnante's support check imports cutlass from there, so both
+    # entries are required: the venv's site-packages and the DSL packages.
+    PYTHONPATH: /opt/venv/lib/python3.12/site-packages:/opt/venv/lib/python3.12/site-packages/nvidia_cutlass_dsl/dsl_packages
+    PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+    HF_HOME: /models
+    HF_HUB_OFFLINE: "1"
+    TRANSFORMERS_OFFLINE: "1"
+    # b12x one-shot RoCE collectives for the cross-node TP group. Fail-stop: if
+    # a rank cannot take part, the backend is disabled on every rank at init.
+    VLLM_ENABLE_ROCE_ALLREDUCE: "1"
+    # The first-boot RoCE preparation race times out at sequence 1 with the
+    # default spin budget on this topology.
+    B12X_ROCE_SPIN_LIMIT: "600000000"
+    PYTHONFAULTHANDLER: "1"
+    # NCCL still carries collectives outside RoCEnante's size limits.
+    NCCL_NET: IB
+    NCCL_IB_DISABLE: "0"
+    NCCL_CROSS_NIC: "1"
+    NCCL_CUMEM_ENABLE: "0"
+    NCCL_IGNORE_CPU_AFFINITY: "1"
+    NCCL_NVLS_ENABLE: "0"
+    NCCL_DEBUG: WARN
+    TORCH_NCCL_ASYNC_ERROR_HANDLING: "1"
+    VLLM_CACHE_ROOT: /cache/vllm
+    # b12x compiles its native loader on first use and caches it under
+    # XDG_CACHE_HOME. Node-local storage keeps that off the container filesystem.
+    XDG_CACHE_HOME: /cache
+    TRITON_CACHE_DIR: /cache/triton
+    TORCHINDUCTOR_CACHE_DIR: /cache/torchinductor
+    FLASHINFER_WORKSPACE_BASE: /cache/flashinfer
+    VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS: "1800"
+deployment:
+  nodes: 2
+  tensor_parallel_size: 2
+  model_path: /models/qwen38-flash-next
+  # The checkpoint's tensor payload is about 99 GiB and the PLE tables are read
+  # from it for the life of the process, so the published root stays on disk.
+  storage_min_free_gib: 130
+  download_workers: 8
+  ignore_patterns: []
+  parameters:
+    namespace:
+      label: Kubernetes namespace
+      type: string
+      required: true
+      default: vllm
+      targets: [lws, llm-d-routing]
+      description: Namespace for the model and its routing resources.
+      help: {label: Namespace and Secret setup, href: guides/deploy-tp2/#create-namespace-and-credential}
+    name:
+      label: Deployment name
+      type: string
+      required: true
+      default: qwen38-flash-next
+      description: DNS-compatible base name for resources and Docker containers.
+      help: {label: Deployment walkthrough, href: guides/deploy-tp2/}
+    model_storage_path:
+      label: Model storage path
+      type: string
+      required: true
+      default: /var/lib/models
+      targets: [lws, docker]
+      description: Absolute persistent host path on each GPU node for the model cache and published snapshot. PLE rows are read from these files during every forward pass, so it must stay local and readable.
+      help: {label: Storage layout, href: guides/deploy-tp2/#storage-paths}
+    jit_storage_path:
+      label: JIT cache path
+      type: string
+      required: true
+      default: /var/cache/vllm/qwen38-flash-next
+      targets: [lws, docker]
+      description: Absolute persistent host path on each GPU node for compiler and kernel caches.
+      help: {label: Storage layout, href: guides/deploy-tp2/#storage-paths}
+    hf_secret:
+      label: Hugging Face Secret
+      type: string
+      required: true
+      default: huggingface-token
+      targets: [lws]
+      description: Kubernetes Secret created from the operator's local HF_TOKEN environment variable.
+      help: {label: Create the Secret, href: guides/deploy-tp2/#create-namespace-and-credential}
+    hf_secret_key:
+      label: Hugging Face Secret key
+      type: string
+      required: true
+      default: HF_TOKEN
+      targets: [lws]
+      description: Data key in the Kubernetes Secret; the browser never accepts or stores the token itself.
+      help: {label: Create the Secret, href: guides/deploy-tp2/#create-namespace-and-credential}
+    network_attachment:
+      label: RoCE network attachment
+      type: string
+      required: true
+      default: roce-net
+      targets: [lws]
+      description: Multus NetworkAttachmentDefinition name for the secondary collective network.
+      help: {label: Create and inspect the attachment, href: guides/multus-rdma/#define-the-secondary-network}
+    node_selector:
+      label: GPU node selector
+      type: stringMap
+      required: true
+      default: {}
+      targets: [lws]
+      description: Site-specific labels selecting the two GB10 nodes; arm64 is enforced separately.
+      help: {label: Find node labels, href: guides/deploy-tp2/#node-placement}
+    topology_key:
+      label: Exclusive topology key
+      type: string
+      required: true
+      default: ""
+      targets: [lws]
+      description: Site label that groups the two nodes allowed to form this TP group.
+      help: {label: Configure topology labels, href: guides/deploy-tp2/#node-placement}
+    topology_values:
+      label: Allowed topology values
+      type: string
+      required: true
+      default: ""
+      targets: [lws]
+      description: Comma-separated values accepted for the exclusive topology key.
+      help: {label: Configure topology labels, href: guides/deploy-tp2/#node-placement}
+    rdma_resource:
+      label: RDMA extended resource
+      type: string
+      required: true
+      default: rdma.com/roce
+      targets: [lws]
+      description: RDMA shared-device-plugin resource key for the selected host interfaces.
+      help: {label: Configure the RDMA resource, href: guides/multus-rdma/#advertise-one-rdma-unit-per-node}
+    rdma_units:
+      label: RDMA allocator units
+      type: integer
+      required: true
+      default: 1
+      targets: [lws]
+      description: Extended-resource allocator units per rank, not the number of HCAs or ports.
+      help: {label: Inspect RDMA allocation, href: guides/multus-rdma/#advertise-one-rdma-unit-per-node}
+    hca:
+      label: NCCL HCA list
+      type: string
+      required: true
+      default: rocep1s0f1,roceP2p1s0f1
+      suggestions:
+        - rocep1s0f1,roceP2p1s0f1
+      targets: [lws, docker]
+      description: Comma-separated RDMA devices. The preset is the pair used by this GB10 deployment; type over it if host enumeration differs.
+      help: {label: Find HCA names, href: guides/multus-rdma/#advertise-one-rdma-unit-per-node}
+    gid_index:
+      label: RoCE GID index
+      type: integer
+      required: true
+      default: 3
+      targets: [lws, docker]
+      description: GID index verified for the site's RoCE VLAN and address family.
+      help: {label: Select the GID, href: guides/multus-rdma/#identify-the-runtime-network-values}
+    control_interface:
+      label: Host control network interface
+      type: string
+      required: true
+      default: ""
+      targets: [docker]
+      description: Docker host interface used by Gloo coordination and NCCL socket bootstrap; Kubernetes uses the primary pod interface eth0.
+      help: {label: Find host interfaces, href: guides/deploy-tp2/#runtime-network-interfaces}
+    leader_ip:
+      label: Leader host IP
+      type: string
+      required: true
+      default: ""
+      targets: [docker]
+      description: Docker-only rank-zero address reachable from the worker over the host network.
+      help: {label: Docker host networking, href: guides/deploy-tp2/#docker-host-values}
+    worker_ip:
+      label: Worker host IP
+      type: string
+      required: true
+      default: ""
+      targets: [docker]
+      description: Docker-only rank-one address used as that rank's VLLM_HOST_IP.
+      help: {label: Docker host networking, href: guides/deploy-tp2/#docker-host-values}
+    gateway_class:
+      label: GatewayClass name
+      type: string
+      required: true
+      default: ""
+      targets: [llm-d-routing]
+      description: Routing-only accepted Envoy GatewayClass supplied by the cluster operator.
+      help: {label: Install or inspect GatewayClass, href: guides/cluster-prerequisites/#install-envoy-gateway-183}
+validation:
+  image: ghcr.io/randomvariable/vllm-b12x-multi@sha256:6391d8c2f20c3fd476606f28a45a92d6cbc0ae20486ef84769fc759046f244d3
+  lws: verified
+  docker: unverified
+  evidence: Accepted live on 2026-09-16 in the author's two-node GB10 cluster on kubeadm with Cilium, then measured with the Estonia profile at concurrency 1, 2 and 4. This records functional acceptance and a small measurement, not a stable performance baseline.
+guide:
+  hardware: Two arm64 GB10 nodes, one physical integrated GPU per node, with a working RoCE secondary network and at least 130 GiB free model storage per node for the 99 GiB checkpoint.
+  fixed_tuning: TP=2, MTP depth 3, 0.80 GPU memory utilization, 1,048,576-token maximum context from a 4x YaRN override, four sequences, 4,096 batched tokens, SSD-backed PLE tables.
+  networking: Primary control traffic uses the operator-selected socket interfaces; tensor-parallel collectives use the selected RDMA HCAs. Kubernetes allocator units do not describe physical device counts.
+  safety: Stop both ranks gracefully with a 120-second timeout. A long kernel is not grounds for force-killing a GB10 process.
