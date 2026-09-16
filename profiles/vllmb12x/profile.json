@@ -1,11 +1,11 @@
 {
   "name": "vllmb12x",
-  "source_ref": "refs/heads/dev/jovian-judgement",
+  "source_ref": "5a70cefff7e011d909cb21a576333652ac2c05d9",
   "sources": {
     "b12x": {
-      "commit": "9043b448622764a598969518d413b3fd8b3c0c07",
+      "commit": "759e98370230e8488ac27482acf16feacb6a10dd",
       "recursive_init_submodules": true,
-      "remote": "https://github.com/local-inference-lab/b12x.git"
+      "remote": "https://github.com/randomvariable/b12x.git"
     },
     "cutlass": {
       "commit": "e6233cbac5d7c7a865c19c91cd684ceece19513c",
@@ -59,9 +59,9 @@
     },
     "vllm": {
       "cargo_vendor": true,
-      "commit": "b40673cd006bf3496fdd70361dad2ad29eff54e7",
+      "commit": "5a70cefff7e011d909cb21a576333652ac2c05d9",
       "recursive_init_submodules": true,
-      "remote": "https://github.com/local-inference-lab/vllm.git"
+      "remote": "https://github.com/randomvariable/vllm.git"
     },
     "vllm_cmake_cutlass": {
       "commit": "da5e086dab31d63815acafdac9a9c5893b1c69e2",

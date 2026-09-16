@@ -55,6 +55,9 @@ def is_expired(lease: dict[str, Any], now: dt.datetime) -> bool:
 
 def source_branch(profile: Path) -> str:
     ref = json.loads(profile.read_text()).get("source_ref")
+    if isinstance(ref, str) and re.fullmatch(r"[0-9a-f]{40}", ref):
+        # Immutable-revision pins carry the SHA itself; slug it directly.
+        return ref[:12]
     if not isinstance(ref, str) or not ref.startswith(_REF_PREFIX):
         raise ValueError(f"{profile} does not contain a full branch ref")
     branch = ref.removeprefix(_REF_PREFIX)
