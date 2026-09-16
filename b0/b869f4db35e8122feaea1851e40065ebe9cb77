@@ -1,0 +1,18 @@
+MODULE.bazel
+  h_15da545fc8cfbe 124
+third_party/BUILD.bazel
+  h_15da545fc8cfbe 3
+third_party/vllm_flash_attn_cute_namespace.patch
+  h_15da545fc8cfbe 1-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b0b869f4db35e8122feaea1851e40065ebe9cb77",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
