@@ -81,6 +81,23 @@ Both lanes build on one node, against one remote worker pool and one ccache volu
 
 The Lease duration is short relative to a build and the holder renews it, so a cancelled or killed run blocks the other lane only until its Lease expires, not until someone cleans up. A single failed renewal is not treated as a lost Lease: ownership ends only when another holder appears, the Lease is deleted, or the last successful renewal could itself have expired. The publication Lease is separate and still covers only tag allocation and registry mutation.
 
+## Releases
+
+Publication is continuous: every accepted build receives an immutable tag, and nothing about that tag says the image is the one to run. A release is that separate statement, and `scripts/release-vllmb12x.py` makes it in three places at once:
+
+```bash
+scripts/release-vllmb12x.py \
+  --reference ghcr.io/randomvariable/vllm-b12x-multi@sha256:<digest> \
+  --publication-tag vllmb12x-<branch>-<vllm>-<builder>-<date>-n<sequence> \
+  --dry-run
+```
+
+Without `--dry-run` it tags the image in the registry as `v<YYYYMMDD>.<N>`, tags the commit, and opens a GitHub release whose notes carry the pins, both image references, and the same change ledger the image advertises. The registry tag is written first: a git tag pointing at an image that failed to tag is worse than a registry tag with no release yet.
+
+The command refuses rather than releases when the image does not belong to this tree. It compares the image's vLLM revision, source ref, and description label against the current lock and ledger, requires a clean working tree and a pushed `HEAD`, and requires the builder revision inside the publication tag to be `HEAD` — so a release cannot promise source that never produced the image.
+
+Release tags are calendar, not semantic. This builder tracks moving upstream fork branches, so a version number would imply a compatibility promise it cannot keep.
+
 ## Optional CI Configuration
 
 NativeLink is our optional CI backend. The public `remote-aarch64` configuration selects remote execution with no local fallback, minimal downloads, compression, and a 21600-second remote timeout. Endpoints, authentication, and execution properties must be supplied separately by CI. No private infrastructure is configured in the repository. Local Justfile recipes do not use this configuration.

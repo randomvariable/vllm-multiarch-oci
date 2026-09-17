@@ -2,6 +2,19 @@
 
 load("@rules_python//python:defs.bzl", "py_test")
 
+# Everything the change ledger reads or renders into.
+_LEDGER_INPUTS = [
+    "//:MODULE.bazel",
+    "//:README.md",
+    "//:recipes-site/src/content/docs/image-releases/included-changes.mdx",
+    "//profiles/vllmb12x:description.bzl",
+    "//profiles/vllmb12x:included-changes.json",
+    "//profiles/vllmb12x:profile.json",
+    "//profiles/vllmb12x:version.bzl",
+    "//third_party:vllm_flash_attn_cute_namespace.patch",
+    "//third_party:vllm_shm_broadcast_spin_grace.patch",
+]
+
 py_test(
     name = "publish_vllmb12x_test",
     srcs = [
@@ -45,15 +58,17 @@ py_test(
         "included_changes_test.py",
         "vllmb12x-included-changes.py",
     ],
-    data = [
-        "//:README.md",
-        "//:MODULE.bazel",
-        "//:recipes-site/src/content/docs/image-releases/included-changes.mdx",
-        "//profiles/vllmb12x:included-changes.json",
-        "//profiles/vllmb12x:profile.json",
-        "//profiles/vllmb12x:description.bzl",
-        "//third_party:vllm_flash_attn_cute_namespace.patch",
-        "//third_party:vllm_shm_broadcast_spin_grace.patch",
-    ],
+    data = _LEDGER_INPUTS,
     main = "included_changes_test.py",
+)
+
+py_test(
+    name = "release_vllmb12x_test",
+    srcs = [
+        "release-vllmb12x.py",
+        "release_vllmb12x_test.py",
+        "vllmb12x-included-changes.py",
+    ],
+    data = _LEDGER_INPUTS,
+    main = "release_vllmb12x_test.py",
 )
