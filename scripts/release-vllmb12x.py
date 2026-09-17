@@ -94,8 +94,11 @@ def check_release_candidate(reference: str, publication_tag: str, labels: dict[s
         raise RuntimeError(
             f"{reference} was built from {published.group('builder')}, but HEAD is {head[:12]}"
         )
-    if not run("git", "branch", "--remotes", "--contains", "HEAD").strip():
-        raise RuntimeError("HEAD is not pushed, so the release tag would name an unreachable commit")
+    # A release names the default branch, not a branch that may be rebased or
+    # deleted once its pull request closes.
+    branches = {line.strip().lstrip("* ") for line in run("git", "branch", "--remotes", "--contains", "HEAD").splitlines()}
+    if "origin/main" not in branches:
+        raise RuntimeError("HEAD is not on origin/main, so the release tag would name a commit that may disappear")
 
 
 def release_notes(reference: str, publication_tag: str, release_tag: str, module: Any) -> str:

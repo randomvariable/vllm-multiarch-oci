@@ -62,10 +62,16 @@ class ReleaseCandidateTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "uncommitted changes"):
                 self.check()
 
-    def test_an_unpushed_head_is_rejected(self):
-        with patch.object(RELEASE, "run", side_effect=["", "0123456789ab" + "0" * 28 + "\n", ""]):
-            with self.assertRaisesRegex(RuntimeError, "not pushed"):
+    def test_a_head_outside_main_is_rejected(self):
+        unmerged = ["", "0123456789ab" + "0" * 28 + "\n", "  origin/build/topic\n"]
+        with patch.object(RELEASE, "run", side_effect=unmerged):
+            with self.assertRaisesRegex(RuntimeError, "not on origin/main"):
                 self.check()
+
+    def test_a_head_on_main_is_accepted(self):
+        merged = ["", "0123456789ab" + "0" * 28 + "\n", "  origin/build/topic\n  origin/main\n"]
+        with patch.object(RELEASE, "run", side_effect=merged):
+            self.check()
 
     def test_a_foreign_publication_tag_is_rejected(self):
         with self.assertRaisesRegex(RuntimeError, "not a publication tag"):
