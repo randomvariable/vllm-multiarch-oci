@@ -24,6 +24,7 @@ Sources: [image targets](../../image/BUILD.bazel), [components](../../components
 | [`.bazelversion`](../../.bazelversion) | Bazel 9.2.0 |
 | [`MODULE.bazel`](../../MODULE.bazel) | Bzlmod dependencies, OCI base digest, source patch labels, repository extensions |
 | [`profile.json`](../../profiles/vllmb12x/profile.json) | Source revisions, profile image metadata, CUDA architecture values |
+| [`vllmb12x-runtime-configuration.md`](vllmb12x-runtime-configuration.md) | Generated runtime configuration delta for the checked-in VLLMB12X source lock. |
 | [`image/BUILD.bazel`](../../image/BUILD.bazel) | Effective image composition and tag |
 | [`.bazelrc`](../../.bazelrc) | Public build options |
 | `.bazelrc.user` | Ignored, operator-owned endpoints, credentials, and worker properties |
@@ -43,6 +44,8 @@ All helpers ignore Bazel rc files, including private host configuration.
 | `just bazel <command> [args...]` | Raw Bazel command without rc files; no platform or execution flags added |
 
 Build, test, and load select the ARM64 target and execution platform, local execution, `.bazel-cache`, and the strict action environment. Source actions require persistent writable `/ccache` independently of Bazel's disk cache.
+
+The generated [VLLMB12X Runtime Configuration](vllmb12x-runtime-configuration.md) lists every B12X runtime environment reader and every changed local-inference-lab/vLLM environment, CLI, or `additional_config` control relative to its pinned stock-vLLM merge-base. Regenerate it with `scripts/vllmb12x-runtime-config.py` whenever this profile changes source commits or patches.
 
 ## Nightly Publication
 

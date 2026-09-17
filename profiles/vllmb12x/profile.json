@@ -1,9 +1,9 @@
 {
   "name": "vllmb12x",
-  "source_ref": "5a70cefff7e011d909cb21a576333652ac2c05d9",
+  "source_ref": "dev/rv-jovian-judgement-profile-base",
   "sources": {
     "b12x": {
-      "commit": "759e98370230e8488ac27482acf16feacb6a10dd",
+      "commit": "4401ce4fb98265c3b1e1579ae03960ff41d84d50",
       "recursive_init_submodules": true,
       "remote": "https://github.com/randomvariable/b12x.git"
     },
@@ -59,7 +59,7 @@
     },
     "vllm": {
       "cargo_vendor": true,
-      "commit": "5a70cefff7e011d909cb21a576333652ac2c05d9",
+      "commit": "bd22e0f250439659d9fe30903b7aa124c321a932",
       "recursive_init_submodules": true,
       "remote": "https://github.com/randomvariable/vllm.git"
     },

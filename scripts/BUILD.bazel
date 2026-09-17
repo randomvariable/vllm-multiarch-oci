@@ -10,3 +10,21 @@ py_test(
     ],
     main = "publish_vllmb12x_test.py",
 )
+
+py_test(
+    name = "refresh_vllmb12x_test",
+    srcs = [
+        "refresh-vllmb12x.py",
+        "refresh_vllmb12x_test.py",
+    ],
+    main = "refresh_vllmb12x_test.py",
+)
+
+py_test(
+    name = "vllmb12x_runtime_config_test",
+    srcs = [
+        "vllmb12x-runtime-config.py",
+        "vllmb12x_runtime_config_test.py",
+    ],
+    main = "vllmb12x_runtime_config_test.py",
+)
