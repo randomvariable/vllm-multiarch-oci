@@ -24,6 +24,18 @@ class ReleaseTagTest(unittest.TestCase):
         self.assertEqual(RELEASE.next_release_tag([], "20260918"), "v20260918.1")
 
 
+class ReleaseNotesTest(unittest.TestCase):
+    def test_includes_mooncake_base_image_addition(self):
+        module = RELEASE.ledger()
+        reference = "example/image@sha256:" + "0" * 64
+
+        with patch.object(RELEASE, "run", return_value="0123456789ab" + "0" * 28 + "\n"):
+            notes = RELEASE.release_notes(reference, "vllmb12x-dev-abcdefabcdef-0123456789ab-20260917-n1", "v20260917.1", module)
+
+        self.assertIn("## Base vLLM image additions", notes)
+        self.assertIn("Mooncake Transfer Engine CUDA 13 `0.3.13.post1`", notes)
+
+
 class ReleaseCandidateTest(unittest.TestCase):
     def setUp(self):
         self.module = RELEASE.ledger()

@@ -49,6 +49,7 @@ The public [deployment recipe site](https://randomvariable.github.io/vllm-multia
 | Measure a native edit | [Measure Incremental Builds](docs/how-to/measure-incremental-builds.md) |
 | Use model, rendezvous, and health helpers | [Use the Kubernetes Image Helpers](docs/how-to/use-kubernetes-helpers.md) |
 | Look up targets and options | [Build Configuration](docs/reference/build-configuration.md) |
+| Configure the Mooncake runtime addition | [Mooncake Transfer Engine](docs/reference/mooncake-transfer-engine.md) |
 | Understand build boundaries | [Build and Cache Design](docs/explanation/build-and-cache-design.md) |
 
 NativeLink is our optional CI execution backend, not a prerequisite for local builds. CI access and deployment configuration are private and are not distributed here.

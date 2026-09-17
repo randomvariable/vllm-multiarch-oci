@@ -2,7 +2,9 @@
 """Assemble the self-contained Python runtime OCI layer."""
 
 import argparse
+import importlib.metadata
 import os
+import shlex
 import shutil
 import sys
 from pathlib import Path
@@ -25,6 +27,26 @@ import site
 
 site.addsitedir("/opt/venv/lib/python3.12/site-packages")
 '''
+
+
+def materialize_console_scripts(site: Path, destination: Path) -> None:
+    """Create pip console-script wrappers omitted by `pip install --target`."""
+    for distribution in importlib.metadata.distributions(path=[str(site)]):
+        for entry_point in distribution.entry_points:
+            if entry_point.group != "console_scripts":
+                continue
+            wrapper = destination / entry_point.name
+            wrapper.write_text(
+                "#!/bin/sh\nexec /opt/venv/bin/python -c "
+                + shlex.quote(
+                    "import sys; from importlib.metadata import distribution; "
+                    "entry = distribution(%r).entry_points.select("
+                    "group='console_scripts', name=%r)[0]; sys.exit(entry.load()())"
+                    % (distribution.metadata["Name"], entry_point.name)
+                )
+                + ' "$@"\n'
+            )
+            wrapper.chmod(0o755)
 
 
 def main() -> None:
@@ -69,6 +91,7 @@ def main() -> None:
             destination = bin_dir / script.name
             shutil.copy2(script, destination)
             os.chmod(destination, 0o755)
+    materialize_console_scripts(site, bin_dir)
     if args.include_nccl:
         extract(execroot / args.nccl_tar, root / "opt/nccl")
 

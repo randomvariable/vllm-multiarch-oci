@@ -117,6 +117,7 @@ NativeLink is our optional CI backend. The public `remote-aarch64` configuration
 | Torch architecture | `12.1a` |
 | FlashInfer architecture | `12.1f` |
 | Disabled kernel | `MarlinFP8ScaledMMLinearKernel` |
+| Mooncake Transfer Engine | CUDA 13 distribution `0.3.13.post1`; see [Mooncake Transfer Engine](mooncake-transfer-engine.md) |
 
 Source: [image rule](../../bazel/vllm_image.bzl). The x86-64 platform declaration does not establish a supported x86-64 image. PyTorch uses one wheel, not a `torch_libtorch`/Python-only split.
 

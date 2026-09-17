@@ -14,8 +14,13 @@ nvidia-cudnn-frontend>=1.25.0
 nvidia-cutlass-dsl[cu13]==4.6.2
 nvidia-ml-py
 nvtx==0.2.15
+# CUDA 13 Mooncake Store. Its base distribution owns aiohttp, requests, and
+# msgpack; the profile supplies its optional Python modules below.
+mooncake-transfer-engine-cuda13==0.3.13.post1
+# SSD registration and SPDK target modules use Paramiko. The remaining
+# optional Mooncake imports are already supplied by the vLLM profile.
+paramiko
 quack-kernels==0.6.4
-smg-grpc-servicer[vllm]>=0.5.2
 tilelang==0.1.12
 tokenspeed-mla==0.1.8
 torchcodec>=0.14
