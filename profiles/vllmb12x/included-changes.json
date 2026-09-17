@@ -1,0 +1,69 @@
+{
+  "components": [
+    {
+      "name": "vllm",
+      "title": "vLLM",
+      "branch": "refs/heads/dev/rv-jovian-judgement-profile-base",
+      "upstream": "local-inference-lab/vllm",
+      "upstream_base": "refs/heads/dev/jovian-judgement",
+      "changes": [
+        {
+          "pull_request": "local-inference-lab/vllm#777",
+          "title": "fix(qwen): propagate MTP positional overrides",
+          "inclusion": "branch",
+          "commits": 3,
+          "note": "The draft model resolved 262,144 positions from its checkpoint while the target resolved 1,048,576, so a full-length prefill was rejected."
+        },
+        {
+          "pull_request": "local-inference-lab/vllm#779",
+          "title": "perf(qwen): shard TP4 HC prefill and coalesce recurrent checkpoints",
+          "inclusion": "branch",
+          "commits": 9,
+          "note": "Opt-in: the tail coalescing and token-ownership paths are off unless the deployment enables them."
+        },
+        {
+          "pull_request": "vllm-project/vllm#52917",
+          "title": "Adaptive spin grace and bounded architectural waits for shm_broadcast",
+          "inclusion": "patch",
+          "patch": "third_party/vllm_shm_broadcast_spin_grace.patch",
+          "note": "The pinned revision carries the bounded-wait half. The patch adds the adaptive grace half, reproducing randomvariable/vllm refs/heads/dev/rv-jovian-judgement at 3c948029c899219ce5d7c4bbb565e20d7bc6a837. Keep it for every tensor-parallel model: without it the mp executor busy-spins."
+        },
+        {
+          "pull_request": null,
+          "title": "Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute",
+          "inclusion": "patch",
+          "patch": "third_party/vllm_flash_attn_cute_namespace.patch",
+          "note": "Packaging repair for this builder's symlink install path, which skips the import rewrite the upstream CMake copy performs. It carries no upstream change."
+        }
+      ]
+    },
+    {
+      "name": "b12x",
+      "title": "B12X",
+      "branch": "refs/heads/dev/rv-jovian-judgement",
+      "upstream": "local-inference-lab/b12x",
+      "upstream_base": "refs/heads/master",
+      "changes": [
+        {
+          "pull_request": "local-inference-lab/b12x#384",
+          "title": "fix(preparation): retain prepared launchers and coordinate collectives",
+          "inclusion": "branch",
+          "commits": 10,
+          "note": "Includes the RoCE one-shot dtype fix, the collective entry barrier, and the source-hashed JIT extension build directory."
+        },
+        {
+          "pull_request": "local-inference-lab/b12x#386",
+          "title": "feat(ple): export prepared internal prefill checkpoints",
+          "inclusion": "branch",
+          "commits": 2
+        },
+        {
+          "pull_request": "local-inference-lab/b12x#387",
+          "title": "perf(qsa): reuse representative keys across paired queries",
+          "inclusion": "branch",
+          "commits": 4
+        }
+      ]
+    }
+  ]
+}

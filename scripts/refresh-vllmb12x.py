@@ -18,8 +18,10 @@ from typing import Final
 ROOT: Final = Path(__file__).resolve().parents[1]
 PROFILE: Final = ROOT / "profiles/vllmb12x/profile.json"
 VERSION: Final = ROOT / "profiles/vllmb12x/version.bzl"
-VLLM_REMOTE: Final = "https://github.com/local-inference-lab/vllm.git"
-DEFAULT_REF: Final = "refs/heads/dev/jovian-judgement"
+DEFAULT_VLLM_REMOTE: Final = "https://github.com/local-inference-lab/vllm.git"
+DEFAULT_VLLM_REF: Final = "refs/heads/dev/jovian-judgement"
+DEFAULT_B12X_REMOTE: Final = "https://github.com/local-inference-lab/b12x.git"
+DEFAULT_B12X_REF: Final = "refs/heads/master"
 
 # These are every CMake download that the CUDA profile replaces through an
 # explicit *_SRC_DIR. A new CMake source declaration must be classified here
@@ -67,9 +69,9 @@ def resolve_ref(remote: str, ref: str) -> str:
     return resolved
 
 
-def checkout(remote: str, ref: str, commit: str, destination: Path) -> None:
+def checkout(remote: str, commit: str, destination: Path) -> None:
     run("git", "clone", "--filter=blob:none", "--no-checkout", remote, str(destination))
-    run("git", "-C", str(destination), "fetch", "--depth=1", "origin", ref)
+    run("git", "-C", str(destination), "fetch", "--depth=1", "origin", commit)
     run("git", "-C", str(destination), "checkout", "--detach", commit)
 
 
@@ -93,6 +95,21 @@ def source_version(commit: str) -> str:
     return "0.1.dev1"
 
 
+def canonical_source_ref(ref: str) -> str:
+    """Return the lock form of a selected ref: a full branch ref or a commit.
+
+    The image label and the publication tag both read this value, and both
+    accept only those two forms, so a shorthand branch name is expanded here
+    rather than propagated into generated files.
+    """
+    if re.fullmatch(r"[0-9a-f]{40}", ref):
+        return ref
+    branch = ref.removeprefix("refs/heads/")
+    if branch.startswith("refs/") or not re.fullmatch(r"[A-Za-z0-9._][A-Za-z0-9._/-]*", branch):
+        raise RuntimeError(f"vLLM source ref must name a branch or a commit: {ref!r}")
+    return f"refs/heads/{branch}"
+
+
 def version_module(public_version: str, source_ref: str, commit: str) -> str:
     build_version = f"{public_version}+vllmb12x.g{commit[:12]}"
     return "\n".join((
@@ -109,19 +126,29 @@ def version_module(public_version: str, source_ref: str, commit: str) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--ref", default=DEFAULT_REF)
+    parser.add_argument("--vllm-remote", default=DEFAULT_VLLM_REMOTE)
+    parser.add_argument("--vllm-ref", default=DEFAULT_VLLM_REF)
+    parser.add_argument("--vllm-commit")
+    parser.add_argument("--b12x-remote", default=DEFAULT_B12X_REMOTE)
+    parser.add_argument("--b12x-ref", default=DEFAULT_B12X_REF)
+    parser.add_argument("--b12x-commit")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     manifest = json.loads(PROFILE.read_text())
     with tempfile.TemporaryDirectory(prefix="refresh-vllmb12x-") as temporary:
         checkout_root = Path(temporary) / "vllm"
-        commit = resolve_ref(VLLM_REMOTE, args.ref)
-        checkout(VLLM_REMOTE, args.ref, commit, checkout_root)
+        source_ref = canonical_source_ref(args.vllm_ref)
+        vllm_commit = resolve_ref(args.vllm_remote, args.vllm_commit or args.vllm_ref)
+        b12x_commit = resolve_ref(args.b12x_remote, args.b12x_commit or args.b12x_ref)
+        checkout(args.vllm_remote, vllm_commit, checkout_root)
 
         updated = json.loads(json.dumps(manifest))
-        updated["source_ref"] = args.ref
-        updated["sources"]["vllm"]["commit"] = commit
+        updated["source_ref"] = source_ref
+        updated["sources"]["vllm"]["remote"] = args.vllm_remote
+        updated["sources"]["vllm"]["commit"] = vllm_commit
+        updated["sources"]["b12x"]["remote"] = args.b12x_remote
+        updated["sources"]["b12x"]["commit"] = b12x_commit
         for name, (relative_path, remote, variable) in CMAKE_SOURCES.items():
             source = checkout_root / relative_path
             if not source.is_file():
@@ -137,7 +164,7 @@ def main() -> None:
             resolve_ref(source["remote"], source["commit"])
 
         content = json.dumps(updated, indent=2, sort_keys=True) + "\n"
-        version = version_module(source_version(commit), args.ref, commit)
+        version = version_module(source_version(vllm_commit), source_ref, vllm_commit)
         if args.dry_run:
             print(content, end="")
             print(version, end="")
@@ -149,7 +176,7 @@ def main() -> None:
         temporary_version.write_text(version)
         temporary_manifest.replace(PROFILE)
         temporary_version.replace(VERSION)
-        print(f"refreshed vLLMB12X to {commit}")
+        print(f"refreshed vLLMB12X to {vllm_commit} and B12X to {b12x_commit}")
 
 
 if __name__ == "__main__":

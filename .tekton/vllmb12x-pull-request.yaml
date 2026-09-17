@@ -1,17 +1,17 @@
 ---
-# The cluster-side CronJob invokes this incoming PipelineRun. PAC parameters
-# provide every endpoint, credential name, execution property, and storage
-# class so this public repository contains no private infrastructure values.
+# Pull-request build of the same image the nightly publishes, pushed to the
+# internal registry under a tag derived from the pull request and its two
+# revisions. It never writes to the public registry and never moves `latest`,
+# so a proposed change can be deployed and tested before it reaches main.
 apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
-  name: vllmb12x-nightly
+  name: vllmb12x-pull-request
   annotations:
-    # The incoming nightly resolves main and exposes its changed-file set. Do
-    # not spend the ARM64 build pool on commits that only change the website,
-    # prose, or recipe-renderer definitions; GitHub Pages handles those paths.
+    # Same exclusion as the nightly: the ARM64 build pool is not spent on
+    # commits that only change the website, prose, or recipe definitions.
     pipelinesascode.tekton.dev/on-cel-expression: |
-      event == "incoming"
+      event == "pull_request"
       && target_branch == "main"
       && !files.all.all(path,
         path.matches('^recipes-site/')
@@ -20,10 +20,9 @@ metadata:
         || path.matches('(^|/)README\\.md$')
         || path == '.github/workflows/recipes-pages.yaml')
     pipelinesascode.tekton.dev/max-keep-runs: "3"
-    # Two nightlies cannot run at once: they share the remote workers, the
-    # ccache volume, and the publication Lease. A newer commit supersedes an
-    # in-flight run rather than competing with it. max-keep-runs only prunes
-    # finished PipelineRuns.
+    # A new commit on the pull request supersedes the build of the old one.
+    # Without this the superseded run keeps holding the build Lease, and the
+    # new one waits hours behind work whose result nobody wants.
     pipelinesascode.tekton.dev/cancel-in-progress: "true"
     pipelinesascode.tekton.dev/task: "git-clone"
 spec:
@@ -32,6 +31,7 @@ spec:
   params:
     - {name: repo_url, value: "{{ repo_url }}"}
     - {name: revision, value: "{{ revision }}"}
+    - {name: pull_request, value: "{{ pull_request_number }}"}
     - {name: remote_cache, value: "{{ bazel_remote_cache }}"}
     - {name: remote_executor, value: "{{ bazel_remote_executor }}"}
     - {name: remote_isa, value: "{{ bazel_remote_isa }}"}
@@ -39,20 +39,14 @@ spec:
     - {name: remote_container_image, value: "{{ bazel_remote_container_image }}"}
     - {name: remote_gpu, value: "{{ bazel_remote_gpu }}"}
     - {name: remote_cpu_count, value: "{{ bazel_remote_cpu_count }}"}
-    - {name: image_repository, value: "{{ image_repository }}"}
-    - {name: publisher_lease, value: "{{ publisher_lease }}"}
-    - {name: publisher_namespace, value: "{{ publisher_namespace }}"}
-    - {name: publisher_token_secret, value: "{{ publisher_token_secret }}"}
+    - {name: image_repository, value: "{{ pull_request_image_repository }}"}
+    - {name: push_secret, value: "{{ pull_request_push_secret }}"}
     - {name: build_lease, value: "{{ build_lease }}"}
+    - {name: build_lease_namespace, value: "{{ publisher_namespace }}"}
   taskRunTemplate:
     serviceAccountName: "{{ service_account }}"
     podTemplate:
       nodeSelector:
-        # Pinned to the large build node. Selecting on architecture alone put
-        # this run on whichever amd64 node was free, which includes two of the
-        # three control-plane nodes; a Bazel build plus a 10.6GiB layout push
-        # next to etcd starved the arm64 member and took worker nodes with it.
-        # The build node is arm64, so the step below bootstraps arm64 tools.
         kubernetes.io/arch: arm64
         kubernetes.io/hostname: "{{ build_node }}"
       imagePullSecrets: [{name: "{{ pull_secret }}"}]
@@ -70,6 +64,7 @@ spec:
     params:
       - {name: repo_url, type: string}
       - {name: revision, type: string}
+      - {name: pull_request, type: string}
       - {name: remote_cache, type: string}
       - {name: remote_executor, type: string}
       - {name: remote_isa, type: string}
@@ -78,10 +73,9 @@ spec:
       - {name: remote_gpu, type: string}
       - {name: remote_cpu_count, type: string}
       - {name: image_repository, type: string}
-      - {name: publisher_lease, type: string}
-      - {name: publisher_namespace, type: string}
-      - {name: publisher_token_secret, type: string}
+      - {name: push_secret, type: string}
       - {name: build_lease, type: string}
+      - {name: build_lease_namespace, type: string}
     workspaces:
       - name: source
     tasks:
@@ -95,13 +89,14 @@ spec:
           - {name: deleteExisting, value: "true"}
         workspaces:
           - {name: output, workspace: source}
-      - name: build-test-and-publish
+      - name: build-test-and-push
         runAfter: [clone]
         timeout: 8h0m0s
         workspaces:
           - {name: source, workspace: source}
         taskSpec:
           params:
+            - {name: pull_request, type: string}
             - {name: remote_cache, type: string}
             - {name: remote_executor, type: string}
             - {name: remote_isa, type: string}
@@ -110,29 +105,25 @@ spec:
             - {name: remote_gpu, type: string}
             - {name: remote_cpu_count, type: string}
             - {name: image_repository, type: string}
-            - {name: publisher_lease, type: string}
-            - {name: publisher_namespace, type: string}
-            - {name: publisher_token_secret, type: string}
+            - {name: push_secret, type: string}
             - {name: build_lease, type: string}
+            - {name: build_lease_namespace, type: string}
           workspaces:
             - name: source
           results:
             - name: image_ref
           steps:
-            - name: build-test-and-publish
-              # gcr.io/bazel-public/bazel publishes amd64 only, and this run is
-              # pinned to the arm64 build node, so the tools are bootstrapped
-              # onto a plain Ubuntu base instead.
+            - name: build-test-and-push
               image: docker.io/library/ubuntu@sha256:2260313b31c8c011cd2eebe728008efac1b3982be73eb71348ea2648d2c0e09b
               workingDir: $(workspaces.source.path)
               securityContext: {runAsUser: 0, runAsGroup: 0}
               env:
                 - {name: HOME, value: /tekton/home}
-                - {name: DOCKER_CONFIG, value: /tekton/docker}
-                - {name: GITHUB_TOKEN_FILE, value: /var/run/vllmb12x/github/token}
+                # The registry credential is mounted ready to use, so this lane
+                # never handles a token in the step itself.
+                - {name: DOCKER_CONFIG, value: /var/run/vllmb12x/registry}
+                - {name: PULL_REQUEST, value: $(params.pull_request)}
                 - {name: IMAGE_REPOSITORY, value: $(params.image_repository)}
-                - {name: PUBLISHER_LEASE, value: $(params.publisher_lease)}
-                - {name: PUBLISHER_NAMESPACE, value: $(params.publisher_namespace)}
                 - {name: REMOTE_CACHE, value: $(params.remote_cache)}
               computeResources:
                 requests: {cpu: "4", memory: 8Gi}
@@ -189,13 +180,9 @@ spec:
                 build:remote-aarch64 --remote_default_exec_properties=cpu_count=$(params.remote_cpu_count)
                 EOF
 
-                mkdir -p "$DOCKER_CONFIG"
-                TOKEN="$(cat "$GITHUB_TOKEN_FILE")"
-                printf '{"auths":{"ghcr.io":{"auth":"%s"}}}\n' \
-                  "$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)" > "$DOCKER_CONFIG/config.json"
                 RESULT="${HOME}/publish-result.json"
                 export BUILD_REVISION RESULT
-                cat > "${HOME}/build-test-and-publish.sh" <<'SCRIPT'
+                cat > "${HOME}/build-test-and-push.sh" <<'SCRIPT'
                 #!/usr/bin/env bash
                 set -euo pipefail
                 # Local strategy: these are host Python tests, and the remote
@@ -206,8 +193,7 @@ spec:
                 python3 scripts/publish-vllmb12x.py \
                   --repository "$IMAGE_REPOSITORY" \
                   --build-revision "$BUILD_REVISION" \
-                  --lease-name "$PUBLISHER_LEASE" \
-                  --namespace "$PUBLISHER_NAMESPACE" \
+                  --pull-request "$PULL_REQUEST" \
                   --bazel-arg=--config=remote-aarch64 \
                   --bazel-arg=--remote_cache="$REMOTE_CACHE" \
                   --bazel-arg=--disk_cache= \
@@ -217,19 +203,20 @@ spec:
                 # the remote worker pool, and the ccache volume.
                 python3 scripts/build-mutex.py \
                   --name "$(params.build_lease)" \
-                  --namespace "$(params.publisher_namespace)" \
-                  --holder "nightly-$BUILD_REVISION" \
-                  -- bash "${HOME}/build-test-and-publish.sh"
+                  --namespace "$(params.build_lease_namespace)" \
+                  --holder "pull-request-$PULL_REQUEST-$BUILD_REVISION" \
+                  -- bash "${HOME}/build-test-and-push.sh"
                 REF="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["reference"])' "$RESULT")"
                 printf '%s' "$REF" > "$(results.image_ref.path)"
               volumeMounts:
-                - {name: github-token, mountPath: /var/run/vllmb12x/github, readOnly: true}
+                - {name: registry-credentials, mountPath: /var/run/vllmb12x/registry, readOnly: true}
           volumes:
-            - name: github-token
+            - name: registry-credentials
               secret:
-                secretName: $(params.publisher_token_secret)
-                items: [{key: token, path: token}]
+                secretName: $(params.push_secret)
+                items: [{key: .dockerconfigjson, path: config.json}]
         params:
+          - {name: pull_request, value: $(params.pull_request)}
           - {name: remote_cache, value: $(params.remote_cache)}
           - {name: remote_executor, value: $(params.remote_executor)}
           - {name: remote_isa, value: $(params.remote_isa)}
@@ -238,7 +225,6 @@ spec:
           - {name: remote_gpu, value: $(params.remote_gpu)}
           - {name: remote_cpu_count, value: $(params.remote_cpu_count)}
           - {name: image_repository, value: $(params.image_repository)}
-          - {name: publisher_lease, value: $(params.publisher_lease)}
-          - {name: publisher_namespace, value: $(params.publisher_namespace)}
-          - {name: publisher_token_secret, value: $(params.publisher_token_secret)}
+          - {name: push_secret, value: $(params.push_secret)}
           - {name: build_lease, value: $(params.build_lease)}
+          - {name: build_lease_namespace, value: $(params.build_lease_namespace)}

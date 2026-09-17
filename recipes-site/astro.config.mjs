@@ -49,7 +49,13 @@ export default defineConfig({
         },
         {
           label: "Image releases",
-          items: [{ label: "Latest image", link: "/image-releases/" }],
+          items: [
+            { label: "Latest image", link: "/image-releases/" },
+            {
+              label: "Included upstream changes",
+              link: "/image-releases/included-changes/",
+            },
+          ],
         },
         { label: "About the author", link: "/about/" },
       ],

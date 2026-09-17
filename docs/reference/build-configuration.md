@@ -24,6 +24,7 @@ Sources: [image targets](../../image/BUILD.bazel), [components](../../components
 | [`.bazelversion`](../../.bazelversion) | Bazel 9.2.0 |
 | [`MODULE.bazel`](../../MODULE.bazel) | Bzlmod dependencies, OCI base digest, source patch labels, repository extensions |
 | [`profile.json`](../../profiles/vllmb12x/profile.json) | Source revisions, profile image metadata, CUDA architecture values |
+| [`vllmb12x-runtime-configuration.md`](vllmb12x-runtime-configuration.md) | Generated runtime configuration delta for the checked-in VLLMB12X source lock. |
 | [`image/BUILD.bazel`](../../image/BUILD.bazel) | Effective image composition and tag |
 | [`.bazelrc`](../../.bazelrc) | Public build options |
 | `.bazelrc.user` | Ignored, operator-owned endpoints, credentials, and worker properties |
@@ -44,6 +45,8 @@ All helpers ignore Bazel rc files, including private host configuration.
 
 Build, test, and load select the ARM64 target and execution platform, local execution, `.bazel-cache`, and the strict action environment. Source actions require persistent writable `/ccache` independently of Bazel's disk cache.
 
+The generated [VLLMB12X Runtime Configuration](vllmb12x-runtime-configuration.md) lists every B12X runtime environment reader and every changed local-inference-lab/vLLM environment, CLI, or `additional_config` control relative to its pinned stock-vLLM merge-base. Regenerate it with `scripts/vllmb12x-runtime-config.py` whenever this profile changes source commits or patches.
+
 ## Nightly Publication
 
 The public PAC definition at [`.tekton/vllmb12x-nightly.yaml`](../../.tekton/vllmb12x-nightly.yaml) first builds the locked image and runs the image contract on the ARM64 remote worker. The publisher then rebuilds `//image:vllmb12x` with `--remote_download_outputs=all`, acquires a short Kubernetes Lease, and pushes the materialised OCI layout with a host `crane` rather than `//image:vllmb12x_push`. `rules_oci` packages `crane` and `jq` as exec-platform runfiles, so `bazel run` under the remote ARM64 configuration resolves binaries for the remote executor instead of the pipeline pod. Bazel symlinks the base-image and apt blobs into its external repository directories, and `crane` rejects a layout blob that is a symlink, so the publisher copies the layout beside the output base with hard links and pushes that copy.
@@ -59,6 +62,41 @@ For example, `refs/heads/dev/jovian-judgement` becomes `dev-jovian-judgement`. T
 The OCI metadata identifies the built vLLM source through `org.opencontainers.image.source`, `org.opencontainers.image.revision`, and `org.opencontainers.image.version`. Image-specific labels retain the full source ref, vLLM revision, vLLM version, and builder repository. The embedded `/opt/vllmb12x/sources.lock.json` records the complete dependency lock.
 
 The public pipeline names only PAC parameters. The private PAC Repository binds registry, authentication, remote-execution, storage, and Lease details.
+
+## Pull-Request Builds
+
+[`.tekton/vllmb12x-pull-request.yaml`](../../.tekton/vllmb12x-pull-request.yaml) builds and contract-tests the same image for a pull request against `main`, then pushes it to the internal registry only. It skips the same documentation-only paths as the nightly, and a new commit on the pull request cancels the run building the previous one.
+
+`scripts/publish-vllmb12x.py --pull-request <number>` differs from a nightly publication in three ways, all of which follow from the tag being reachable only by name:
+
+```text
+pr-<number>-<vllm-commit-12>-<builder-commit-12>
+```
+
+The tag carries no sequence and no date, so re-running a pull-request build overwrites its own image instead of adding another. Nothing else points at the image, so the publisher takes no Lease. `latest` is never retagged, in either registry.
+
+## Build Serialization
+
+Both lanes build on one node, against one remote worker pool and one ccache volume. Running them at once halves the workers each build sees and evicts the other lane's cache entries, so `scripts/build-mutex.py` holds a Kubernetes Lease named by the `build_lease` parameter for the whole build, test, and publication sequence, and the other lane waits for it.
+
+The Lease duration is short relative to a build and the holder renews it, so a cancelled or killed run blocks the other lane only until its Lease expires, not until someone cleans up. A single failed renewal is not treated as a lost Lease: ownership ends only when another holder appears, the Lease is deleted, or the last successful renewal could itself have expired. The publication Lease is separate and still covers only tag allocation and registry mutation.
+
+## Releases
+
+Publication is continuous: every accepted build receives an immutable tag, and nothing about that tag says the image is the one to run. A release is that separate statement, and `scripts/release-vllmb12x.py` makes it in three places at once:
+
+```bash
+scripts/release-vllmb12x.py \
+  --reference ghcr.io/randomvariable/vllm-b12x-multi@sha256:<digest> \
+  --publication-tag vllmb12x-<branch>-<vllm>-<builder>-<date>-n<sequence> \
+  --dry-run
+```
+
+Without `--dry-run` it tags the image in the registry as `v<YYYYMMDD>.<N>`, tags the commit, and opens a GitHub release whose notes carry the pins, both image references, and the same change ledger the image advertises. The registry tag is written first: a git tag pointing at an image that failed to tag is worse than a registry tag with no release yet.
+
+The command refuses rather than releases when the image does not belong to this tree. It compares the image's vLLM revision, source ref, and description label against the current lock and ledger, requires a clean working tree and a pushed `HEAD`, and requires the builder revision inside the publication tag to be `HEAD` — so a release cannot promise source that never produced the image.
+
+Release tags are calendar, not semantic. This builder tracks moving upstream fork branches, so a version number would imply a compatibility promise it cannot keep.
 
 ## Optional CI Configuration
 
