@@ -1,0 +1,40 @@
+.tekton/vllmb12x-nightly.yaml
+  h_15da545fc8cfbe 201-203
+.tekton/vllmb12x-pull-request.yaml
+  h_15da545fc8cfbe 188-190
+BUILD.bazel
+  h_15da545fc8cfbe 4-9
+README.md
+  h_15da545fc8cfbe 40-55
+bazel/vllm_image.bzl
+  h_15da545fc8cfbe 17,55-57
+image/BUILD.bazel
+  h_15da545fc8cfbe 9,141
+profiles/vllmb12x/BUILD.bazel
+  h_15da545fc8cfbe 3-4
+profiles/vllmb12x/description.bzl
+  h_15da545fc8cfbe 1-5
+profiles/vllmb12x/included-changes.json
+  h_15da545fc8cfbe 1-69
+recipes-site/astro.config.mjs
+  h_15da545fc8cfbe 52-58
+recipes-site/src/content/docs/image-releases/included-changes.mdx
+  h_15da545fc8cfbe 1-47
+scripts/BUILD.bazel
+  h_15da545fc8cfbe 41-59
+scripts/included_changes_test.py
+  h_15da545fc8cfbe 1-25
+scripts/vllmb12x-included-changes.py
+  h_15da545fc8cfbe 1-283
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "8fea2360bd571f621861ebea8198fadf4aea71c5",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
