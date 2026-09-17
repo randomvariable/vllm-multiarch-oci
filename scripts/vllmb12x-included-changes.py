@@ -143,27 +143,31 @@ def render_site(manifest: dict[str, Any], lock: dict[str, Any]) -> str:
 def render_description(manifest: dict[str, Any], lock: dict[str, Any]) -> str:
     """Render the image description label.
 
-    Registries show this text on the package page. Without it the page shows
-    the description inherited from the CUDA base image, which describes Ubuntu.
+    Registries show this text as a single truncated line beside the package
+    name, so it names the pins and the change numbers and leaves the ledger
+    itself to the README that the package page renders below it. Without any
+    value the page inherits the CUDA base image's own Ubuntu description.
     """
-    pins = ", ".join(
-        f"{component['title']} {lock['sources'][component['name']]['commit'][:12]} "
-        f"({component['branch'].removeprefix('refs/heads/')} of "
-        f"{source_owner(lock['sources'][component['name']]['remote'])}, forked from "
-        f"{component['upstream']} {component['upstream_base'].removeprefix('refs/heads/')})"
+    pins = " + ".join(
+        f"{component['title']} {lock['sources'][component['name']]['commit'][:12]}"
         for component in manifest["components"]
     )
-    changes = "; ".join(
-        f"{change['pull_request']} {change['title']} ({describe_plainly(change)})"
-        if change["pull_request"]
-        else f"{change['title']} (no upstream pull request, {describe_plainly(change)})"
-        for component in manifest["components"]
-        for change in component["changes"]
+    # Grouped by repository: the page truncates this line, so the numbers
+    # should not be spent repeating a repository name.
+    grouped: dict[str, list[str]] = {}
+    for component in manifest["components"]:
+        for change in component["changes"]:
+            if not change["pull_request"]:
+                continue
+            repository, number = change["pull_request"].split("#", 1)
+            grouped.setdefault(repository, []).append(f"#{number}")
+    numbers = ", ".join(
+        f"{repository}{' '.join(references)}" for repository, references in grouped.items()
     )
     body = (
-        "local-inference-lab/vLLM for NVIDIA DGX Spark (GB10, sm_121a), built from source by "
-        "randomvariable/vllm-multiarch-oci. Linux ARM64, CUDA 13.3.1, Python 3.12. "
-        f"Built from {pins}. Upstream changes carried by this build: {changes}."
+        f"{pins} for NVIDIA DGX Spark (GB10, sm_121a), carrying {numbers}. "
+        "Linux ARM64, CUDA 13.3.1, Python 3.12. "
+        "Full change ledger in the README below."
     )
     if "\n" in body:
         # rules_oci writes labels as key=value lines, so a newline here becomes
@@ -177,11 +181,6 @@ def render_description(manifest: dict[str, Any], lock: dict[str, Any]) -> str:
         json.dumps(body),
         "\n",
     ))
-
-
-def source_owner(remote: str) -> str:
-    """Return owner/repo for a GitHub remote, as the description shows it."""
-    return remote.removeprefix("https://github.com/").removesuffix(".git")
 
 
 def splice(path: Path, body: str) -> str:
