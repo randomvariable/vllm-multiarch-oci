@@ -1,0 +1,32 @@
+README.md
+  h_15da545fc8cfbe 52
+bazel/venv_layer_action.py
+  h_15da545fc8cfbe 5,7,32-51,94
+docs/reference/build-configuration.md
+  h_15da545fc8cfbe 120
+docs/reference/mooncake-transfer-engine.md
+  h_15da545fc8cfbe 1-34
+image/BUILD.bazel
+  h_15da545fc8cfbe 48-50
+profiles/vllmb12x/requirements.in
+  h_15da545fc8cfbe 17-22
+profiles/vllmb12x/requirements.lock
+  h_15da545fc8cfbe 131-133,219-283,555-557,796-798,1578-1581,1900-1909,1914-2003,2388-2391,2507-2509,2705-2708,3369-3395,3731,4378-4402,4481-4493
+scripts/release-vllmb12x.py
+  h_15da545fc8cfbe 125-129
+scripts/release_vllmb12x_test.py
+  h_15da545fc8cfbe 27-38
+tests/image/vllmb12x.yaml
+  h_15da545fc8cfbe 35-58,117-122
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e1bd8b7281f07a99d80ed30226e307389e402bc5",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
