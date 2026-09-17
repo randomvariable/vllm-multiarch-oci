@@ -72,5 +72,20 @@ class RefreshVLLMB12XTest(unittest.TestCase):
             self.assertEqual(version.read_text(), "unchanged\n")
 
 
+class CanonicalSourceRefTest(unittest.TestCase):
+    def test_lock_records_a_branch_ref_or_a_commit(self):
+        self.assertEqual(
+            REFRESH.canonical_source_ref("dev/rv-jovian-judgement-profile-base"),
+            "refs/heads/dev/rv-jovian-judgement-profile-base",
+        )
+        self.assertEqual(
+            REFRESH.canonical_source_ref("refs/heads/dev/jovian-judgement"),
+            "refs/heads/dev/jovian-judgement",
+        )
+        self.assertEqual(REFRESH.canonical_source_ref("c" * 40), "c" * 40)
+        with self.assertRaisesRegex(RuntimeError, "branch or a commit"):
+            REFRESH.canonical_source_ref("refs/tags/v1")
+
+
 if __name__ == "__main__":
     unittest.main()

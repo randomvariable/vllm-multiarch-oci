@@ -95,6 +95,21 @@ def source_version(commit: str) -> str:
     return "0.1.dev1"
 
 
+def canonical_source_ref(ref: str) -> str:
+    """Return the lock form of a selected ref: a full branch ref or a commit.
+
+    The image label and the publication tag both read this value, and both
+    accept only those two forms, so a shorthand branch name is expanded here
+    rather than propagated into generated files.
+    """
+    if re.fullmatch(r"[0-9a-f]{40}", ref):
+        return ref
+    branch = ref.removeprefix("refs/heads/")
+    if branch.startswith("refs/") or not re.fullmatch(r"[A-Za-z0-9._][A-Za-z0-9._/-]*", branch):
+        raise RuntimeError(f"vLLM source ref must name a branch or a commit: {ref!r}")
+    return f"refs/heads/{branch}"
+
+
 def version_module(public_version: str, source_ref: str, commit: str) -> str:
     build_version = f"{public_version}+vllmb12x.g{commit[:12]}"
     return "\n".join((
@@ -123,12 +138,13 @@ def main() -> None:
     manifest = json.loads(PROFILE.read_text())
     with tempfile.TemporaryDirectory(prefix="refresh-vllmb12x-") as temporary:
         checkout_root = Path(temporary) / "vllm"
+        source_ref = canonical_source_ref(args.vllm_ref)
         vllm_commit = resolve_ref(args.vllm_remote, args.vllm_commit or args.vllm_ref)
         b12x_commit = resolve_ref(args.b12x_remote, args.b12x_commit or args.b12x_ref)
         checkout(args.vllm_remote, vllm_commit, checkout_root)
 
         updated = json.loads(json.dumps(manifest))
-        updated["source_ref"] = args.vllm_ref
+        updated["source_ref"] = source_ref
         updated["sources"]["vllm"]["remote"] = args.vllm_remote
         updated["sources"]["vllm"]["commit"] = vllm_commit
         updated["sources"]["b12x"]["remote"] = args.b12x_remote
@@ -148,7 +164,7 @@ def main() -> None:
             resolve_ref(source["remote"], source["commit"])
 
         content = json.dumps(updated, indent=2, sort_keys=True) + "\n"
-        version = version_module(source_version(vllm_commit), args.vllm_ref, vllm_commit)
+        version = version_module(source_version(vllm_commit), source_ref, vllm_commit)
         if args.dry_run:
             print(content, end="")
             print(version, end="")

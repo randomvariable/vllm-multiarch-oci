@@ -3,5 +3,5 @@
 """PEP 440 distribution version for the vLLM wheel this profile builds."""
 
 VLLM_BUILD_VERSION = "0.1.dev1+vllmb12x.gbd22e0f25043"
-VLLM_SOURCE_REF = "dev/rv-jovian-judgement-profile-base"
+VLLM_SOURCE_REF = "refs/heads/dev/rv-jovian-judgement-profile-base"
 VLLM_SOURCE_REVISION = "bd22e0f250439659d9fe30903b7aa124c321a932"

@@ -279,7 +279,7 @@
         "bzlTransitiveDigest": "cYRAG1Wvc9qQhccnL48v3YR195SbFEQVVKoELV8Ay+c=",
         "usagesDigest": "rxaW+jr2eXbzAn0FjibFjpTHe7cm+06a6TTnXin5cnU=",
         "recordedInputs": [
-          "FILE:@@//profiles/vllmb12x/profile.json 4cea97be8e2fc41935efecc8649e530118ce13bba0ef3fbe7112ab3f8ac90f0e"
+          "FILE:@@//profiles/vllmb12x/profile.json a1842b3a9866e9de4a71a6697dba4d930527e73b6fad86a7aaf1553566f584cf"
         ],
         "generatedRepoSpecs": {
           "vllmb12x_b12x": {
