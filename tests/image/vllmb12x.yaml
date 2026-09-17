@@ -32,6 +32,30 @@ fileExistenceTests:
     path: "/opt/venv/bin/vllm"
     shouldExist: true
     permissions: "-rwxr-xr-x"
+  - name: "Mooncake command wrappers"
+    path: "/opt/venv/bin/mooncake_master"
+    shouldExist: true
+    permissions: "-rwxr-xr-x"
+  - name: "Mooncake client wrapper"
+    path: "/opt/venv/bin/mooncake_client"
+    shouldExist: true
+    permissions: "-rwxr-xr-x"
+  - name: "Mooncake transfer benchmark wrapper"
+    path: "/opt/venv/bin/transfer_engine_bench"
+    shouldExist: true
+    permissions: "-rwxr-xr-x"
+  - name: "Mooncake metadata server wrapper"
+    path: "/opt/venv/bin/mooncake_http_metadata_server"
+    shouldExist: true
+    permissions: "-rwxr-xr-x"
+  - name: "Mooncake Store REST server wrapper"
+    path: "/opt/venv/bin/mc_store_rest_server"
+    shouldExist: true
+    permissions: "-rwxr-xr-x"
+  - name: "Mooncake topology dump wrapper"
+    path: "/opt/venv/bin/transfer_engine_topology_dump"
+    shouldExist: true
+    permissions: "-rwxr-xr-x"
   - name: "Kubernetes image helper"
     path: "/opt/venv/bin/vllm-image"
     shouldExist: true
@@ -90,6 +114,12 @@ commandTests:
       - "-c"
       - "import torch; print('cudnn', torch.backends.cudnn.version())"
     expectedOutput: ["cudnn 9[0-9]+"]
+  - name: "Mooncake Python modules and CLI entry points are installed"
+    command: "/opt/venv/bin/python"
+    args:
+      - "-c"
+      - "from importlib.metadata import distribution; import mooncake; package = distribution('mooncake-transfer-engine-cuda13'); expected = {'mooncake_master', 'mooncake_client', 'transfer_engine_bench', 'mooncake_http_metadata_server', 'mc_store_rest_server', 'transfer_engine_topology_dump'}; actual = {entry.name for entry in package.entry_points if entry.group == 'console_scripts'}; assert actual == expected, actual; assert package.version == '0.3.13.post1', package.version; print('Mooncake modules and CLI entry points installed')"
+    expectedOutput: ["Mooncake modules and CLI entry points installed"]
   - name: "B12X source lock identifies the selected vLLM revision"
     command: "/opt/venv/bin/python"
     args:

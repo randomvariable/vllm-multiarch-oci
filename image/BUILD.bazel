@@ -45,6 +45,9 @@ _EXCLUDED_RUNTIME_WHEELS = [
     "torch",
     "torchaudio",
     "torchvision",
+    # The profile builds the pinned source revision as 0.1.9. Do not install
+    # vLLM's unconstrained PyPI 0.2.0 alongside it.
+    "instanttensor",
     "xgrammar",
 ]
 
