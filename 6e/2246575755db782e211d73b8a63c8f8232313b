@@ -1,0 +1,30 @@
+.tekton/vllmb12x-nightly.yaml
+  h_15da545fc8cfbe 46,84,116,133-136,166,196-202,204,206-207,209,212-219,241
+.tekton/vllmb12x-pull-request.yaml
+  h_15da545fc8cfbe 1-227
+docs/reference/build-configuration.md
+  h_15da545fc8cfbe 66-83
+scripts/BUILD.bazel
+  h_15da545fc8cfbe 8,15-23
+scripts/build-mutex.py
+  h_15da545fc8cfbe 1-79
+scripts/ci_lease.py
+  h_15da545fc8cfbe 1-223
+scripts/ci_lease_test.py
+  h_15da545fc8cfbe 1-93
+scripts/publish-vllmb12x.py
+  h_15da545fc8cfbe 7-9,23-25,63-64,66-67,69-75,78-86,88,146-150,170-176,182,197-200
+scripts/publish_vllmb12x_test.py
+  h_15da545fc8cfbe 5,11-13,40-53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6e2246575755db782e211d73b8a63c8f8232313b",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
