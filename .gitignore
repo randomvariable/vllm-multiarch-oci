@@ -4,3 +4,6 @@ recipes-site/dist/
 recipes-site/node_modules/
 recipes-site/public/latest-image.json
 recipes-site/public/recipes.json
+
+# Bytecode left by running the scripts directly rather than through Bazel
+__pycache__/

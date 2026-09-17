@@ -5,10 +5,20 @@ load("@rules_python//python:defs.bzl", "py_test")
 py_test(
     name = "publish_vllmb12x_test",
     srcs = [
+        "ci_lease.py",
         "publish-vllmb12x.py",
         "publish_vllmb12x_test.py",
     ],
     main = "publish_vllmb12x_test.py",
+)
+
+py_test(
+    name = "ci_lease_test",
+    srcs = [
+        "ci_lease.py",
+        "ci_lease_test.py",
+    ],
+    main = "ci_lease_test.py",
 )
 
 py_test(

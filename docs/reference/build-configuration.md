@@ -63,6 +63,24 @@ The OCI metadata identifies the built vLLM source through `org.opencontainers.im
 
 The public pipeline names only PAC parameters. The private PAC Repository binds registry, authentication, remote-execution, storage, and Lease details.
 
+## Pull-Request Builds
+
+[`.tekton/vllmb12x-pull-request.yaml`](../../.tekton/vllmb12x-pull-request.yaml) builds and contract-tests the same image for a pull request against `main`, then pushes it to the internal registry only. It skips the same documentation-only paths as the nightly, and a new commit on the pull request cancels the run building the previous one.
+
+`scripts/publish-vllmb12x.py --pull-request <number>` differs from a nightly publication in three ways, all of which follow from the tag being reachable only by name:
+
+```text
+pr-<number>-<vllm-commit-12>-<builder-commit-12>
+```
+
+The tag carries no sequence and no date, so re-running a pull-request build overwrites its own image instead of adding another. Nothing else points at the image, so the publisher takes no Lease. `latest` is never retagged, in either registry.
+
+## Build Serialization
+
+Both lanes build on one node, against one remote worker pool and one ccache volume. Running them at once halves the workers each build sees and evicts the other lane's cache entries, so `scripts/build-mutex.py` holds a Kubernetes Lease named by the `build_lease` parameter for the whole build, test, and publication sequence, and the other lane waits for it.
+
+The Lease duration is short relative to a build and the holder renews it, so a cancelled or killed run blocks the other lane only until its Lease expires, not until someone cleans up. A single failed renewal is not treated as a lost Lease: ownership ends only when another holder appears, the Lease is deleted, or the last successful renewal could itself have expired. The publication Lease is separate and still covers only tag allocation and registry mutation.
+
 ## Optional CI Configuration
 
 NativeLink is our optional CI backend. The public `remote-aarch64` configuration selects remote execution with no local fallback, minimal downloads, compression, and a 21600-second remote timeout. Endpoints, authentication, and execution properties must be supplied separately by CI. No private infrastructure is configured in the repository. Local Justfile recipes do not use this configuration.
