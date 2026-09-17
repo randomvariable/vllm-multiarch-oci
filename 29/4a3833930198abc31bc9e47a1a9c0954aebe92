@@ -1,0 +1,34 @@
+MODULE.bazel.lock
+  h_15da545fc8cfbe 282,289,399
+docs/reference/build-configuration.md
+  h_15da545fc8cfbe 27,48-49
+docs/reference/vllmb12x-runtime-configuration.md
+  h_15da545fc8cfbe 1-226
+profiles/vllmb12x/profile.json
+  h_15da545fc8cfbe 3,6,62
+profiles/vllmb12x/version.bzl
+  h_15da545fc8cfbe 5-7
+scripts/BUILD.bazel
+  h_15da545fc8cfbe 13-30
+scripts/refresh-vllmb12x.py
+  h_15da545fc8cfbe 21-24,72,74,114-119,126-128,131-135,151,163
+scripts/refresh_vllmb12x_test.py
+  h_15da545fc8cfbe 1-76
+scripts/vllmb12x-runtime-config.py
+  h_15da545fc8cfbe 1-455
+scripts/vllmb12x_runtime_config_test.py
+  h_15da545fc8cfbe 1-110
+third_party/vllm_shm_broadcast_spin_grace.patch
+  h_15da545fc8cfbe 1-486,488,491-492,499-602,609-619,621-628,630,633-634,637-863,865,868,872-876,880,884-920,925,929-935
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "294a3833930198abc31bc9e47a1a9c0954aebe92",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
