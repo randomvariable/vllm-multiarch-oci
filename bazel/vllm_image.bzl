@@ -14,6 +14,7 @@ def vllm_image(
         provenance_layer,
         venv_layers,
         title,
+        description,
         local_tag,
         vllm_version,
         vllm_source_ref,
@@ -51,6 +52,9 @@ def vllm_image(
         entrypoint = ["/opt/venv/bin/vllm"],
         labels = {
             "org.opencontainers.image.title": title,
+            # Registries show this on the package page. Without it they show
+            # the CUDA base image's own description, which describes Ubuntu.
+            "org.opencontainers.image.description": description,
             "org.opencontainers.image.source": SOURCE_REPOSITORY,
             "org.opencontainers.image.revision": vllm_revision,
             "org.opencontainers.image.version": vllm_version,

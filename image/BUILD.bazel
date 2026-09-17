@@ -6,6 +6,7 @@ load("@rules_oci//oci:defs.bzl", "oci_push")
 load("//bazel:provenance_layer.bzl", "provenance_layer")
 load("//bazel:venv_layer.bzl", "venv_layer")
 load("//bazel:vllm_image.bzl", "vllm_image")
+load("//profiles/vllmb12x:description.bzl", "VLLM_IMAGE_DESCRIPTION")
 load("//profiles/vllmb12x:version.bzl", "VLLM_BUILD_VERSION", "VLLM_SOURCE_REF", "VLLM_SOURCE_REVISION")
 
 package(default_visibility = ["//visibility:public"])
@@ -137,6 +138,7 @@ vllm_image(
         ":vllm_venv",
     ],
     title = "vllm-b12x-multi",
+    description = VLLM_IMAGE_DESCRIPTION,
     local_tag = VLLM_BUILD_VERSION,
     vllm_version = VLLM_BUILD_VERSION,
     vllm_source_ref = VLLM_SOURCE_REF,

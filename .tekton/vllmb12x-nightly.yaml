@@ -198,6 +198,9 @@ spec:
                 cat > "${HOME}/build-test-and-publish.sh" <<'SCRIPT'
                 #!/usr/bin/env bash
                 set -euo pipefail
+                # Local strategy: these are host Python tests, and the remote
+                # ARM64 worker image carries no python3 interpreter.
+                bazel test //scripts:all --disk_cache= --test_output=errors
                 bazel build //image:vllmb12x --config=remote-aarch64 --disk_cache=
                 bazel test //tests/image:vllmb12x_contract --config=remote-aarch64 --disk_cache= --test_output=errors
                 python3 scripts/publish-vllmb12x.py \

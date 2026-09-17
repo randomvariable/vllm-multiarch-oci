@@ -1,4 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 package(default_visibility = ["//visibility:public"])
 
-exports_files([".bazelrc.user.example"])
+exports_files([
+    ".bazelrc.user.example",
+    "MODULE.bazel",
+    "README.md",
+    "recipes-site/src/content/docs/image-releases/included-changes.mdx",
+])

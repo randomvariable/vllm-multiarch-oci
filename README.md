@@ -37,6 +37,22 @@ The public [deployment recipe site](https://randomvariable.github.io/vllm-multia
 
 NativeLink is our optional CI execution backend, not a prerequisite for local builds. CI access and deployment configuration are private and are not distributed here.
 
+## Included Upstream Changes
+
+<!-- included-changes:start -->
+The image is built from pinned fork revisions rather than from upstream branches, so this table records which upstream changes the current lock carries. Regenerate it with `scripts/vllmb12x-included-changes.py`.
+
+| Component | Change | Included as |
+| --- | --- | --- |
+| vLLM `bd22e0f25043` | [local-inference-lab/vllm#777](https://github.com/local-inference-lab/vllm/pull/777) fix(qwen): propagate MTP positional overrides | Merged into the pinned revision (3 commits) |
+| vLLM `bd22e0f25043` | [local-inference-lab/vllm#779](https://github.com/local-inference-lab/vllm/pull/779) perf(qwen): shard TP4 HC prefill and coalesce recurrent checkpoints | Merged into the pinned revision (9 commits) |
+| vLLM `bd22e0f25043` | [vllm-project/vllm#52917](https://github.com/vllm-project/vllm/pull/52917) Adaptive spin grace and bounded architectural waits for shm_broadcast | Applied at build time by `third_party/vllm_shm_broadcast_spin_grace.patch` |
+| vLLM `bd22e0f25043` | Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute (no upstream pull request) | Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch` |
+| B12X `4401ce4fb982` | [local-inference-lab/b12x#384](https://github.com/local-inference-lab/b12x/pull/384) fix(preparation): retain prepared launchers and coordinate collectives | Merged into the pinned revision (10 commits) |
+| B12X `4401ce4fb982` | [local-inference-lab/b12x#386](https://github.com/local-inference-lab/b12x/pull/386) feat(ple): export prepared internal prefill checkpoints | Merged into the pinned revision (2 commits) |
+| B12X `4401ce4fb982` | [local-inference-lab/b12x#387](https://github.com/local-inference-lab/b12x/pull/387) perf(qsa): reuse representative keys across paired queries | Merged into the pinned revision (4 commits) |
+<!-- included-changes:end -->
+
 ## Licence
 
 Repository code is licensed under [Apache License 2.0](LICENSE), consistent with existing SPDX headers. Upstream sources, Python packages, CUDA redistributables, and base-image contents retain their respective licences and redistribution requirements.

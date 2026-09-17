@@ -38,3 +38,22 @@ py_test(
     ],
     main = "vllmb12x_runtime_config_test.py",
 )
+
+py_test(
+    name = "included_changes_test",
+    srcs = [
+        "included_changes_test.py",
+        "vllmb12x-included-changes.py",
+    ],
+    data = [
+        "//:README.md",
+        "//:MODULE.bazel",
+        "//:recipes-site/src/content/docs/image-releases/included-changes.mdx",
+        "//profiles/vllmb12x:included-changes.json",
+        "//profiles/vllmb12x:profile.json",
+        "//profiles/vllmb12x:description.bzl",
+        "//third_party:vllm_flash_attn_cute_namespace.patch",
+        "//third_party:vllm_shm_broadcast_spin_grace.patch",
+    ],
+    main = "included_changes_test.py",
+)
