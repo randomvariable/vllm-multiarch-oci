@@ -11,7 +11,9 @@ build:spark --platforms=//platforms:spark_arm64_sm121
 # Private endpoint, credentials, and worker properties belong in the ignored
 # .bazelrc.user file. The repository owns only remote execution behaviour.
 build:remote-aarch64 --platforms=//platforms:spark_arm64_sm121
-build:remote-aarch64 --extra_execution_platforms=//platforms:spark_arm64_sm121
+# The ARM64 image configuration materializes the pinned x86 QEMU runtime for
+# its hermetic Python launcher. Make both native execution platforms available.
+build:remote-aarch64 --extra_execution_platforms=//platforms:spark_arm64_sm121,//platforms:blackwell_x86_64_sm120
 build:remote-aarch64 --extra_toolchains=//platforms:hermetic_linux_aarch64_cc_toolchain
 build:remote-aarch64 --remote_timeout=21600
 build:remote-aarch64 --spawn_strategy=remote
