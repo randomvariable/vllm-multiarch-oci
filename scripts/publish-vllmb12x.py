@@ -155,18 +155,34 @@ def image_layout(bazel: str, image_target: str, bazel_args: list[str]) -> Path:
 def validate_multiarch_layout(layout: Path) -> None:
     """Reject leaf layouts and malformed platform descriptors before registry mutation."""
     try:
-        index = json.loads((layout / "index.json").read_text())
-        manifests = index["manifests"]
+        root = json.loads((layout / "index.json").read_text())
     except (OSError, KeyError, TypeError, json.JSONDecodeError) as error:
         raise RuntimeError(f"invalid OCI index layout at {layout}: {error}") from error
-    if not isinstance(manifests, list):
-        raise RuntimeError(f"invalid OCI index layout at {layout}: manifests is not a list")
-    platforms = []
-    for descriptor in manifests:
-        if not isinstance(descriptor, dict) or not isinstance(descriptor.get("platform"), dict):
-            raise RuntimeError(f"invalid OCI index layout at {layout}: child lacks a platform")
-        platform = descriptor["platform"]
-        platforms.append((platform.get("os"), platform.get("architecture")))
+
+    def platforms_from(index: object) -> list[tuple[object, object]]:
+        if not isinstance(index, dict) or not isinstance(index.get("manifests"), list):
+            raise RuntimeError(f"invalid OCI index layout at {layout}: manifests is not a list")
+
+        platforms = []
+        for descriptor in index["manifests"]:
+            if not isinstance(descriptor, dict):
+                raise RuntimeError(f"invalid OCI index layout at {layout}: manifest is not an object")
+            platform = descriptor.get("platform")
+            if isinstance(platform, dict):
+                platforms.append((platform.get("os"), platform.get("architecture")))
+                continue
+
+            digest = descriptor.get("digest")
+            if not isinstance(digest, str) or not digest.startswith("sha256:"):
+                raise RuntimeError(f"invalid OCI index layout at {layout}: child lacks a platform")
+            try:
+                child = json.loads((layout / "blobs" / "sha256" / digest.removeprefix("sha256:")).read_text())
+            except (OSError, json.JSONDecodeError) as error:
+                raise RuntimeError(f"invalid OCI index layout at {layout}: cannot read child index") from error
+            platforms.extend(platforms_from(child))
+        return platforms
+
+    platforms = platforms_from(root)
     if len(platforms) != len(set(platforms)) or set(platforms) != _MULTIARCH_PLATFORMS:
         raise RuntimeError(
             f"OCI index at {layout} must contain exactly linux/arm64 and linux/amd64, got {platforms!r}"

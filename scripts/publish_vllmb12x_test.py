@@ -62,6 +62,21 @@ class MultiarchLayoutTest(unittest.TestCase):
 
             PUBLISH.validate_multiarch_layout(layout)
 
+    def test_accepts_rules_oci_nested_index(self):
+        with tempfile.TemporaryDirectory() as directory:
+            layout = Path(directory)
+            blob = layout / "blobs" / "sha256" / ("a" * 64)
+            blob.parent.mkdir(parents=True)
+            blob.write_text(json.dumps({"manifests": [
+                {"platform": {"os": "linux", "architecture": "arm64"}},
+                {"platform": {"os": "linux", "architecture": "amd64"}},
+            ]}))
+            (layout / "index.json").write_text(json.dumps({"manifests": [
+                {"mediaType": "application/vnd.oci.image.index.v1+json", "digest": f"sha256:{'a' * 64}"},
+            ]}))
+
+            PUBLISH.validate_multiarch_layout(layout)
+
     def test_rejects_missing_or_duplicate_platform_manifests(self):
         with tempfile.TemporaryDirectory() as directory:
             layout = Path(directory)
