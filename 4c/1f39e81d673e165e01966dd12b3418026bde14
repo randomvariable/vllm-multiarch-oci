@@ -1,0 +1,14 @@
+MODULE.bazel
+  h_15da545fc8cfbe 331-340,347-356
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "4c1f39e81d673e165e01966dd12b3418026bde14",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
