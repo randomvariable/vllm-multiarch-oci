@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import fcntl
+import csv
 import hashlib
+import importlib.metadata
 import os
 import shutil
 import shlex
@@ -19,6 +21,7 @@ _VLLM_CMAKE_SOURCE_NAMES = frozenset(
     {
         "cutlass",
         "deepgemm",
+        "deepselect",
         "flash_attn",
         "flashkda",
         "flashmla",
@@ -71,6 +74,7 @@ def materialize_vllm_cmake_sources(
 
     env = {
         "DEEPGEMM_SRC_DIR": str(sources["deepgemm"]),
+        "DEEPSELECT_SRC_DIR": str(sources["deepselect"]),
         "FLASH_KDA_SRC_DIR": str(sources["flashkda"]),
         "FLASH_MLA_SRC_DIR": str(sources["flashmla"]),
         "FMHA_SM100_SRC_DIR": str(sources["msa"]),
@@ -112,7 +116,7 @@ def extract_durable(archive: Path, name: str) -> Path:
     """Extract a content-addressed toolchain once on the shared cache volume."""
     with archive.open("rb") as contents:
         digest = hashlib.file_digest(contents, "sha256").hexdigest()
-    root = Path("/ccache/toolchains")
+    root = toolchain_cache_dir()
     destination = root / f"{name}-{digest}"
     marker = destination / ".complete"
     root.mkdir(parents=True, exist_ok=True)
@@ -138,6 +142,27 @@ def extract_durable(archive: Path, name: str) -> Path:
     return destination
 
 
+def _cache_override() -> Path | None:
+    configured = os.environ.get("VLLMB12X_CACHE_ROOT")
+    return Path(configured) if configured else None
+
+
+def _xdg_cache_home() -> Path:
+    return Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+
+
+def compiler_cache_dir() -> Path:
+    """Use ccache's normal per-user location unless CI supplies a volume."""
+    configured = _cache_override()
+    return configured / "objects" if configured else _xdg_cache_home() / "ccache"
+
+
+def toolchain_cache_dir() -> Path:
+    """Keep extracted toolchains alongside the local cache, not inside ccache."""
+    configured = _cache_override()
+    return configured / "toolchains" if configured else _xdg_cache_home() / "vllmb12x" / "toolchains"
+
+
 def configure_cargo_vendor(archive: Path, work: Path) -> Path:
     """Extract declared Cargo sources and make their replacement path local."""
     cargo_home = work / "cargo"
@@ -150,7 +175,32 @@ def configure_cargo_vendor(archive: Path, work: Path) -> Path:
     return cargo_home
 
 
-def configure_sysroot_runtime(archive: Path, work: Path, env: dict[str, str]) -> Path:
+_TARGET_ABI = {
+    "aarch64": {
+        "gcc_triple": "aarch64-linux-gnu",
+        "library_dir": "aarch64-linux-gnu",
+        "loader": "ld-linux-aarch64.so.1",
+        "rust_triple": "aarch64-unknown-linux-gnu",
+    },
+    "x86_64": {
+        "gcc_triple": "x86_64-linux-gnu",
+        "library_dir": "x86_64-linux-gnu",
+        "loader": "ld-linux-x86-64.so.2",
+        "rust_triple": "x86_64-unknown-linux-gnu",
+    },
+}
+
+
+def target_abi(target_cpu: str) -> dict[str, str]:
+    try:
+        return _TARGET_ABI[target_cpu]
+    except KeyError as error:
+        raise ValueError(f"unsupported target CPU: {target_cpu!r}") from error
+
+
+def configure_sysroot_runtime(
+    archive: Path, work: Path, env: dict[str, str], *, target_cpu: str
+) -> Path:
     """Extract the pinned sysroot and resolve ELF dependencies only from it.
 
     Actions that merely import the native wheels this build produces still need
@@ -159,30 +209,44 @@ def configure_sysroot_runtime(archive: Path, work: Path, env: dict[str, str]) ->
     """
     root = work / "gcc-sysroot"
     extract(archive, root)
-    libraries = root / "usr" / "lib" / "aarch64-linux-gnu"
+    libraries = root / "usr" / "lib" / target_abi(target_cpu)["library_dir"]
     if not libraries.is_dir():
         raise RuntimeError(f"compiler sysroot lacks shared libraries: {libraries}")
     env["LD_LIBRARY_PATH"] = _prepend_path(env.get("LD_LIBRARY_PATH"), libraries)
     return root
 
 
-def configure_compiler_sysroot(archive: Path, work: Path, env: dict[str, str]) -> Path:
+def configure_compiler_sysroot(
+    archive: Path, work: Path, env: dict[str, str], *, target_cpu: str
+) -> Path:
     """Extract the pinned GCC tree and select wrappers that never use host GCC."""
+    for name in (
+        "CPATH",
+        "C_INCLUDE_PATH",
+        "CPLUS_INCLUDE_PATH",
+        "LIBRARY_PATH",
+        "COMPILER_PATH",
+        "GCC_EXEC_PREFIX",
+    ):
+        env.pop(name, None)
     # Build backends import native wheels while compiling dependent wheels, so
     # the same sysroot must satisfy both their loader and this compiler.
-    root = configure_sysroot_runtime(archive, work, env)
+    abi = target_abi(target_cpu)
+    root = configure_sysroot_runtime(archive, work, env, target_cpu=target_cpu)
     compiler_dir = root / "usr" / "bin"
-    loader = root / "usr" / "lib" / "ld-linux-aarch64.so.1"
+    library_dir = root / "usr" / "lib" / abi["library_dir"]
+    loader = root / "usr" / "lib" / abi["loader"]
+    if not loader.is_file():
+        loader = library_dir / abi["loader"]
     if not loader.is_file():
         raise RuntimeError(f"compiler sysroot lacks dynamic loader: {loader}")
-    # GNU ld resolves its fixed AArch64 interpreter path through --sysroot.
-    # The Debian closure keeps the loader under /usr/lib, so expose the ABI
-    # spelling it requests without accessing the worker filesystem.
-    root_lib = root / "lib"
-    root_lib.mkdir(exist_ok=True)
-    sysroot_loader = root_lib / "ld-linux-aarch64.so.1"
-    if not sysroot_loader.exists():
-        sysroot_loader.symlink_to("../usr/lib/ld-linux-aarch64.so.1")
+    # GNU ld resolves its fixed interpreter path through --sysroot. The Debian
+    # package closure stores the loader below an ABI library directory.
+    for directory in (root / "lib", root / "lib64"):
+        directory.mkdir(exist_ok=True)
+        sysroot_loader = directory / abi["loader"]
+        if not sysroot_loader.exists():
+            sysroot_loader.symlink_to("../" + str(loader.relative_to(root)))
     for name in ("gcc", "g++"):
         compiler = compiler_dir / name
         if not compiler.is_file():
@@ -190,22 +254,53 @@ def configure_compiler_sysroot(archive: Path, work: Path, env: dict[str, str]) -
 
     wrappers = work / "compiler-bin"
     wrappers.mkdir(parents=True, exist_ok=True)
+    # These packages use alternatives-managed public command names. Native
+    # actions have no host alternatives database, so expose declared targets.
+    for public_name, target_name in (
+        ("sh", "bash"),
+        ("which", "which.gnu"),
+        ("awk", "gawk"),
+    ):
+        target = compiler_dir / target_name
+        public = compiler_dir / public_name
+        if target.is_file() and not public.exists():
+            public.symlink_to(target_name)
     for name in ("gcc", "g++"):
         # Compute the extraction root from $0 so wrapper bytes remain stable
         # across action roots and ccache can reuse compatible objects.
         wrapper = wrappers / name
         wrapper.write_text(
             "#!/bin/sh\n"
-            'root=$(CDPATH= cd -- "$(dirname -- "$0")/../gcc-sysroot" && pwd)\n'
+            "set -eu\n"
+            'wrapper_dir=${0%/*}\n'
+            'root=$(CDPATH= cd -- "$wrapper_dir/../gcc-sysroot" && pwd)\n'
             f'exec "$root/usr/bin/{name}" --sysroot="$root" '
-            '-B"$root/usr/libexec/gcc/aarch64-linux-gnu/15" "$@"\n'
+            '-B"$root/usr/bin" '
+            f'-B"$root/usr/lib/gcc/{abi["gcc_triple"]}/15" "$@"\n'
         )
         wrapper.chmod(0o755)
 
+    # NCCL's makefiles use env(1) to locate bash. The pinned shell must remain
+    # usable after PATH is sealed to the declared sysroot.
+    bash = compiler_dir / "bash"
+    if not bash.is_file():
+        raise RuntimeError(f"compiler sysroot lacks {bash}")
+    ldd = compiler_dir / "ldd"
+    if not ldd.is_file():
+        raise RuntimeError(f"compiler sysroot lacks {ldd}")
+
     env["CC"] = str(wrappers / "gcc")
     env["CXX"] = str(wrappers / "g++")
-    env["PATH"] = _prepend_path(env.get("PATH"), wrappers)
-    return wrappers
+    # The build utilities in the declared package closure are the only tools
+    # visible to native actions.  Return their directory so callers can invoke
+    # a tool by its declared absolute path rather than relying on PATH lookup.
+    # Keep the sysroot's standard shell path valid for tools that resolve it.
+    sh = root / "bin" / "sh"
+    sh.parent.mkdir(exist_ok=True)
+    if not sh.exists():
+        sh.symlink_to("../usr/bin/bash")
+    env["PATH"] = _prepend_path(env.get("PATH"), wrappers, compiler_dir)
+    return compiler_dir
 
 
 def install_wheels(python: Path, destination: Path, wheels: Sequence[Path]) -> None:
@@ -226,6 +321,93 @@ def install_wheels(python: Path, destination: Path, wheels: Sequence[Path]) -> N
             *wheels,
         ]
     )
+    normalize_local_wheel_metadata(destination)
+
+
+def normalize_local_wheel_metadata(site: Path) -> None:
+    """Remove action-root direct URLs and repair their wheel RECORD entries."""
+    for metadata in site.glob("*.dist-info"):
+        direct_url = metadata / "direct_url.json"
+        if not direct_url.is_file():
+            continue
+        direct_url.unlink()
+        record = metadata / "RECORD"
+        if not record.is_file():
+            continue
+        with record.open(newline="") as contents:
+            rows = list(csv.reader(contents))
+        kept = [
+            row
+            for row in rows
+            if row and not row[0].endswith("/direct_url.json")
+        ]
+        with record.open("w", newline="") as contents:
+            csv.writer(contents, lineterminator="\n").writerows(kept)
+
+
+def configure_reproducible_compilation(
+    work: Path, source: Path, env: dict[str, str]
+) -> dict[str, str]:
+    """Set deterministic compiler flags without retaining action-root paths."""
+    env["SOURCE_DATE_EPOCH"] = "0"
+    env["PYTHONHASHSEED"] = "0"
+    mappings = (
+        f"-ffile-prefix-map={work}=.",
+        f"-ffile-prefix-map={source}=.",
+        f"-fdebug-prefix-map={work}=.",
+        f"-fdebug-prefix-map={source}=.",
+    )
+    for name in ("CFLAGS", "CXXFLAGS"):
+        env[name] = _append_argument(env.get(name), " ".join(mappings))
+    env["RUSTFLAGS"] = _append_argument(
+        env.get("RUSTFLAGS"),
+        f"--remap-path-prefix={work}=. --remap-path-prefix={source}=.",
+    )
+    return {"cuda": "--objdir-as-tempdir"}
+
+
+def create_nvcc_wrapper(work: Path, nvcc: Path) -> Path:
+    """Wrap nvcc with a source-relative seed that ignores output filenames."""
+    work.mkdir(parents=True, exist_ok=True)
+    wrapper = work / "nvcc-reproducible"
+    wrapper.write_text(
+        "#!/bin/sh\n"
+        "set -eu\n"
+        "seed=unknown\n"
+        "for arg in \"$@\"; do\n"
+        "  case $arg in\n"
+        "    *.cu|*.cuh) seed=${arg#\"$PWD\"/}; break ;;\n"
+        "  esac\n"
+        "done\n"
+        "exec "
+        + shlex.quote(str(nvcc))
+        + " --frandom-seed=\"$seed\" \"$@\"\n"
+    )
+    wrapper.chmod(0o755)
+    return wrapper
+
+
+def materialize_console_scripts(python: Path, site: Path, destination: Path) -> None:
+    """Create console entry points omitted by pip's --target installation."""
+    destination.mkdir(parents=True, exist_ok=True)
+    for distribution in importlib.metadata.distributions(path=[str(site)]):
+        for entry_point in distribution.entry_points:
+            if entry_point.group != "console_scripts":
+                continue
+            wrapper = destination / entry_point.name
+            wrapper.write_text(
+                "#!/bin/sh\nexec "
+                + shlex.quote(str(python))
+                + " -c "
+                + shlex.quote(
+                    "import sys; from importlib.metadata import distribution; "
+                    "entry = distribution(%r).entry_points.select("
+                    "group='console_scripts', name=%r)[0]; sys.exit(entry.load()())"
+                    % (distribution.metadata["Name"], entry_point.name)
+                )
+                + ' "$@"\n'
+            )
+            wrapper.chmod(0o755)
 
 
 def wheel_scripts(wheel: Path, destination: Path) -> list[Path]:
@@ -286,12 +468,14 @@ def rewrite_sysconfig(python: Path, destination: Path) -> Path:
     return destination
 
 
-def configure_compiler_cache(work: Path, ccache_tar: Path, env: dict[str, str]) -> Path | None:
+def configure_compiler_cache(
+    work: Path, ccache_tar: Path, env: dict[str, str], *, target_cpu: str
+) -> Path | None:
     """Configure and verify the required durable compiler cache."""
     tools = work / "tools"
     extract(ccache_tar, tools)
 
-    cache_dir = Path("/ccache/objects")
+    cache_dir = compiler_cache_dir()
     try:
         cache_dir.mkdir(parents=True, exist_ok=True)
         probe = cache_dir / ".ccache-write-probe"
@@ -301,7 +485,7 @@ def configure_compiler_cache(work: Path, ccache_tar: Path, env: dict[str, str]) 
         raise RuntimeError(f"required durable ccache is unavailable at {cache_dir}: {error}") from error
 
     launcher = tools / "usr/bin/ccache"
-    packaged_lib = tools / "usr/lib/aarch64-linux-gnu"
+    packaged_lib = tools / "usr" / "lib" / target_abi(target_cpu)["library_dir"]
     env["CCACHE_DIR"] = str(cache_dir)
     # Source paths are below the per-operation execroot. Strip it from keys.
     env["CCACHE_BASEDIR"] = str(Path.cwd())

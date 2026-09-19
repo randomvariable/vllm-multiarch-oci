@@ -1,12 +1,29 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load("@bazel_skylib//rules:common_settings.bzl", "string_flag")
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc/toolchains:cc_toolchain.bzl", "cc_toolchain")
-load("//bazel:remote_cc_toolchain.bzl", "remote_linux_aarch64_cc_toolchain_config")
+load(
+    "//bazel:hermetic_cc_toolchain.bzl",
+    "arm64_python_launcher",
+    "arm64_python_probe",
+    "hermetic_cc_toolchain_files",
+    "hermetic_linux_cc_toolchain_config",
+    "materialize_tar_tree",
+    "native_python_launcher",
+)
 
 string_flag(
     name = "cuda_arch",
     build_setting_default = "121a",
+    visibility = ["//visibility:public"],
+)
+
+# CI supplies a durable volume through this setting. Local actions leave it
+# empty so the ccache library uses its standard per-user cache directory.
+string_flag(
+    name = "vllmb12x_cache_root",
+    build_setting_default = "",
     visibility = ["//visibility:public"],
 )
 
@@ -16,6 +33,13 @@ platform(
         "@platforms//cpu:aarch64",
         "@platforms//os:linux",
     ],
+    exec_properties = {
+        "ISA": "aarch64",
+        "OSFamily": "linux",
+        "container-image": "harbor.services.home.internal.randomvariable.co.uk/custom/nativelink-worker@sha256:b483619e833d2357441ceff7be598572567556285e52779fe30cd6e344fa7203",
+        "cpu_count": "1",
+        "gpu": "nvidia-rtx-pro-6000-blackwell",
+    },
     flags = ["--//platforms:cuda_arch=121a"],
     visibility = ["//visibility:public"],
 )
@@ -26,46 +50,273 @@ platform(
         "@platforms//cpu:x86_64",
         "@platforms//os:linux",
     ],
+    exec_properties = {
+        "ISA": "x86_64",
+        "OSFamily": "linux",
+        "container-image": "harbor.services.home.internal.randomvariable.co.uk/custom/nativelink-worker@sha256:b483619e833d2357441ceff7be598572567556285e52779fe30cd6e344fa7203",
+        "cpu_count": "1",
+        "gpu": "amd-radeon-8060s",
+    },
     flags = ["--//platforms:cuda_arch=120"],
     visibility = ["//visibility:public"],
 )
 
-filegroup(
-    name = "empty",
-    srcs = [],
+platform(
+    name = "local_x86_64",
+    constraint_values = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
+    visibility = ["//visibility:public"],
 )
 
-# `flat` is the pinned package closure: GCC 15, binutils, glibc headers and
-# libraries. CUDA build rules consume this label rather than worker paths.
+cc_binary(
+    name = "hermetic_cc_toolchain_probe",
+    srcs = ["hermetic_cc_toolchain_probe.cc"],
+    linkstatic = True,
+    visibility = ["//visibility:public"],
+)
+
+# `flat` is the pinned package closure for existing custom build actions.
 filegroup(
     name = "gcc_15_sysroot",
     srcs = ["@gcc_15_sysroot//:flat"],
     visibility = ["//visibility:public"],
 )
 
-# This configuration still describes the worker compiler until all native
-# actions consume :gcc_15_sysroot directly.
-remote_linux_aarch64_cc_toolchain_config(
-    name = "remote_linux_aarch64_cc_toolchain_config",
+filegroup(
+    name = "gcc_15_sysroot_x86_64",
+    srcs = ["@gcc_15_sysroot_x86_64//:flat"],
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "linux_aarch64",
+    constraint_values = ["@platforms//cpu:aarch64", "@platforms//os:linux"],
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "linux_x86_64",
+    constraint_values = ["@platforms//cpu:x86_64", "@platforms//os:linux"],
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "action_python",
+    actual = select({
+        ":linux_aarch64": ":arm64_python",
+        ":linux_x86_64": ":x86_64_python",
+    }),
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "compiler_sysroot",
+    actual = select({
+        ":linux_aarch64": ":gcc_15_sysroot",
+        ":linux_x86_64": ":gcc_15_sysroot_x86_64",
+    }),
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "compiler_cache",
+    actual = select({
+        ":linux_aarch64": "@ccache//:ccache.tar",
+        ":linux_x86_64": "@ccache_x86_64//:ccache.tar",
+    }),
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "cuda_toolkit",
+    actual = select({
+        ":linux_aarch64": "@cuda_sbsa//:toolkit.tar",
+        ":linux_x86_64": "@cuda_x86_64//:toolkit.tar",
+    }),
+    visibility = ["//visibility:public"],
+)
+
+arm64_python_launcher(
+    name = "arm64_python",
+    output = "arm64_python",
+    python = "@python_3_12//:python3",
+    qemu_root = ":qemu_aarch64_root",
+    sysroot = ":hermetic_cc_toolchain_files",
+    visibility = ["//visibility:public"],
+)
+
+# Native build scripts frequently execute `python3` after the action starts.
+# Keep a second declared launcher beside the action entrypoint for those calls.
+arm64_python_launcher(
+    name = "arm64_python3",
+    output = "python3",
+    python = "@python_3_12//:python3",
+    qemu_root = ":qemu_aarch64_root",
+    sysroot = ":hermetic_cc_toolchain_files",
+    visibility = ["//visibility:public"],
+)
+
+arm64_python_probe(
+    name = "arm64_python_probe",
+    launcher = ":arm64_python",
+    child_launcher = ":arm64_python3",
+    output = "arm64_python_probe.txt",
+    visibility = ["//visibility:public"],
+)
+
+native_python_launcher(
+    name = "x86_64_python",
+    output = "x86_64_python",
+    python = "@python_3_12//:python3",
+    visibility = ["//visibility:public"],
+)
+
+materialize_tar_tree(
+    name = "qemu_aarch64_root",
+    archive = "@qemu_aarch64_emulator//:flat",
+    output = "qemu-aarch64-root",
+    exec_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
+)
+
+hermetic_cc_toolchain_files(
+    name = "hermetic_cc_toolchain_files",
+    # Use the package payloads directly. The `flat` rule invokes `@gawk`, which
+    # needs the cc toolchain being bootstrapped and would create a cycle.
+    archives = "@@rules_distroless++apt+gcc_15_sysroot//g++:g++",
+    wrappers = [
+        ":hermetic_ar",
+        ":hermetic_as",
+        ":hermetic_cpp",
+        ":hermetic_gxx",
+        ":hermetic_gcc",
+        ":hermetic_ld",
+        ":hermetic_nm",
+        ":hermetic_objcopy",
+        ":hermetic_objdump",
+        ":hermetic_strip",
+    ],
+)
+
+hermetic_cc_toolchain_files(
+    name = "hermetic_x86_64_cc_toolchain_files",
+    archives = "@@rules_distroless++apt+gcc_15_sysroot_x86_64//g++:g++",
+    wrappers = [
+        ":hermetic_ar",
+        ":hermetic_as",
+        ":hermetic_cpp",
+        ":hermetic_gxx",
+        ":hermetic_gcc",
+        ":hermetic_ld",
+        ":hermetic_nm",
+        ":hermetic_objcopy",
+        ":hermetic_objdump",
+        ":hermetic_strip",
+    ],
+)
+
+filegroup(
+    name = "hermetic_ar",
+    srcs = ["ar"],
+)
+
+filegroup(
+    name = "hermetic_as",
+    srcs = ["as"],
+)
+
+filegroup(
+    name = "hermetic_cpp",
+    srcs = ["cpp"],
+)
+
+filegroup(
+    name = "hermetic_gxx",
+    srcs = ["g++"],
+)
+
+filegroup(
+    name = "hermetic_gcc",
+    srcs = ["gcc"],
+)
+
+filegroup(
+    name = "hermetic_ld",
+    srcs = ["ld"],
+)
+
+filegroup(
+    name = "hermetic_nm",
+    srcs = ["nm"],
+)
+
+filegroup(
+    name = "hermetic_objcopy",
+    srcs = ["objcopy"],
+)
+
+filegroup(
+    name = "hermetic_objdump",
+    srcs = ["objdump"],
+)
+
+filegroup(
+    name = "hermetic_strip",
+    srcs = ["strip"],
+)
+
+hermetic_linux_cc_toolchain_config(
+    name = "hermetic_linux_aarch64_cc_toolchain_config",
+    compiler_prefix = "aarch64-linux-gnu-",
+    cpu = "aarch64",
+    files = ":hermetic_cc_toolchain_files",
+    triple = "aarch64-linux-gnu",
+)
+
+hermetic_linux_cc_toolchain_config(
+    name = "hermetic_linux_x86_64_cc_toolchain_config",
+    compiler_prefix = "",
+    cpu = "x86_64",
+    files = ":hermetic_x86_64_cc_toolchain_files",
+    triple = "x86_64-linux-gnu",
 )
 
 cc_toolchain(
-    name = "remote_linux_aarch64_cc_compiler",
-    all_files = ":empty",
-    ar_files = ":empty",
-    as_files = ":empty",
-    compiler_files = ":empty",
-    dwp_files = ":empty",
-    linker_files = ":empty",
-    objcopy_files = ":empty",
-    strip_files = ":empty",
+    name = "hermetic_linux_aarch64_cc_compiler",
+    all_files = ":hermetic_cc_toolchain_files",
+    ar_files = ":hermetic_cc_toolchain_files",
+    as_files = ":hermetic_cc_toolchain_files",
+    compiler_files = ":hermetic_cc_toolchain_files",
+    dwp_files = ":hermetic_cc_toolchain_files",
+    linker_files = ":hermetic_cc_toolchain_files",
+    objcopy_files = ":hermetic_cc_toolchain_files",
+    strip_files = ":hermetic_cc_toolchain_files",
     supports_param_files = 1,
-    toolchain_config = ":remote_linux_aarch64_cc_toolchain_config",
-    toolchain_identifier = "remote-linux-aarch64-gcc-15",
+    toolchain_config = ":hermetic_linux_aarch64_cc_toolchain_config",
+    toolchain_identifier = "hermetic-linux-aarch64-gcc-15",
+)
+
+cc_toolchain(
+    name = "hermetic_linux_x86_64_cc_compiler",
+    all_files = ":hermetic_x86_64_cc_toolchain_files",
+    ar_files = ":hermetic_x86_64_cc_toolchain_files",
+    as_files = ":hermetic_x86_64_cc_toolchain_files",
+    compiler_files = ":hermetic_x86_64_cc_toolchain_files",
+    dwp_files = ":hermetic_x86_64_cc_toolchain_files",
+    linker_files = ":hermetic_x86_64_cc_toolchain_files",
+    objcopy_files = ":hermetic_x86_64_cc_toolchain_files",
+    strip_files = ":hermetic_x86_64_cc_toolchain_files",
+    supports_param_files = 1,
+    toolchain_config = ":hermetic_linux_x86_64_cc_toolchain_config",
+    toolchain_identifier = "hermetic-linux-x86_64-gcc-15",
 )
 
 toolchain(
-    name = "remote_linux_aarch64_cc_toolchain",
+    name = "hermetic_linux_aarch64_cc_toolchain",
     exec_compatible_with = [
         "@platforms//cpu:aarch64",
         "@platforms//os:linux",
@@ -74,7 +325,22 @@ toolchain(
         "@platforms//cpu:aarch64",
         "@platforms//os:linux",
     ],
-    toolchain = ":remote_linux_aarch64_cc_compiler",
+    toolchain = ":hermetic_linux_aarch64_cc_compiler",
+    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+    visibility = ["//visibility:public"],
+)
+
+toolchain(
+    name = "hermetic_linux_x86_64_cc_toolchain",
+    exec_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
+    target_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
+    toolchain = ":hermetic_linux_x86_64_cc_compiler",
     toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
     visibility = ["//visibility:public"],
 )

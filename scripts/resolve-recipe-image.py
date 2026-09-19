@@ -18,6 +18,7 @@ _IMMUTABLE_TAG: Final = re.compile(r"vllmb12x-[a-z0-9][a-z0-9._-]*-n([1-9][0-9]*
 _REPOSITORY: Final = re.compile(
     r"ghcr\.io/[a-z0-9]+(?:[._-][a-z0-9]+)*(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)+"
 )
+_PLATFORMS: Final = frozenset({("linux", "arm64"), ("linux", "amd64")})
 
 
 class ResolutionError(RuntimeError):
@@ -53,18 +54,38 @@ def _digest(crane: str, reference: str) -> str:
 def _validate_platform(crane: str, repository: str, digest: str) -> None:
     reference = f"{repository}@{digest}"
     try:
-        config = json.loads(_run_crane(crane, "config", reference))
+        index = json.loads(_run_crane(crane, "manifest", reference))
     except json.JSONDecodeError as error:
-        raise ResolutionError(f"crane returned malformed config JSON for {reference!r}") from error
-    if not isinstance(config, dict):
-        raise ResolutionError(f"crane returned a non-object config for {reference!r}")
-    platform = (config.get("os"), config.get("architecture"))
-    if platform != ("linux", "arm64"):
-        os_name = config.get("os", "unknown")
-        architecture = config.get("architecture", "unknown")
+        raise ResolutionError(f"crane returned malformed manifest JSON for {reference!r}") from error
+    manifests = index.get("manifests") if isinstance(index, dict) else None
+    if not isinstance(manifests, list):
+        raise ResolutionError(f"{reference!r} is not an OCI image index")
+    children: dict[tuple[str, str], str] = {}
+    for descriptor in manifests:
+        if not isinstance(descriptor, dict) or not isinstance(descriptor.get("platform"), dict):
+            raise ResolutionError(f"OCI index child lacks a platform for {reference!r}")
+        platform = descriptor["platform"]
+        key = (platform.get("os"), platform.get("architecture"))
+        child_digest = descriptor.get("digest")
+        if not isinstance(child_digest, str) or _DIGEST.fullmatch(child_digest) is None:
+            raise ResolutionError(f"OCI index child lacks a valid digest for {reference!r}")
+        if key in children:
+            raise ResolutionError(f"OCI index has duplicate platform {key[0]}/{key[1]}")
+        children[key] = child_digest
+    if frozenset(children) != _PLATFORMS:
         raise ResolutionError(
-            f"latest image is {os_name}/{architecture}, expected linux/arm64"
+            f"latest image platforms are {sorted(children)}, expected linux/arm64 and linux/amd64"
         )
+    for platform, child_digest in children.items():
+        child_reference = f"{repository}@{child_digest}"
+        try:
+            config = json.loads(_run_crane(crane, "config", child_reference))
+        except json.JSONDecodeError as error:
+            raise ResolutionError(f"crane returned malformed config JSON for {child_reference!r}") from error
+        if not isinstance(config, dict) or (config.get("os"), config.get("architecture")) != platform:
+            raise ResolutionError(
+                f"OCI child config for {child_reference!r} does not match {platform[0]}/{platform[1]}"
+            )
 
 
 def _immutable_tags(crane: str, repository: str) -> list[tuple[int, str]]:

@@ -11,6 +11,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 from action_lib import (
     configure_compiler_cache,
     configure_compiler_sysroot,
+    configure_reproducible_compilation,
+    create_nvcc_wrapper,
     extract,
     extract_durable,
     run,
@@ -31,6 +33,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--cuda-tar", required=True)
     parser.add_argument("--ccache-tar", required=True)
     parser.add_argument("--gcc-sysroot-tar", required=True)
+    parser.add_argument("--target-cpu", required=True)
     parser.add_argument("--cuda-arch", required=True)
     parser.add_argument("--commit", required=True)
     parser.add_argument("--jobs", required=True, type=int)
@@ -49,13 +52,19 @@ def main() -> None:
 
     env = os.environ.copy()
     python = _action_path(args.python)
-    ccache = configure_compiler_cache(work, _action_path(args.ccache_tar), env)
-    configure_compiler_sysroot(_action_path(args.gcc_sysroot_tar), work, env)
+    ccache = configure_compiler_cache(
+        work, _action_path(args.ccache_tar), env, target_cpu=args.target_cpu
+    )
+    compiler_bin = configure_compiler_sysroot(
+        _action_path(args.gcc_sysroot_tar), work, env, target_cpu=args.target_cpu
+    )
+    reproducible = configure_reproducible_compilation(work, source, env)
+    nvcc = create_nvcc_wrapper(work, cuda / "bin" / "nvcc")
     env["PATH"] = os.pathsep.join((str(python.parent), env["PATH"]))
     env["PYTHON"] = str(python)
     run(
         [
-            "make",
+            compiler_bin / "make",
             "-C",
             "src/src",
             f"-j{args.jobs}",
@@ -63,7 +72,8 @@ def main() -> None:
             f"BUILDDIR={work / 'build'}",
             f"CUDA_HOME={cuda}",
             f"CUDA_LIB={cuda / 'lib'}",
-            f"NVCC={ccache} {cuda / 'bin/nvcc'}",
+            f"NVCC={ccache} {nvcc}",
+            "NVCCFLAGS=" + reproducible["cuda"],
             # nvcc invokes CXX with its own preprocessor flags. Keep ccache as
             # its launcher and pass the pinned compiler wrapper directly.
             "CXX=" + env["CXX"],

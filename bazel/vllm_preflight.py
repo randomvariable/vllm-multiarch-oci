@@ -39,6 +39,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cargo-vendor-tar", required=True)
     parser.add_argument("--ccache-tar", required=True)
     parser.add_argument("--gcc-sysroot-tar", required=True)
+    parser.add_argument("--target-cpu", required=True)
     parser.add_argument("--cuda-architecture", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--host-wheel", action="append", default=[])
@@ -117,8 +118,12 @@ def main() -> None:
     env["CMAKE_ARGS"] = " ".join(
         part for part in (env.get("CMAKE_ARGS"), "-DPython3_EXECUTABLE=" + str(python)) if part
     )
-    configure_compiler_sysroot(path_from_execroot(args.gcc_sysroot_tar), work, env)
-    launcher = configure_compiler_cache(work, path_from_execroot(args.ccache_tar), env)
+    configure_compiler_sysroot(
+        path_from_execroot(args.gcc_sysroot_tar), work, env, target_cpu=args.target_cpu
+    )
+    launcher = configure_compiler_cache(
+        work, path_from_execroot(args.ccache_tar), env, target_cpu=args.target_cpu
+    )
     cargo_home = configure_cargo_vendor(path_from_execroot(args.cargo_vendor_tar), work)
     env["CARGO_HOME"] = str(cargo_home)
 

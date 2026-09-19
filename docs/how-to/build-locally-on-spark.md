@@ -2,44 +2,41 @@
 
 Use this guide to run the build actions on a DGX Spark instead of submitting them to NativeLink. No remote service or remote credentials are required.
 
-**Important:** The local command configuration has been analysed, but a complete local Spark build has not been verified. The current actions contain worker-specific compiler paths. A stock DGX OS installation is not automatically a compatible build host. The maintainers build through CI; this path is community-maintained, and reports or fixes are welcome.
+**Important:** The local command configuration has been analysed, but a complete local Spark build has not been verified. Bazel materializes the pinned GCC 15 closure for C/C++ actions. The build does not use the DGX OS compiler, headers, or libraries. The maintainers build through CI; this path is community-maintained, and reports or fixes are welcome.
 
 ## Prerequisites
 
 Before you begin, verify that you have the following:
 
 - A Linux ARM64 DGX Spark with the checkout on persistent storage.
-- Bazel 9.2.0, Git, GNU tar, patch, sha256sum, Cargo, and host GCC/G++ 15.
-- A userspace compatible with the pinned ARM64 build tools. The registered C++ toolchain describes glibc 2.43 and GCC 15, not the stock DGX OS toolchain.
-- Persistent writable storage at `/ccache`, including room for a compiler cache configured up to 100 GB and extracted toolchains. Source trees, wheels, and Bazel outputs need additional space.
+- Bazel 9.2.0, Git, and Cargo.
+- A userspace capable of running the pinned ARM64 toolchain. Bazel materializes GCC 15 and glibc 2.43 from the locked Ubuntu package closure.
+- Persistent writable storage for the standard ccache directory, `$XDG_CACHE_HOME/ccache` or `~/.cache/ccache`, including room for a compiler cache configured up to 100 GB. Source trees, wheels, extracted toolchains, and Bazel outputs need additional space.
 - Docker for the optional image contract and local image loading.
 
-The build fetches the pinned CUDA toolkit and Python build dependencies. A host CUDA installation alone does not satisfy the host compiler requirements. Do not upgrade a serving machine's OS or compiler in place just to satisfy this guide. Use a compatible isolated ARM64 build environment with persistent checkout and `/ccache` mounts if the host differs.
+The build fetches the pinned CUDA toolkit and Python build dependencies. Do not upgrade a serving machine's compiler in place for this build. Use a compatible isolated ARM64 build environment with persistent checkout and cache directory if the host differs.
 
-### Step 1: Check the Host Compiler
+### Step 1: Check the Build Host
 
-Check the host architecture and the compiler paths referenced by the actions:
+Check the host architecture and Cargo:
 
 ```bash
 uname -m
-gcc -dumpfullversion
-g++ -dumpfullversion
-test -x /usr/bin/aarch64-linux-gnu-gcc
-test -d /usr/lib/gcc/aarch64-linux-gnu/15/include
-test -d /usr/libexec/gcc/aarch64-linux-gnu/15
+cargo --version
 ```
 
-Expect `aarch64`, GCC/G++ version 15, and successful path checks. The last path comes from the NCCL action. If these paths do not exist, stop: selecting `--config=spark` does not install or relocate the compiler. Do not substitute arbitrary compiler symlinks.
+Expect `aarch64` and successful command checks. The locked GCC archive provides the compiler, headers, binutils, libc, and linker inputs. Do not inject host compiler paths through `CC`, `CXX`, `CPATH`, or `LIBRARY_PATH`.
 
 ### Step 2: Check Persistent Cache Access
 
-Have the machine administrator provide a persistent directory or mount at `/ccache`, writable by the build account. Check access without removing existing contents:
+Check the standard ccache directory without removing existing contents:
 
 ```bash
-test -d /ccache && test -w /ccache
+cache_root=${XDG_CACHE_HOME:-$HOME/.cache}/ccache
+mkdir -p "$cache_root" && test -w "$cache_root"
 ```
 
-Expect exit zero. The actions create `/ccache/objects` and `/ccache/toolchains`. Setting a shell `CCACHE_DIR` does not override these hard-coded paths. A container writable layer or temporary directory loses the cache when that environment is removed.
+Expect exit zero. ccache stores compiler objects at `$cache_root`. The actions store extracted toolchains at `${XDG_CACHE_HOME:-$HOME/.cache}/vllmb12x/toolchains`. CI sets `VLLMB12X_CACHE_ROOT` to its durable mount, which moves objects to `$VLLMB12X_CACHE_ROOT/objects` and toolchains to `$VLLMB12X_CACHE_ROOT/toolchains`. A container writable layer or temporary directory loses either cache when that environment is removed.
 
 ### Step 3: Analyse Without Private Configuration
 
@@ -59,7 +56,7 @@ Use the same configuration without `--nobuild`:
 bazel --ignore_all_rc_files build //image:vllmb12x --platforms=//platforms:spark_arm64_sm121 --extra_execution_platforms=//platforms:spark_arm64_sm121 --spawn_strategy=local --disk_cache=.bazel-cache --incompatible_strict_action_env
 ```
 
-On a compatible host, a successful build produces `bazel-bin/image/vllmb12x`. Allow hours for the first source build and at least six hours in any command supervisor. Local execution permits writes to persistent `/ccache` but does not provide sandbox isolation. The remote-worker timings are not local Spark performance predictions.
+On a compatible host, a successful build produces `bazel-bin/image/vllmb12x`. Allow hours for the first source build and at least six hours in any command supervisor. Local execution permits writes to persistent standard cache directories but does not provide sandbox isolation. The remote-worker timings are not local Spark performance predictions.
 
 ### Step 5: Test and Load Locally
 
@@ -72,9 +69,11 @@ bazel --ignore_all_rc_files run //image:vllmb12x_load --platforms=//platforms:sp
 
 Expect a passing structure contract and the local tag `randomvariable/vllm-b12x-multi:<build version>`. Neither command starts a model server. The contract does not exercise GPU inference.
 
+Run `just toolchain-check` before an image build to compile and link the C++ probe through the pinned GCC 15 package closure. The check rejects worker compiler include paths.
+
 ## Related Practices
 
 - [Build Configuration](../reference/build-configuration.md) (reference)
 - [Build and Cache Design](../explanation/build-and-cache-design.md) (explanation)
-- [Compiler Toolchain Paths](../../bazel/remote_cc_toolchain.bzl)
+- [Hermetic Compiler Toolchain](../../bazel/hermetic_cc_toolchain.bzl)
 - [NCCL Action Declaration](../../bazel/nccl.bzl)

@@ -2,10 +2,29 @@
 
 load("@container_structure_test//:defs.bzl", "container_structure_test")
 
+_IMAGE = select({
+    "//platforms:linux_aarch64": "//image:vllmb12x_image",
+    "//platforms:linux_x86_64": "//image:vllmb12x_image",
+})
+_PLATFORM = select({
+    "//platforms:linux_aarch64": "linux/arm64",
+    "//platforms:linux_x86_64": "linux/amd64",
+})
+_CONFIG = select({
+    "//platforms:linux_aarch64": [
+        "vllmb12x.yaml",
+        "vllmb12x-arm64.yaml",
+    ],
+    "//platforms:linux_x86_64": [
+        "vllmb12x.yaml",
+        "vllmb12x-x86_64.yaml",
+    ],
+})
+
 container_structure_test(
     name = "vllmb12x_contract",
-    configs = ["vllmb12x.yaml"],
+    configs = _CONFIG,
     driver = "docker",
-    image = "//image:vllmb12x",
-    platform = "linux/arm64",
+    image = _IMAGE,
+    platform = _PLATFORM,
 )

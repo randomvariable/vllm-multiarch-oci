@@ -9,6 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from action_lib import (  # noqa: E402
+    configure_reproducible_compilation,
     configure_sysroot_runtime,
     extract,
     install_wheels,
@@ -31,6 +32,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cuda-tar", required=True)
     parser.add_argument("--nccl-tar")
     parser.add_argument("--gcc-sysroot-tar", required=True)
+    parser.add_argument("--target-cpu", required=True)
     parser.add_argument("--build-script", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--host-wheel", action="append", default=[])
@@ -68,7 +70,10 @@ def main() -> None:
             "VLLM_PRECOMPILED_EXTENSION_DIR": str(extensions),
         }
     )
-    configure_sysroot_runtime(path_from_execroot(args.gcc_sysroot_tar), work, env)
+    configure_sysroot_runtime(
+        path_from_execroot(args.gcc_sysroot_tar), work, env, target_cpu=args.target_cpu
+    )
+    configure_reproducible_compilation(work, source, env)
     shutil.copytree(extensions / "vllm", source / "vllm", dirs_exist_ok=True)
     wheels.mkdir(parents=True, exist_ok=True)
     run(

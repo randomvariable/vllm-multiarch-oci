@@ -2,6 +2,7 @@
 """Compile vLLM CUDA extensions separately from pure-Python wheel packaging."""
 
 load("//bazel:compiler_cache.bzl", "GCC_SYSROOT_ATTR", "MEMORY_PER_JOB_ATTR", "compile_jobs")
+load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 
 def _vllm_wheel_impl(ctx):
     wheel = ctx.actions.declare_file(ctx.attr.output)
@@ -23,6 +24,7 @@ def _vllm_wheel_impl(ctx):
     compile_args.add("--cargo-vendor-tar", ctx.file.cargo_vendor.path)
     compile_args.add("--ccache-tar", ctx.file.compiler_cache.path)
     compile_args.add("--gcc-sysroot-tar", ctx.file.compiler_sysroot.path)
+    compile_args.add("--target-cpu", ctx.attr.target_cpu)
     compile_args.add("--max-jobs", compile_jobs(ctx.attr))
     compile_args.add("--cuda-architecture", ctx.attr.cuda_architecture)
     compile_args.add("--output", extensions.path)
@@ -43,7 +45,7 @@ def _vllm_wheel_impl(ctx):
         ctx.file._action_lib,
         ctx.file.src,
         ctx.file.cuda,
-        ctx.file.python,
+        ctx.executable._python_launcher,
         ctx.file.compiler_cache,
         ctx.file.compiler_sysroot,
         ctx.file.cargo_vendor,
@@ -52,7 +54,7 @@ def _vllm_wheel_impl(ctx):
         rust_toolchain.cargo,
     ]
     ctx.actions.run(
-        executable = ctx.file.python,
+        executable = ctx.executable._python_launcher,
         arguments = [ctx.file._compile_driver.path, compile_args],
         inputs = depset(direct = compile_inputs, transitive = [rust_toolchain.all_files]),
         outputs = [extensions, cache_stats],
@@ -60,10 +62,11 @@ def _vllm_wheel_impl(ctx):
         progress_message = "Compiling %s CUDA extensions" % ctx.label.name,
         execution_requirements = {
             "cpu": str(ctx.attr.cpu),
+            "ISA": ctx.attr.target_cpu,
             "memory": str(ctx.attr.memory),
         },
-        env = ctx.attr.env,
-        use_default_shell_env = True,
+        env = dict(ctx.attr.env, **_cache_env(ctx)),
+        use_default_shell_env = False,
     )
 
     package_args = ctx.actions.args()
@@ -75,6 +78,7 @@ def _vllm_wheel_impl(ctx):
     if ctx.file.nccl:
         package_args.add("--nccl-tar", ctx.file.nccl.path)
     package_args.add("--gcc-sysroot-tar", ctx.file.compiler_sysroot.path)
+    package_args.add("--target-cpu", ctx.attr.target_cpu)
     package_args.add("--build-script", ctx.file.build.path)
     package_args.add("--output", wheel.path)
     package_args.add_all(
@@ -86,14 +90,14 @@ def _vllm_wheel_impl(ctx):
         ctx.file._package_driver,
         ctx.file._action_lib,
         ctx.file.src,
-        ctx.file.python,
+        ctx.executable._python_launcher,
         ctx.file.cuda,
         ctx.file.compiler_sysroot,
         extensions,
         ctx.file.build,
     ] + ctx.files.python_runtime + wheel_inputs + ctx.files.nccl
     ctx.actions.run(
-        executable = ctx.file.python,
+        executable = ctx.executable._python_launcher,
         arguments = [ctx.file._package_driver.path, package_args],
         inputs = depset(direct = package_inputs),
         outputs = [wheel],
@@ -101,10 +105,11 @@ def _vllm_wheel_impl(ctx):
         progress_message = "Packaging %s Python wheel" % ctx.label.name,
         execution_requirements = {
             "cpu": str(ctx.attr.cpu),
+            "ISA": ctx.attr.target_cpu,
             "memory": str(ctx.attr.memory),
         },
         env = ctx.attr.env,
-        use_default_shell_env = True,
+        use_default_shell_env = False,
     )
     return [
         DefaultInfo(files = depset([wheel])),
@@ -116,14 +121,15 @@ def _vllm_wheel_impl(ctx):
 
 vllm_wheel = rule(
     implementation = _vllm_wheel_impl,
-    exec_compatible_with = [
-        "@platforms//cpu:aarch64",
-        "@platforms//os:linux",
-    ],
     attrs = {
         "src": attr.label(mandatory = True, allow_single_file = True),
         "cuda": attr.label(mandatory = True, allow_single_file = True),
         "python": attr.label(mandatory = True, allow_single_file = True),
+        "_python_launcher": attr.label(
+            default = Label("//platforms:action_python"),
+            executable = True,
+            cfg = "target",
+        ),
         # Keep the relocatable interpreter's standard library in every remote
         # action. The binary's fixed /install prefix otherwise cannot start.
         "python_runtime": attr.label(
@@ -136,10 +142,11 @@ vllm_wheel = rule(
         ),
         "build": attr.label(mandatory = True, allow_single_file = True),
         "compiler_cache": attr.label(
-            default = Label("@ccache//:ccache.tar"),
+            default = Label("//platforms:compiler_cache"),
             allow_single_file = True,
         ),
         "compiler_sysroot": GCC_SYSROOT_ATTR,
+        "target_cpu": attr.string(mandatory = True, values = ["aarch64", "x86_64"]),
         "cargo_vendor": attr.label(mandatory = True, allow_single_file = True),
         "output": attr.string(mandatory = True),
         "host_wheels": attr.label_list(allow_files = True),
@@ -148,6 +155,7 @@ vllm_wheel = rule(
         # Each key is passed to the driver as its supported CMake override.
         "cmake_sources": attr.string_keyed_label_dict(allow_files = True),
         "env": attr.string_dict(),
+        "_cache_root": attr.label(default = Label("//platforms:vllmb12x_cache_root")),
         "nccl": attr.label(allow_single_file = True),
         "cuda_architecture": attr.string(mandatory = True),
         # Upper bound only. compile_jobs() reduces this to what the action's
@@ -169,7 +177,10 @@ vllm_wheel = rule(
             allow_single_file = True,
         ),
     },
-    toolchains = ["@rules_rust//rust:toolchain"],
+    toolchains = [
+        "@bazel_tools//tools/cpp:toolchain_type",
+        "@rules_rust//rust:toolchain",
+    ],
 )
 
 
@@ -191,6 +202,7 @@ def _vllm_preflight_impl(ctx):
     args.add("--cargo-vendor-tar", ctx.file.cargo_vendor.path)
     args.add("--ccache-tar", ctx.file.compiler_cache.path)
     args.add("--gcc-sysroot-tar", ctx.file.compiler_sysroot.path)
+    args.add("--target-cpu", ctx.attr.target_cpu)
     args.add("--cuda-architecture", ctx.attr.cuda_architecture)
     args.add("--output", report.path)
     for name in sorted(ctx.attr.cmake_sources):
@@ -208,7 +220,7 @@ def _vllm_preflight_impl(ctx):
         ctx.file.source_identity,
         ctx.file.cuda,
         ctx.file.nccl,
-        ctx.file.python,
+        ctx.executable._python_launcher,
         ctx.file.compiler_cache,
         ctx.file.compiler_sysroot,
         ctx.file.cargo_vendor,
@@ -217,7 +229,7 @@ def _vllm_preflight_impl(ctx):
         rust_toolchain.cargo,
     ]
     ctx.actions.run(
-        executable = ctx.file.python,
+        executable = ctx.executable._python_launcher,
         arguments = [ctx.file._driver.path, args],
         inputs = depset(direct = inputs, transitive = [rust_toolchain.all_files]),
         outputs = [report],
@@ -227,23 +239,24 @@ def _vllm_preflight_impl(ctx):
             "cpu": str(ctx.attr.cpu),
             "memory": str(ctx.attr.memory),
         },
-        env = ctx.attr.env,
-        use_default_shell_env = True,
+        env = dict(ctx.attr.env, **_cache_env(ctx)),
+        use_default_shell_env = False,
     )
     return [DefaultInfo(files = depset([report]))]
 
 
 vllm_preflight = rule(
     implementation = _vllm_preflight_impl,
-    exec_compatible_with = [
-        "@platforms//cpu:aarch64",
-        "@platforms//os:linux",
-    ],
     attrs = {
         "src": attr.label(mandatory = True, allow_single_file = True),
         "source_identity": attr.label(mandatory = True, allow_single_file = True),
         "cuda": attr.label(mandatory = True, allow_single_file = True),
         "python": attr.label(mandatory = True, allow_single_file = True),
+        "_python_launcher": attr.label(
+            default = Label("//platforms:action_python"),
+            executable = True,
+            cfg = "target",
+        ),
         "python_runtime": attr.label(
             default = Label("@python_3_12//:files"),
             allow_files = True,
@@ -253,16 +266,18 @@ vllm_preflight = rule(
             allow_files = True,
         ),
         "compiler_cache": attr.label(
-            default = Label("@ccache//:ccache.tar"),
+            default = Label("//platforms:compiler_cache"),
             allow_single_file = True,
         ),
         "compiler_sysroot": GCC_SYSROOT_ATTR,
+        "target_cpu": attr.string(mandatory = True, values = ["aarch64", "x86_64"]),
         "cargo_vendor": attr.label(mandatory = True, allow_single_file = True),
         "output": attr.string(mandatory = True),
         "host_wheels": attr.label_list(allow_files = True),
         "deps": attr.label_list(allow_files = True),
         "cmake_sources": attr.string_keyed_label_dict(allow_files = True),
         "env": attr.string_dict(),
+        "_cache_root": attr.label(default = Label("//platforms:vllmb12x_cache_root")),
         "nccl": attr.label(mandatory = True, allow_single_file = True),
         "cuda_architecture": attr.string(mandatory = True),
         "cpu": attr.int(default = 4),
@@ -276,5 +291,16 @@ vllm_preflight = rule(
             allow_single_file = True,
         ),
     },
-    toolchains = ["@rules_rust//rust:toolchain"],
+    toolchains = [
+        "@bazel_tools//tools/cpp:toolchain_type",
+        "@rules_rust//rust:toolchain",
+    ],
 )
+
+
+def _cache_env(ctx):
+    root = ctx.attr._cache_root[BuildSettingInfo].value
+    return {} if not root else {
+        "CCACHE_DIR": root + "/objects",
+        "VLLMB12X_CACHE_ROOT": root,
+    }

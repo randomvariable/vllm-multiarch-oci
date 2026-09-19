@@ -51,5 +51,28 @@ class PullRequestTagTest(unittest.TestCase):
             PUBLISH.pull_request_tag(26, "a" * 40, "not-a-commit")
 
 
+class MultiarchLayoutTest(unittest.TestCase):
+    def test_accepts_exactly_one_arm64_and_amd64_manifest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            layout = Path(directory)
+            (layout / "index.json").write_text(json.dumps({"manifests": [
+                {"platform": {"os": "linux", "architecture": "arm64"}},
+                {"platform": {"os": "linux", "architecture": "amd64"}},
+            ]}))
+
+            PUBLISH.validate_multiarch_layout(layout)
+
+    def test_rejects_missing_or_duplicate_platform_manifests(self):
+        with tempfile.TemporaryDirectory() as directory:
+            layout = Path(directory)
+            (layout / "index.json").write_text(json.dumps({"manifests": [
+                {"platform": {"os": "linux", "architecture": "arm64"}},
+                {"platform": {"os": "linux", "architecture": "arm64"}},
+            ]}))
+
+            with self.assertRaisesRegex(RuntimeError, "linux/arm64 and linux/amd64"):
+                PUBLISH.validate_multiarch_layout(layout)
+
+
 if __name__ == "__main__":
     unittest.main()

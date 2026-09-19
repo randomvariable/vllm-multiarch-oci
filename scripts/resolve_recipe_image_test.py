@@ -15,6 +15,8 @@ REPOSITORY = "ghcr.io/randomvariable/vllm-b12x-multi"
 DIGEST_A = f"sha256:{'a' * 64}"
 DIGEST_B = f"sha256:{'b' * 64}"
 OTHER_DIGEST = f"sha256:{'c' * 64}"
+ARM_DIGEST = f"sha256:{'d' * 64}"
+AMD_DIGEST = f"sha256:{'e' * 64}"
 TAG_N9 = "vllmb12x-dev-jovian-judgement-aaaaaaaaaaaa-bbbbbbbbbbbb-20260914-n9"
 TAG_N10 = "vllmb12x-dev-jovian-judgement-aaaaaaaaaaaa-bbbbbbbbbbbb-20260914-n10"
 
@@ -48,11 +50,10 @@ class ResolverTest(unittest.TestCase):
 
                 if command == "ls":
                     print("\\n".join(scenario["tags"]))
+                elif command == "manifest":
+                    print(json.dumps(scenario["manifest"]))
                 elif command == "config":
-                    config = scenario.get(
-                        "config", {"os": "linux", "architecture": "arm64"}
-                    )
-                    print(json.dumps(config))
+                    print(json.dumps(scenario["configs"].get(reference, {})))
                 elif command == "digest" and reference.endswith(":latest"):
                     values = scenario["latest"]
                     index = min(state["latest"], len(values) - 1)
@@ -96,10 +97,19 @@ class ResolverTest(unittest.TestCase):
 
     @staticmethod
     def scenario(*, latest=None, tags=None, digests=None, **extra):
+        children = [
+            {"digest": ARM_DIGEST, "platform": {"os": "linux", "architecture": "arm64"}},
+            {"digest": AMD_DIGEST, "platform": {"os": "linux", "architecture": "amd64"}},
+        ]
         return {
             "latest": latest or [DIGEST_A, DIGEST_A],
             "tags": tags or [TAG_N9, TAG_N10, "latest", "unrelated"],
             "digests": digests or {TAG_N9: DIGEST_A, TAG_N10: DIGEST_A},
+            "manifest": {"manifests": children},
+            "configs": {
+                f"{REPOSITORY}@{ARM_DIGEST}": {"os": "linux", "architecture": "arm64"},
+                f"{REPOSITORY}@{AMD_DIGEST}": {"os": "linux", "architecture": "amd64"},
+            },
             **extra,
         }
 
@@ -155,13 +165,26 @@ class ResolverTest(unittest.TestCase):
         self.assertIn("registry unavailable", result.stderr)
         self.assertFalse(self.output.exists())
 
-    def test_rejects_non_arm64_latest(self):
+    def test_rejects_single_platform_latest(self):
         result = self.run_resolver(
-            self.scenario(config={"os": "linux", "architecture": "amd64"})
+            self.scenario(manifest={"manifests": [{"digest": ARM_DIGEST, "platform": {"os": "linux", "architecture": "arm64"}}]})
         )
 
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("expected linux/arm64", result.stderr)
+        self.assertIn("expected linux/arm64 and linux/amd64", result.stderr)
+        self.assertFalse(self.output.exists())
+
+    def test_rejects_duplicate_platform_child(self):
+        result = self.run_resolver(
+            self.scenario(manifest={"manifests": [
+                {"digest": ARM_DIGEST, "platform": {"os": "linux", "architecture": "arm64"}},
+                {"digest": OTHER_DIGEST, "platform": {"os": "linux", "architecture": "arm64"}},
+                {"digest": AMD_DIGEST, "platform": {"os": "linux", "architecture": "amd64"}},
+            ]})
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("duplicate platform", result.stderr)
         self.assertFalse(self.output.exists())
 
 

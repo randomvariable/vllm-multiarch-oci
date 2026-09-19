@@ -22,10 +22,10 @@ def _venv_layer_impl(ctx):
     args.add_all(ctx.files.runtime_wheels + ctx.files.source_wheels, before_each = "--wheel")
 
     ctx.actions.run(
-        executable = ctx.file.python,
+        executable = ctx.executable._action_python,
         inputs = depset(
             direct = [
-                ctx.file.python,
+                ctx.executable._action_python,
                 ctx.file._action_lib,
                 ctx.file._driver,
                 ctx.file._python_launcher,
@@ -39,7 +39,7 @@ def _venv_layer_impl(ctx):
         arguments = [args],
         mnemonic = "AssembleVenvLayer",
         progress_message = "Assembling Python runtime layer %{label}",
-        use_default_shell_env = True,
+        use_default_shell_env = False,
     )
     return [DefaultInfo(files = depset([output]))]
 
@@ -47,6 +47,11 @@ venv_layer = rule(
     implementation = _venv_layer_impl,
     attrs = {
         "python": attr.label(mandatory = True, allow_single_file = True),
+        "_action_python": attr.label(
+            default = Label("//platforms:action_python"),
+            executable = True,
+            cfg = "target",
+        ),
         "python_runtime": attr.label(mandatory = True, allow_files = True),
         "nccl": attr.label(mandatory = True, allow_single_file = True),
         "runtime_wheels": attr.label_list(allow_files = True),
@@ -80,4 +85,7 @@ venv_layer = rule(
             allow_single_file = True,
         ),
     },
+    # The selected action Python is architecture-native. Resolve the matching
+    # C++ toolchain to constrain this packaging action to that same executor.
+    toolchains = ["@bazel_tools//tools/cpp:toolchain_type"],
 )
