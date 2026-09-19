@@ -328,12 +328,32 @@ pip.parse(
 )
 pip.parse(
     download_only = True,
+    extra_pip_args = [
+        "--platform=manylinux_2_34_x86_64",
+        "--platform=manylinux_2_31_x86_64",
+        "--platform=manylinux_2_28_x86_64",
+        "--platform=manylinux2014_x86_64",
+        "--python-version=312",
+        "--implementation=cp",
+        "--abi=cp312",
+        "--abi=abi3",
+    ],
     hub_name = "host_deps_x86_64",
     python_version = "3.12",
     requirements_lock = "//profiles/vllmb12x:host-build-requirements-x86_64.lock",
 )
 pip.parse(
     download_only = True,
+    extra_pip_args = [
+        "--platform=manylinux_2_34_x86_64",
+        "--platform=manylinux_2_31_x86_64",
+        "--platform=manylinux_2_28_x86_64",
+        "--platform=manylinux2014_x86_64",
+        "--python-version=312",
+        "--implementation=cp",
+        "--abi=cp312",
+        "--abi=abi3",
+    ],
     hub_name = "runtime_deps_x86_64",
     python_version = "3.12",
     requirements_lock = "//profiles/vllmb12x:requirements-x86_64.lock",
