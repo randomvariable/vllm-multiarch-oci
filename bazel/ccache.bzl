@@ -11,7 +11,8 @@ the worker image.
 
 _SNAPSHOT = "https://snapshot.ubuntu.com/ubuntu/20260901T000000Z/pool"
 
-_DEBS = [
+_DEBS = {
+    "arm64": [
     {
         "path": "universe/c/ccache/ccache_4.13.6-1_arm64.deb",
         "sha256": "eadd6e34d6fd22becf955cf3b119496ac86614263ef5a120c6544fe192f957f4",
@@ -24,10 +25,25 @@ _DEBS = [
         "path": "universe/h/hiredis/libhiredis1.1.0_1.2.0-6ubuntu5_arm64.deb",
         "sha256": "1910431a9f30ecfb4835e747567305daff1f9cdece2216eadfae4ff6931be1ed",
     },
-]
+    ],
+    "x86_64": [
+        {
+            "path": "universe/c/ccache/ccache_4.13.6-1_amd64.deb",
+            "sha256": "405e70840b9cb560fd3844fc1b980784684511b8c7baba374e28e65189895357",
+        },
+        {
+            "path": "universe/f/fmtlib/libfmt10_10.1.1+ds1-4build1_amd64.deb",
+            "sha256": "656ab858fbd4424d4a09097ffc6f8102828298d430a1e3c9f13eaa857b93bc95",
+        },
+        {
+            "path": "universe/h/hiredis/libhiredis1.1.0_1.2.0-6ubuntu5_amd64.deb",
+            "sha256": "117b337534114ed5447c8618fc19440b929dbb2cf7fac7de6d6b7b1ddd4206bf",
+        },
+    ],
+}
 
 def _ccache_repository_impl(ctx):
-    for index, deb in enumerate(_DEBS):
+    for index, deb in enumerate(_DEBS[ctx.attr.cpu]):
         deb_path = "debs/%d.deb" % index
         ctx.download(
             url = "%s/%s" % (_SNAPSHOT, deb["path"]),
@@ -71,9 +87,13 @@ def _ccache_repository_impl(ctx):
 exports_files(["ccache.tar"], visibility = ["//visibility:public"])
 """)
 
-_ccache_repository = repository_rule(implementation = _ccache_repository_impl)
+_ccache_repository = repository_rule(
+    implementation = _ccache_repository_impl,
+    attrs = {"cpu": attr.string(values = ["arm64", "x86_64"], mandatory = True)},
+)
 
 def _ccache_extension_impl(_ctx):
-    _ccache_repository(name = "ccache")
+    _ccache_repository(name = "ccache", cpu = "arm64")
+    _ccache_repository(name = "ccache_x86_64", cpu = "x86_64")
 
 ccache = module_extension(implementation = _ccache_extension_impl)

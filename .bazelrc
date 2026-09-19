@@ -12,6 +12,7 @@ build:spark --platforms=//platforms:spark_arm64_sm121
 # .bazelrc.user file. The repository owns only remote execution behaviour.
 build:remote-aarch64 --platforms=//platforms:spark_arm64_sm121
 build:remote-aarch64 --extra_execution_platforms=//platforms:spark_arm64_sm121
+build:remote-aarch64 --extra_toolchains=//platforms:hermetic_linux_aarch64_cc_toolchain
 build:remote-aarch64 --remote_timeout=21600
 build:remote-aarch64 --spawn_strategy=remote
 build:remote-aarch64 --remote_local_fallback=false
@@ -19,3 +20,26 @@ build:remote-aarch64 --remote_download_minimal
 build:remote-aarch64 --remote_cache_compression
 build:remote-aarch64 --experimental_remote_cache_compression_threshold=1048576
 test:remote-aarch64 --nocache_test_results
+
+# The x86 Blackwell lane builds CUDA sm_120 with native x86 tools. Private
+# scheduler endpoints and container-image properties stay in .bazelrc.user.
+build:remote-x86_64 --platforms=//platforms:blackwell_x86_64_sm120
+build:remote-x86_64 --extra_execution_platforms=//platforms:blackwell_x86_64_sm120
+build:remote-x86_64 --extra_toolchains=//platforms:hermetic_linux_x86_64_cc_toolchain
+build:remote-x86_64 --remote_timeout=21600
+build:remote-x86_64 --spawn_strategy=remote
+build:remote-x86_64 --remote_local_fallback=false
+build:remote-x86_64 --remote_download_minimal
+build:remote-x86_64 --remote_cache_compression
+build:remote-x86_64 --experimental_remote_cache_compression_threshold=1048576
+test:remote-x86_64 --nocache_test_results
+
+# Index transitions select the matching native architecture for each image.
+build:remote-multiarch --extra_execution_platforms=//platforms:spark_arm64_sm121,//platforms:blackwell_x86_64_sm120
+build:remote-multiarch --extra_toolchains=//platforms:hermetic_linux_aarch64_cc_toolchain,//platforms:hermetic_linux_x86_64_cc_toolchain
+build:remote-multiarch --remote_timeout=21600
+build:remote-multiarch --spawn_strategy=remote
+build:remote-multiarch --remote_local_fallback=false
+build:remote-multiarch --remote_download_minimal
+build:remote-multiarch --remote_cache_compression
+build:remote-multiarch --experimental_remote_cache_compression_threshold=1048576

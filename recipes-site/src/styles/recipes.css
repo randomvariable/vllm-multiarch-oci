@@ -97,6 +97,45 @@ h3,
   background: var(--recipe-paper-2);
 }
 
+.runtime-config-table {
+  width: 100%;
+  table-layout: fixed;
+  font-size: 0.83rem;
+}
+
+.runtime-config-table th:nth-child(1) {
+  width: 27%;
+}
+
+.runtime-config-table th:nth-child(2) {
+  width: 53%;
+}
+
+.runtime-config-table th:nth-child(3) {
+  width: 20%;
+}
+
+.runtime-config-table :is(th, td) {
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.runtime-config-table td > code {
+  overflow-wrap: anywhere;
+}
+
+.runtime-config-meta {
+  display: block;
+  margin-block-start: 0.35rem;
+  color: var(--recipe-soft);
+  font: 500 0.68rem/1.35 "Geist Mono", monospace;
+}
+
+.runtime-config-meta code {
+  color: inherit;
+  overflow-wrap: anywhere;
+}
+
 .sl-markdown-content pre,
 .expressive-code {
   border: 1px solid var(--recipe-rule-solid);

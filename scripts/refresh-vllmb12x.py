@@ -19,7 +19,7 @@ ROOT: Final = Path(__file__).resolve().parents[1]
 PROFILE: Final = ROOT / "profiles/vllmb12x/profile.json"
 VERSION: Final = ROOT / "profiles/vllmb12x/version.bzl"
 DEFAULT_VLLM_REMOTE: Final = "https://github.com/local-inference-lab/vllm.git"
-DEFAULT_VLLM_REF: Final = "refs/heads/dev/jovian-judgement"
+DEFAULT_VLLM_REF: Final = "refs/heads/dev/karmic-kraken"
 DEFAULT_B12X_REMOTE: Final = "https://github.com/local-inference-lab/b12x.git"
 DEFAULT_B12X_REF: Final = "refs/heads/master"
 
@@ -29,6 +29,7 @@ DEFAULT_B12X_REF: Final = "refs/heads/master"
 CMAKE_SOURCES: Final = {
     "vllm_cmake_cutlass": ("CMakeLists.txt", "https://github.com/nvidia/cutlass.git", "CUTLASS_REVISION"),
     "vllm_cmake_deepgemm": ("cmake/external_projects/deepgemm.cmake", "https://github.com/deepseek-ai/DeepGEMM.git", "_DEEPGEMM_UPSTREAM_TAG"),
+    "vllm_cmake_deepselect": ("cmake/external_projects/deepselect.cmake", "https://github.com/vllm-project/DeepSelect.git", "GIT_TAG"),
     "vllm_cmake_qutlass": ("cmake/external_projects/qutlass.cmake", "https://github.com/IST-DASLab/qutlass.git", "_QUTLASS_UPSTREAM_TAG"),
     "vllm_cmake_triton": ("cmake/external_projects/triton_kernels.cmake", "https://github.com/triton-lang/triton.git", "TRITON_KERNELS_TAG"),
     "vllm_cmake_msa": ("cmake/external_projects/fmha_sm100.cmake", "https://github.com/vllm-project/MSA.git", "GIT_TAG"),

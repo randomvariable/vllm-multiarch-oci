@@ -33,7 +33,7 @@ def main() -> None:
     root = work_root(args.work_dir) / "root"
     lock_dir = root / LOCK_ROOT
     identity_dir = lock_dir / "source-identity"
-    identity_dir.mkdir(parents=True)
+    identity_dir.mkdir(parents=True, exist_ok=True)
 
     index = {}
     for entry in sorted(args.source_identity):

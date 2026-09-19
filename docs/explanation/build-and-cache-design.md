@@ -24,7 +24,7 @@ The [vLLM rule](../../bazel/vllm_wheel.bzl) separates native compilation from pa
 
 Bazel reuses a complete successful action when its declared inputs and command match. Its local disk cache lives at `.bazel-cache`. Deleting that directory discards those entries.
 
-ccache reuses compiler results inside a rerun action. Completed compilations can survive a later action failure. The action drivers store objects at `/ccache/objects` and extracted toolchains at `/ccache/toolchains`. These paths require persistent writable storage. Container removal must not remove that storage. Explicit deletion or loss of the backing disk can destroy it.
+ccache reuses compiler results inside a rerun action. Completed compilations can survive a later action failure. Local actions use ccache's standard `$XDG_CACHE_HOME/ccache` directory, defaulting to `~/.cache/ccache`; extracted toolchains live at `$XDG_CACHE_HOME/vllmb12x/toolchains`. CI sets the `VLLMB12X_CACHE_ROOT` build setting to its durable volume, which places objects at `$VLLMB12X_CACHE_ROOT/objects` and extracted toolchains at `$VLLMB12X_CACHE_ROOT/toolchains`. Container removal must not remove that storage. Explicit deletion or loss of the backing disk can destroy it.
 
 Sandbox path normalization supports reuse across action directories. Cache availability is required rather than silently falling back to uncached compilation. Action-local statistics distinguish a particular compilation's reuse from cumulative cache activity.
 

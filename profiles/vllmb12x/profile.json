@@ -1,11 +1,11 @@
 {
   "name": "vllmb12x",
-  "source_ref": "refs/heads/dev/rv-jovian-judgement-profile-base",
+  "source_ref": "refs/heads/dev/karmic-kraken",
   "sources": {
     "b12x": {
-      "commit": "4401ce4fb98265c3b1e1579ae03960ff41d84d50",
+      "commit": "a83336581a3a907076e60797df69ab66df5a2ff1",
       "recursive_init_submodules": true,
-      "remote": "https://github.com/randomvariable/b12x.git"
+      "remote": "https://github.com/local-inference-lab/b12x.git"
     },
     "cutlass": {
       "commit": "e6233cbac5d7c7a865c19c91cd684ceece19513c",
@@ -37,6 +37,13 @@
       "recursive_init_submodules": true,
       "remote": "https://github.com/local-inference-lab/LMCache.git"
     },
+    "llguidance": {
+      "cargo_manifest": "python_ext/Cargo.toml",
+      "cargo_vendor": true,
+      "commit": "0384f3f6aab6cebe8abf9b74db0079b96f5837ef",
+      "recursive_init_submodules": true,
+      "remote": "https://github.com/microsoft/llguidance.git"
+    },
     "nccl": {
       "commit": "dfab7c1ace32da250ba97757879429c341b7bcf9",
       "recursive_init_submodules": true,
@@ -59,37 +66,42 @@
     },
     "vllm": {
       "cargo_vendor": true,
-      "commit": "bd22e0f250439659d9fe30903b7aa124c321a932",
+      "commit": "ed6f2c5853c92a623c2550fad48696b0b288cfd4",
       "recursive_init_submodules": true,
-      "remote": "https://github.com/randomvariable/vllm.git"
+      "remote": "https://github.com/local-inference-lab/vllm.git"
     },
     "vllm_cmake_cutlass": {
-      "commit": "da5e086dab31d63815acafdac9a9c5893b1c69e2",
+      "commit": "cb4247394dd82148787aed73e5dc7cef33cbf862",
       "recursive_init_submodules": false,
       "remote": "https://github.com/nvidia/cutlass.git"
     },
     "vllm_cmake_deepgemm": {
-      "commit": "8b1392b978f5a03c828dd1711090d7fb50958b8a",
+      "commit": "ad1f1726aa540a76c1d26d6a120effb8de21eaa4",
       "recursive_init_submodules": true,
       "remote": "https://github.com/deepseek-ai/DeepGEMM.git"
     },
+    "vllm_cmake_deepselect": {
+      "commit": "d96d33afe1fab0d6066da49cdc91e64c2bee65ea",
+      "recursive_init_submodules": true,
+      "remote": "https://github.com/vllm-project/DeepSelect.git"
+    },
     "vllm_cmake_flash_attn": {
-      "commit": "f3e1a4f74c99145c0717709860bf765de1703779",
+      "commit": "506341a143fcabd4bb79052a7605ada727d6b3f5",
       "recursive_init_submodules": true,
       "remote": "https://github.com/vllm-project/flash-attention.git"
     },
     "vllm_cmake_flashkda": {
-      "commit": "3b225bf26bb8e218928a1fe14751cb48cf31d11b",
+      "commit": "b59532f1f464fbd536272780e30df5bf6a2ccc02",
       "recursive_init_submodules": true,
       "remote": "https://github.com/vllm-project/FlashKDA.git"
     },
     "vllm_cmake_flashmla": {
-      "commit": "a8f794d1251cbfd88a5011445dd5582289c727e4",
+      "commit": "0eee43b12f034b657133cf2afca6a72ebb6efccf",
       "recursive_init_submodules": false,
       "remote": "https://github.com/vllm-project/FlashMLA.git"
     },
     "vllm_cmake_msa": {
-      "commit": "087c161814d4d9c735b46c21212a09e5f8eb92fa",
+      "commit": "f355c37eb4e1413f21ee2ad8bbad25079e6bef9d",
       "recursive_init_submodules": true,
       "remote": "https://github.com/vllm-project/MSA.git"
     },
@@ -99,7 +111,7 @@
       "remote": "https://github.com/IST-DASLab/qutlass.git"
     },
     "vllm_cmake_tml_fa4": {
-      "commit": "b206834606ed5b5f21f8eed6b0683f528ea9cf7d",
+      "commit": "75765e76a9c2c012c1f6ecd64577eb646eb4d303",
       "recursive_init_submodules": false,
       "remote": "https://github.com/vllm-project/tml-fa4.git"
     },

@@ -49,6 +49,7 @@ py_test(
         "vllmb12x-runtime-config.py",
         "vllmb12x_runtime_config_test.py",
     ],
+    data = ["vllmb12x-runtime-config.yaml"],
     main = "vllmb12x_runtime_config_test.py",
 )
 

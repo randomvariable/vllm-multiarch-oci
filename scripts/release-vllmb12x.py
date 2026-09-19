@@ -29,6 +29,7 @@ _RELEASE_TAG: Final = re.compile(r"v(?P<date>[0-9]{8})\.(?P<sequence>[0-9]+)")
 _PUBLICATION_TAG: Final = re.compile(
     r"vllmb12x-.+-(?P<source>[0-9a-f]{12})-(?P<builder>[0-9a-f]{12})-(?P<date>[0-9]{8})-n(?P<sequence>[0-9]+)"
 )
+_RELEASE_PLATFORMS: Final = frozenset({("linux", "arm64"), ("linux", "amd64")})
 
 
 def ledger() -> Any:
@@ -62,8 +63,38 @@ def next_release_tag(existing: list[str], date: str) -> str:
 
 
 def image_labels(reference: str, crane: str) -> dict[str, str]:
-    configuration = json.loads(run(crane, "config", reference))
-    return configuration["config"]["Labels"]
+    index = json.loads(run(crane, "manifest", reference))
+    manifests = index.get("manifests") if isinstance(index, dict) else None
+    if not isinstance(manifests, list):
+        raise RuntimeError(f"{reference} is not an OCI image index")
+    children: dict[tuple[str, str], str] = {}
+    for descriptor in manifests:
+        if not isinstance(descriptor, dict) or not isinstance(descriptor.get("platform"), dict):
+            raise RuntimeError(f"OCI index child lacks a platform for {reference}")
+        platform = descriptor["platform"]
+        key = (platform.get("os"), platform.get("architecture"))
+        digest = descriptor.get("digest")
+        if not isinstance(digest, str) or not digest.startswith("sha256:"):
+            raise RuntimeError(f"OCI index child lacks a digest for {reference}")
+        if key in children:
+            raise RuntimeError(f"OCI index has duplicate child platform {key[0]}/{key[1]}")
+        children[key] = digest
+    if frozenset(children) != _RELEASE_PLATFORMS:
+        raise RuntimeError(
+            f"OCI index platforms are {sorted(children)}, expected linux/arm64 and linux/amd64"
+        )
+
+    child_labels: list[dict[str, str]] = []
+    repository = reference.split("@", 1)[0]
+    for platform, digest in sorted(children.items()):
+        configuration = json.loads(run(crane, "config", f"{repository}@{digest}"))
+        labels = configuration.get("config", {}).get("Labels") if isinstance(configuration, dict) else None
+        if not isinstance(labels, dict) or not all(isinstance(key, str) and isinstance(value, str) for key, value in labels.items()):
+            raise RuntimeError(f"OCI child {platform[0]}/{platform[1]} lacks string image labels")
+        child_labels.append(labels)
+    if child_labels[0] != child_labels[1]:
+        raise RuntimeError("OCI child image labels disagree")
+    return child_labels[0]
 
 
 def check_release_candidate(reference: str, publication_tag: str, labels: dict[str, str], module: Any) -> None:
@@ -107,7 +138,7 @@ def release_notes(reference: str, publication_tag: str, release_tag: str, module
     version = re.search(r'VLLM_BUILD_VERSION = "([^"]+)"', VERSION.read_text()).group(1)
     repository = reference.split("@", 1)[0]
     return "\n".join((
-        f"Linux ARM64 image for NVIDIA DGX Spark (GB10, sm_121a), vLLM `{version}`.",
+        f"Linux arm64 (sm_121a) and amd64 (sm_120) image index, vLLM `{version}`.",
         "",
         "```bash",
         f"docker pull {reference}",

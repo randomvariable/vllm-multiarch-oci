@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+ : "${HERMETIC_CC_SYSROOT:?missing pinned compiler sysroot}"
+ : "${HERMETIC_CC_TRIPLE:?missing pinned compiler triple}"
+export LD_LIBRARY_PATH="$HERMETIC_CC_SYSROOT/usr/lib/$HERMETIC_CC_TRIPLE:$HERMETIC_CC_SYSROOT/usr/lib"
+ : "${HERMETIC_CC_PREFIX:=}"
+exec "$HERMETIC_CC_SYSROOT/usr/bin/${HERMETIC_CC_PREFIX}cpp" "$@"

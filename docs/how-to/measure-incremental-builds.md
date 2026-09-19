@@ -8,7 +8,7 @@ Before you begin, verify that you have the following:
 
 - A successful [complete image build](build-and-test.md).
 - A quiet local build host and enough time for the measurement.
-- Persistent local `/ccache` storage.
+- Persistent local ccache storage at `$XDG_CACHE_HOME/ccache` or `~/.cache/ccache`.
 - A semantic native-source patch against the pinned vLLM revision.
 
 ### Step 1: Declare the Edit

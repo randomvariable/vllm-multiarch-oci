@@ -2,6 +2,7 @@
 """Build the profile-pinned NCCL tree against the hermetic CUDA toolkit."""
 
 load("//bazel:compiler_cache.bzl", "CCACHE_ATTR", "GCC_SYSROOT_ATTR")
+load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 
 
 def _nccl_lib_impl(ctx):
@@ -17,6 +18,7 @@ def _nccl_lib_impl(ctx):
     args.add("--cuda-tar", ctx.file.cuda.path)
     args.add("--ccache-tar", ctx.file.compiler_cache.path)
     args.add("--gcc-sysroot-tar", ctx.file.compiler_sysroot.path)
+    args.add("--target-cpu", ctx.attr.target_cpu)
     args.add("--cuda-arch", compiler_arch)
     args.add("--commit", ctx.attr.commit)
     args.add("--jobs", ctx.attr.jobs)
@@ -24,14 +26,14 @@ def _nccl_lib_impl(ctx):
     args.add("--sdk-output", sdk.path)
 
     ctx.actions.run(
-        executable = ctx.file.python,
+        executable = ctx.executable._python_launcher,
         inputs = depset(
             direct = [
                 ctx.file.src,
                 ctx.file.cuda,
                 ctx.file.compiler_cache,
                 ctx.file.compiler_sysroot,
-                ctx.file.python,
+                ctx.executable._python_launcher,
                 ctx.file._driver,
                 ctx.file._action_lib,
             ] + ctx.files.python_runtime,
@@ -42,9 +44,11 @@ def _nccl_lib_impl(ctx):
         progress_message = "Building patched NCCL 2.30.4 for sm_%s" % arch,
         execution_requirements = {
             "cpu": "20",
+            "ISA": ctx.attr.target_cpu,
             "memory": "32768",
         },
-        use_default_shell_env = True,
+        env = _cache_env(ctx),
+        use_default_shell_env = False,
     )
     return [
         DefaultInfo(files = depset([output])),
@@ -54,25 +58,29 @@ def _nccl_lib_impl(ctx):
 
 nccl_lib = rule(
     implementation = _nccl_lib_impl,
-    exec_compatible_with = [
-        "@platforms//cpu:aarch64",
-        "@platforms//os:linux",
-    ],
     attrs = {
         "src": attr.label(mandatory = True, allow_single_file = True),
         "cuda": attr.label(mandatory = True, allow_single_file = True),
         "compiler_cache": CCACHE_ATTR,
         "compiler_sysroot": GCC_SYSROOT_ATTR,
+        "target_cpu": attr.string(mandatory = True, values = ["aarch64", "x86_64"]),
         "commit": attr.string(mandatory = True),
         "cuda_arch": attr.string(mandatory = True),
         "python": attr.label(mandatory = True, allow_single_file = True),
+        "_python_launcher": attr.label(
+            default = Label("//platforms:action_python"),
+            executable = True,
+            cfg = "target",
+        ),
         # The generated NCCL source invokes python3 while writing version
         # metadata. Supply rules_python's relocatable runtime to the action.
         "python_runtime": attr.label(
             default = Label("@python_3_12//:files"),
             allow_files = True,
+            cfg = "target",
         ),
         "jobs": attr.int(default = 4),
+        "_cache_root": attr.label(default = Label("//platforms:vllmb12x_cache_root")),
         "output": attr.string(default = "libnccl.so.2.30.4"),
         "sdk_output": attr.string(default = "nccl-sdk.tar"),
         "_driver": attr.label(
@@ -84,4 +92,16 @@ nccl_lib = rule(
             allow_single_file = True,
         ),
     },
+    # The Python launcher and CUDA toolchain match the target architecture.
+    # Requiring its C++ toolchain also makes Bazel select that architecture's
+    # execution platform under the OCI index transition.
+    toolchains = ["@bazel_tools//tools/cpp:toolchain_type"],
 )
+
+
+def _cache_env(ctx):
+    root = ctx.attr._cache_root[BuildSettingInfo].value
+    return {} if not root else {
+        "CCACHE_DIR": root + "/objects",
+        "VLLMB12X_CACHE_ROOT": root,
+    }

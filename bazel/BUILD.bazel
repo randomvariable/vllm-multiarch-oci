@@ -1,8 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
 exports_files([
     "action_lib.py",
+    "arm64_python_launcher.sh.tpl",
+    "native_python_launcher.sh.tpl",
     "ccache.bzl",
     "compiler_cache.bzl",
+    "hermetic_cc_toolchain.bzl",
+    "hermetic_cc_toolchain.sh",
+    "materialize_tar_tree.sh",
+
+
     "cuda_wheel_action.py",
     "cuda_redist.bzl",
     "build_source_wheel.py",
@@ -14,6 +21,7 @@ exports_files([
     "cuda_wheel.bzl",
     "nccl_action.py",
     "provenance_layer.bzl",
+
     "provenance_layer_action.py",
     "vllm_wheel.bzl",
     "vllm_extensions_action.py",
@@ -28,3 +36,12 @@ exports_files([
     "nccl.bzl",
     "sources.bzl",
 ])
+
+filegroup(
+    name = "host_python",
+    srcs = select({
+        "@platforms//cpu:x86_64": ["@python_3_12//:python3"],
+        "//conditions:default": [],
+    }),
+    visibility = ["//visibility:public"],
+)

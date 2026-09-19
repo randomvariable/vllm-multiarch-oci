@@ -66,12 +66,6 @@ fileExistenceTests:
   - name: "profile-pinned NCCL"
     path: "/opt/nccl/lib/libnccl.so.2.30.4"
     shouldExist: true
-  - name: "RDMA verbs runtime"
-    path: "/usr/lib/aarch64-linux-gnu/libibverbs.so.1"
-    shouldExist: true
-  - name: "Mellanox RDMA provider"
-    path: "/usr/lib/aarch64-linux-gnu/libibverbs/libmlx5-rdmav59.so"
-    shouldExist: true
   - name: "CUDA 13 cuSPARSELt runtime"
     path: "/opt/cusparselt/lib/libcusparseLt.so.0"
     shouldExist: true
@@ -80,9 +74,6 @@ fileExistenceTests:
     shouldExist: true
   - name: "B12X source identities"
     path: "/opt/vllmb12x/source-identity/vllm.json"
-    shouldExist: true
-  - name: "liburing runtime"
-    path: "/usr/lib/aarch64-linux-gnu/liburing.so.2"
     shouldExist: true
   # b12x compiles its PLE reader in the container and only enables the
   # io_uring path when pkg-config reports liburing, so the headers and
@@ -114,6 +105,19 @@ commandTests:
       - "-c"
       - "import torch; print('cudnn', torch.backends.cudnn.version())"
     expectedOutput: ["cudnn 9[0-9]+"]
+  - name: "Python runs with mimalloc preloaded"
+    command: "/opt/venv/bin/python"
+    args:
+      - "-c"
+      - "from pathlib import Path; assert 'libmimalloc.so.3' in Path('/proc/self/maps').read_text(); print('mimalloc preloaded')"
+    expectedOutput: ["mimalloc preloaded"]
+  - name: "vLLM CLI starts with mimalloc preloaded"
+    command: "/opt/venv/bin/vllm"
+    envVars:
+      - key: "VLLM_TARGET_DEVICE"
+        value: "cpu"
+    args: ["--help"]
+    expectedOutput: ["vLLM CLI"]
   - name: "Mooncake Python modules and CLI entry points are installed"
     command: "/opt/venv/bin/python"
     args:

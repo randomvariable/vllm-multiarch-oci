@@ -13,18 +13,13 @@ The image is built from pinned fork revisions rather than from upstream branches
 
 | Component | Change | Included as |
 | --- | --- | --- |
-| vLLM `bd22e0f25043` | [local-inference-lab/vllm#777](https://github.com/local-inference-lab/vllm/pull/777) fix(qwen): propagate MTP positional overrides | Merged into the pinned revision (3 commits) |
-| vLLM `bd22e0f25043` | [local-inference-lab/vllm#779](https://github.com/local-inference-lab/vllm/pull/779) perf(qwen): shard TP4 HC prefill and coalesce recurrent checkpoints | Merged into the pinned revision (9 commits) |
-| vLLM `bd22e0f25043` | [vllm-project/vllm#52917](https://github.com/vllm-project/vllm/pull/52917) Adaptive spin grace and bounded architectural waits for shm_broadcast | Applied at build time by `third_party/vllm_shm_broadcast_spin_grace.patch` |
-| vLLM `bd22e0f25043` | Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute (no upstream pull request) | Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch` |
-| B12X `4401ce4fb982` | [local-inference-lab/b12x#384](https://github.com/local-inference-lab/b12x/pull/384) fix(preparation): retain prepared launchers and coordinate collectives | Merged into the pinned revision (10 commits) |
-| B12X `4401ce4fb982` | [local-inference-lab/b12x#386](https://github.com/local-inference-lab/b12x/pull/386) feat(ple): export prepared internal prefill checkpoints | Merged into the pinned revision (2 commits) |
-| B12X `4401ce4fb982` | [local-inference-lab/b12x#387](https://github.com/local-inference-lab/b12x/pull/387) perf(qsa): reuse representative keys across paired queries | Merged into the pinned revision (4 commits) |
+| vLLM `ed6f2c5853c9` | [vllm-project/vllm#52917](https://github.com/vllm-project/vllm/pull/52917) Adaptive spin grace and bounded architectural waits for shm_broadcast | Applied at build time by `third_party/vllm_shm_broadcast_spin_grace.patch` |
+| vLLM `ed6f2c5853c9` | Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute (no upstream pull request) | Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch` |
 <!-- included-changes:end -->
 
 ## Getting Started
 
-Start with [Building Locally on DGX Spark](docs/how-to/build-locally-on-spark.md). The current build requires GCC 15, compatible userspace, and persistent writable `/ccache` storage. Stock DGX OS is not automatically compatible. A full local Spark build has not yet been verified.
+Start with [Building Locally on DGX Spark](docs/how-to/build-locally-on-spark.md). The current build requires GCC 15, compatible userspace, and persistent writable standard ccache storage. CI replaces this with its durable cache volume. Stock DGX OS is not automatically compatible. A full local Spark build has not yet been verified.
 
 With the prerequisites satisfied, use the [Justfile helpers](docs/reference/build-configuration.md):
 

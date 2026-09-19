@@ -34,11 +34,6 @@ spec:
     - {name: revision, value: "{{ revision }}"}
     - {name: remote_cache, value: "{{ bazel_remote_cache }}"}
     - {name: remote_executor, value: "{{ bazel_remote_executor }}"}
-    - {name: remote_isa, value: "{{ bazel_remote_isa }}"}
-    - {name: remote_os_family, value: "{{ bazel_remote_os_family }}"}
-    - {name: remote_container_image, value: "{{ bazel_remote_container_image }}"}
-    - {name: remote_gpu, value: "{{ bazel_remote_gpu }}"}
-    - {name: remote_cpu_count, value: "{{ bazel_remote_cpu_count }}"}
     - {name: image_repository, value: "{{ image_repository }}"}
     - {name: publisher_lease, value: "{{ publisher_lease }}"}
     - {name: publisher_namespace, value: "{{ publisher_namespace }}"}
@@ -72,11 +67,6 @@ spec:
       - {name: revision, type: string}
       - {name: remote_cache, type: string}
       - {name: remote_executor, type: string}
-      - {name: remote_isa, type: string}
-      - {name: remote_os_family, type: string}
-      - {name: remote_container_image, type: string}
-      - {name: remote_gpu, type: string}
-      - {name: remote_cpu_count, type: string}
       - {name: image_repository, type: string}
       - {name: publisher_lease, type: string}
       - {name: publisher_namespace, type: string}
@@ -104,11 +94,6 @@ spec:
           params:
             - {name: remote_cache, type: string}
             - {name: remote_executor, type: string}
-            - {name: remote_isa, type: string}
-            - {name: remote_os_family, type: string}
-            - {name: remote_container_image, type: string}
-            - {name: remote_gpu, type: string}
-            - {name: remote_cpu_count, type: string}
             - {name: image_repository, type: string}
             - {name: publisher_lease, type: string}
             - {name: publisher_namespace, type: string}
@@ -182,11 +167,8 @@ spec:
                 build --remote_cache_compression
                 build --remote_upload_local_results=true
                 build:remote-aarch64 --remote_executor=$(params.remote_executor)
-                build:remote-aarch64 --remote_default_exec_properties=ISA=$(params.remote_isa)
-                build:remote-aarch64 --remote_default_exec_properties=OSFamily=$(params.remote_os_family)
-                build:remote-aarch64 --remote_default_exec_properties=container-image=$(params.remote_container_image)
-                build:remote-aarch64 --remote_default_exec_properties=gpu=$(params.remote_gpu)
-                build:remote-aarch64 --remote_default_exec_properties=cpu_count=$(params.remote_cpu_count)
+                build:remote-x86_64 --remote_executor=$(params.remote_executor)
+                build:remote-multiarch --remote_executor=$(params.remote_executor)
                 EOF
 
                 mkdir -p "$DOCKER_CONFIG"
@@ -201,14 +183,17 @@ spec:
                 # Local strategy: these are host Python tests, and the remote
                 # ARM64 worker image carries no python3 interpreter.
                 bazel test //scripts:all --disk_cache= --test_output=errors
-                bazel build //image:vllmb12x --config=remote-aarch64 --disk_cache=
-                bazel test //tests/image:vllmb12x_contract --config=remote-aarch64 --disk_cache= --test_output=errors
+                export VLLMB12X_CACHE_ROOT=/ccache
+                bazel build //image:vllmb12x --config=remote-multiarch --disk_cache= --//platforms:vllmb12x_cache_root="$VLLMB12X_CACHE_ROOT"
+                bazel test //tests/image:vllmb12x_contract --config=remote-aarch64 --disk_cache= --//platforms:vllmb12x_cache_root="$VLLMB12X_CACHE_ROOT" --test_output=errors
+                bazel test //tests/image:vllmb12x_contract --config=remote-x86_64 --disk_cache= --//platforms:vllmb12x_cache_root="$VLLMB12X_CACHE_ROOT" --test_output=errors
                 python3 scripts/publish-vllmb12x.py \
                   --repository "$IMAGE_REPOSITORY" \
                   --build-revision "$BUILD_REVISION" \
                   --lease-name "$PUBLISHER_LEASE" \
                   --namespace "$PUBLISHER_NAMESPACE" \
-                  --bazel-arg=--config=remote-aarch64 \
+                  --bazel-arg=--config=remote-multiarch \
+                  --bazel-arg=--//platforms:vllmb12x_cache_root="$VLLMB12X_CACHE_ROOT" \
                   --bazel-arg=--remote_cache="$REMOTE_CACHE" \
                   --bazel-arg=--disk_cache= \
                   --result-file "$RESULT"
@@ -232,11 +217,6 @@ spec:
         params:
           - {name: remote_cache, value: $(params.remote_cache)}
           - {name: remote_executor, value: $(params.remote_executor)}
-          - {name: remote_isa, value: $(params.remote_isa)}
-          - {name: remote_os_family, value: $(params.remote_os_family)}
-          - {name: remote_container_image, value: $(params.remote_container_image)}
-          - {name: remote_gpu, value: $(params.remote_gpu)}
-          - {name: remote_cpu_count, value: $(params.remote_cpu_count)}
           - {name: image_repository, value: $(params.image_repository)}
           - {name: publisher_lease, value: $(params.publisher_lease)}
           - {name: publisher_namespace, value: $(params.publisher_namespace)}

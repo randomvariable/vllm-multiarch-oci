@@ -2,6 +2,16 @@
 
 load("//bazel:cuda_wheel.bzl", "cuda_wheel")
 
+_CUDA_TOOLKIT = "//platforms:cuda_toolkit"
+_TARGET_CPU = select({
+    "//platforms:linux_aarch64": "aarch64",
+    "//platforms:linux_x86_64": "x86_64",
+})
+_HOST_WHEELS = select({
+    "//platforms:linux_aarch64": ["@host_deps//setuptools:whl"],
+    "//platforms:linux_x86_64": ["@host_deps_x86_64//setuptools:whl"],
+})
+
 genrule(
     name = "src",
     srcs = [
@@ -44,10 +54,11 @@ genrule(
 cuda_wheel(
     name = "wheel",
     src = ":src",
-    cuda = "@cuda_sbsa//:toolkit.tar",
+    cuda = _CUDA_TOOLKIT,
+    target_cpu = _TARGET_CPU,
     python = "@python_3_12//:python3",
     build = "build.py",
-    host_wheels = ["@host_deps//setuptools:whl"],
+    host_wheels = _HOST_WHEELS,
     output = "cuda_wheel_smoke-0.0.1-py3-none-any.whl",
     cpu = 1,
     memory = 1024,
@@ -59,10 +70,11 @@ cuda_wheel(
 cuda_wheel(
     name = "wheel_failure",
     src = ":src",
-    cuda = "@cuda_sbsa//:toolkit.tar",
+    cuda = _CUDA_TOOLKIT,
+    target_cpu = _TARGET_CPU,
     python = "@python_3_12//:python3",
     build = "build.py",
-    host_wheels = ["@host_deps//setuptools:whl"],
+    host_wheels = _HOST_WHEELS,
     output = "cuda_wheel_smoke_failure-0.0.1-py3-none-any.whl",
     cpu = 1,
     memory = 1024,
@@ -76,10 +88,11 @@ cuda_wheel(
 cuda_wheel(
     name = "wheel_retry",
     src = ":src",
-    cuda = "@cuda_sbsa//:toolkit.tar",
+    cuda = _CUDA_TOOLKIT,
+    target_cpu = _TARGET_CPU,
     python = "@python_3_12//:python3",
     build = "build.py",
-    host_wheels = ["@host_deps//setuptools:whl"],
+    host_wheels = _HOST_WHEELS,
     output = "cuda_wheel_smoke_retry-0.0.1-py3-none-any.whl",
     cpu = 1,
     memory = 1024,
@@ -92,10 +105,11 @@ cuda_wheel(
 cuda_wheel(
     name = "wheel_worker_a",
     src = ":src",
-    cuda = "@cuda_sbsa//:toolkit.tar",
+    cuda = _CUDA_TOOLKIT,
+    target_cpu = _TARGET_CPU,
     python = "@python_3_12//:python3",
     build = "build.py",
-    host_wheels = ["@host_deps//setuptools:whl"],
+    host_wheels = _HOST_WHEELS,
     output = "cuda_wheel_smoke_worker_a-0.0.1-py3-none-any.whl",
     cpu = 1,
     memory = 1024,
@@ -108,10 +122,11 @@ cuda_wheel(
 cuda_wheel(
     name = "wheel_worker_b",
     src = ":src",
-    cuda = "@cuda_sbsa//:toolkit.tar",
+    cuda = _CUDA_TOOLKIT,
+    target_cpu = _TARGET_CPU,
     python = "@python_3_12//:python3",
     build = "build.py",
-    host_wheels = ["@host_deps//setuptools:whl"],
+    host_wheels = _HOST_WHEELS,
     output = "cuda_wheel_smoke_worker_b-0.0.1-py3-none-any.whl",
     cpu = 1,
     memory = 1024,
@@ -124,10 +139,11 @@ cuda_wheel(
 cuda_wheel(
     name = "wheel_semantic",
     src = ":src_semantic",
-    cuda = "@cuda_sbsa//:toolkit.tar",
+    cuda = _CUDA_TOOLKIT,
+    target_cpu = _TARGET_CPU,
     python = "@python_3_12//:python3",
     build = "build.py",
-    host_wheels = ["@host_deps//setuptools:whl"],
+    host_wheels = _HOST_WHEELS,
     output = "cuda_wheel_smoke_semantic-0.0.1-py3-none-any.whl",
     cpu = 1,
     memory = 1024,
@@ -141,10 +157,11 @@ cuda_wheel(
 cuda_wheel(
     name = "wheel_header",
     src = ":src_header",
-    cuda = "@cuda_sbsa//:toolkit.tar",
+    cuda = _CUDA_TOOLKIT,
+    target_cpu = _TARGET_CPU,
     python = "@python_3_12//:python3",
     build = "build.py",
-    host_wheels = ["@host_deps//setuptools:whl"],
+    host_wheels = _HOST_WHEELS,
     output = "cuda_wheel_smoke_header-0.0.1-py3-none-any.whl",
     cpu = 1,
     memory = 1024,
@@ -158,10 +175,11 @@ cuda_wheel(
 cuda_wheel(
     name = "wheel_option",
     src = ":src",
-    cuda = "@cuda_sbsa//:toolkit.tar",
+    cuda = _CUDA_TOOLKIT,
+    target_cpu = _TARGET_CPU,
     python = "@python_3_12//:python3",
     build = "build.py",
-    host_wheels = ["@host_deps//setuptools:whl"],
+    host_wheels = _HOST_WHEELS,
     output = "cuda_wheel_smoke_option-0.0.1-py3-none-any.whl",
     cpu = 1,
     memory = 1024,

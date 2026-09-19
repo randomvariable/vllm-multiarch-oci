@@ -5,6 +5,8 @@ description: Exact version, source, owner, dependency and readiness contract for
 
 This is the human-readable companion to the authored build data in `src/data/platform-dependencies.yaml`. Missing pins or sources are build errors.
 
+For runtime controls, see the [VLLMB12X runtime configuration reference](/vllm-multiarch-oci/reference/vllmb12x-runtime-configuration/). For standard vLLM settings, use the [vLLM configuration reference](https://docs.vllm.ai/en/latest/configuration/).
+
 :::caution[Combination status]
 The image and TP=2 LWS are accepted on a non-k3s kubeadm/Cilium cluster. The complete k3s lane is not end-to-end validated on GB10 hardware. Pins marked tested below may have production evidence as individual parts without proving the k3s combination.
 :::

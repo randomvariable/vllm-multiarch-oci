@@ -1,0 +1,26 @@
+schemaVersion: 2.0.0
+
+metadataTest:
+  envVars:
+    - key: "LD_PRELOAD"
+      value: "/usr/lib/aarch64-linux-gnu/libmimalloc.so.3"
+
+fileExistenceTests:
+  - name: "RDMA verbs runtime"
+    path: "/usr/lib/aarch64-linux-gnu/libibverbs.so.1"
+    shouldExist: true
+  - name: "Mellanox RDMA provider"
+    path: "/usr/lib/aarch64-linux-gnu/libibverbs/libmlx5-rdmav59.so"
+    shouldExist: true
+  - name: "liburing runtime"
+    path: "/usr/lib/aarch64-linux-gnu/liburing.so.2"
+    shouldExist: true
+  - name: "mimalloc runtime"
+    path: "/usr/lib/aarch64-linux-gnu/libmimalloc.so.3"
+    shouldExist: true
+
+commandTests:
+  - name: "platform architecture is ARM64"
+    command: "/opt/venv/bin/python"
+    args: ["-c", "import platform; assert platform.machine() == 'aarch64'; print(platform.machine())"]
+    expectedOutput: ["aarch64"]

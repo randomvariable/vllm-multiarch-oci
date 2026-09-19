@@ -2,7 +2,9 @@
 """Runtime-system layer for the VLLMB12X CUDA image."""
 
 load("@runtime_deps//:requirements.bzl", "all_whl_requirements_by_package")
-load("@rules_oci//oci:defs.bzl", "oci_push")
+load("@runtime_deps_x86_64//:requirements.bzl", runtime_x86_requirements = "all_whl_requirements_by_package")
+load("@rules_oci//oci:defs.bzl", "oci_image_index", "oci_push")
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
 load("//bazel:provenance_layer.bzl", "provenance_layer")
 load("//bazel:venv_layer.bzl", "venv_layer")
 load("//bazel:vllm_image.bzl", "vllm_image")
@@ -15,7 +17,10 @@ package(default_visibility = ["//visibility:public"])
 # This layer only supplies host tools that vLLM or the B12X runtime requires.
 filegroup(
     name = "runtime_apt",
-    srcs = ["@runtime_apt//:flat"],
+    srcs = select({
+        "//platforms:linux_aarch64": ["@runtime_apt//:flat"],
+        "//platforms:linux_x86_64": ["@runtime_apt_x86_64//:flat"],
+    }),
 )
 
 _EXCLUDED_RUNTIME_WHEELS = [
@@ -48,6 +53,7 @@ _EXCLUDED_RUNTIME_WHEELS = [
     # The profile builds the pinned source revision as 0.1.9. Do not install
     # vLLM's unconstrained PyPI 0.2.0 alongside it.
     "instanttensor",
+    "llguidance",
     "xgrammar",
 ]
 
@@ -56,11 +62,63 @@ _REPLACED_RUNTIME_WHEELS = [
     "nvidia_nccl_cu13",
 ]
 
-_RUNTIME_WHEELS = [
-    "@runtime_deps//{}:raw_whl".format(name)
-    for name in all_whl_requirements_by_package
-    if name not in _EXCLUDED_RUNTIME_WHEELS + _REPLACED_RUNTIME_WHEELS
-]
+_RUNTIME_WHEELS = select({
+    "//platforms:linux_aarch64": [
+        "@runtime_deps//{}:raw_whl".format(name)
+        for name in all_whl_requirements_by_package
+        if name not in _EXCLUDED_RUNTIME_WHEELS + _REPLACED_RUNTIME_WHEELS
+    ],
+    "//platforms:linux_x86_64": [
+        "@runtime_deps_x86_64//{}:raw_whl".format(name)
+        for name in runtime_x86_requirements
+        if name not in _EXCLUDED_RUNTIME_WHEELS + _REPLACED_RUNTIME_WHEELS
+    ],
+})
+
+_IMAGE_BASE = select({
+    "//platforms:linux_aarch64": "@cuda_1331_cudnn_devel_ubuntu2604_linux_arm64//:cuda_1331_cudnn_devel_ubuntu2604_linux_arm64",
+    "//platforms:linux_x86_64": "@cuda_1331_cudnn_devel_ubuntu2604_linux_amd64//:cuda_1331_cudnn_devel_ubuntu2604_linux_amd64",
+})
+filegroup(
+    name = "cusparselt_layer",
+    srcs = select({
+        "//platforms:linux_aarch64": ["@cuda_sbsa//:cusparselt.tar"],
+        "//platforms:linux_x86_64": ["@cuda_x86_64//:cusparselt.tar"],
+    }),
+)
+
+write_file(
+    name = "vllmb12x_arm64_env",
+    out = "vllmb12x-arm64.env",
+    content = [
+        "CUDA_HOME=/usr/local/cuda",
+        "FLASHINFER_CUDA_ARCH_LIST=12.1f",
+        "LD_LIBRARY_PATH=/opt/nccl/lib:/opt/cusparselt/lib:/usr/local/cuda/lib64:$LD_LIBRARY_PATH",
+        "LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libmimalloc.so.3",
+        "PATH=/opt/venv/bin:$PATH",
+        "TORCH_CUDA_ARCH_LIST=12.1a",
+        "VLLM_DISABLED_KERNELS=MarlinFP8ScaledMMLinearKernel",
+    ],
+)
+
+write_file(
+    name = "vllmb12x_x86_64_env",
+    out = "vllmb12x-x86_64.env",
+    content = [
+        "CUDA_HOME=/usr/local/cuda",
+        "FLASHINFER_CUDA_ARCH_LIST=12.0",
+        "LD_LIBRARY_PATH=/opt/nccl/lib:/opt/cusparselt/lib:/usr/local/cuda/lib64:$LD_LIBRARY_PATH",
+        "LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libmimalloc.so.3",
+        "PATH=/opt/venv/bin:$PATH",
+        "TORCH_CUDA_ARCH_LIST=12.0",
+        "VLLM_DISABLED_KERNELS=MarlinFP8ScaledMMLinearKernel",
+    ],
+)
+
+_IMAGE_ENV = select({
+    "//platforms:linux_aarch64": ":vllmb12x_arm64_env",
+    "//platforms:linux_x86_64": ":vllmb12x_x86_64_env",
+})
 
 venv_layer(
     name = "runtime_venv",
@@ -83,6 +141,7 @@ venv_layer(
         "//components:exllamav3",
         "//components:lmcache",
         "//components:instanttensor",
+        "//components:llguidance",
     ],
     output = "runtime-venv.tar",
 )
@@ -110,6 +169,7 @@ provenance_layer(
         "flashinfer": "@vllmb12x_flashinfer//:source.identity.json",
         "instanttensor": "@vllmb12x_instanttensor//:source.identity.json",
         "lmcache": "@vllmb12x_lmcache//:source.identity.json",
+        "llguidance": "@vllmb12x_llguidance//:source.identity.json",
         "nccl": "@vllmb12x_nccl//:source.identity.json",
         "torch": "@vllmb12x_torch//:source.identity.json",
         "torchaudio": "@vllmb12x_torchaudio//:source.identity.json",
@@ -117,6 +177,7 @@ provenance_layer(
         "vllm": "@vllmb12x_vllm//:source.identity.json",
         "vllm_cmake_cutlass": "@vllmb12x_vllm_cmake_cutlass//:source.identity.json",
         "vllm_cmake_deepgemm": "@vllmb12x_vllm_cmake_deepgemm//:source.identity.json",
+        "vllm_cmake_deepselect": "@vllmb12x_vllm_cmake_deepselect//:source.identity.json",
         "vllm_cmake_flash_attn": "@vllmb12x_vllm_cmake_flash_attn//:source.identity.json",
         "vllm_cmake_flashkda": "@vllmb12x_vllm_cmake_flashkda//:source.identity.json",
         "vllm_cmake_flashmla": "@vllmb12x_vllm_cmake_flashmla//:source.identity.json",
@@ -130,11 +191,12 @@ provenance_layer(
 )
 
 vllm_image(
-    name = "vllmb12x",
-    base = "@cuda_1331_cudnn_devel_ubuntu2604_linux_arm64//:cuda_1331_cudnn_devel_ubuntu2604_linux_arm64",
+    name = "vllmb12x_image",
+    base = _IMAGE_BASE,
     apt_layer = ":runtime_apt",
     # PyTorch links against cuSPARSELt, which NVIDIA's CUDA devel image omits.
-    cuda_layer = "@cuda_sbsa//:cusparselt.tar",
+    cuda_layer = ":cusparselt_layer",
+    env = _IMAGE_ENV,
     provenance_layer = ":vllmb12x_sources_lock",
     venv_layers = [
         ":runtime_venv",
@@ -146,6 +208,15 @@ vllm_image(
     vllm_version = VLLM_BUILD_VERSION,
     vllm_source_ref = VLLM_SOURCE_REF,
     vllm_revision = VLLM_SOURCE_REVISION,
+)
+
+oci_image_index(
+    name = "vllmb12x",
+    images = [":vllmb12x_image"],
+    platforms = [
+        "//platforms:spark_arm64_sm121",
+        "//platforms:blackwell_x86_64_sm120",
+    ],
 )
 
 # The publisher supplies its allocated immutable tag at runtime. Keeping the

@@ -27,16 +27,21 @@ runtime:
     - "25000"
     - --mm-encoder-tp-mode
     - data
+    - --mm-processor-cache-gb
+    - "0"
     - --limit-mm-per-prompt
-    - '{"image":4,"video":1}'
+    - '{"image":1,"video":1}'
     - --mamba-cache-mode
     - align
+    - --recurrent-checkpoint-policy
+    - aligned
     - --enable-prefix-caching
+    - --enable-prompt-tokens-details
     - --enable-chunked-prefill
     - --dtype
     - bfloat16
     - --kv-cache-dtype
-    - bfloat16
+    - fp8
     - --quantization
     - modelopt_mixed
     - --block-size
@@ -46,14 +51,18 @@ runtime:
     - --max-model-len
     - "1048576"
     - --max-num-seqs
-    - "4"
+    - "8"
     - --max-num-batched-tokens
-    - "4096"
+    - "8192"
     - --gpu-memory-utilization
-    - "0.80"
+    - "0.77"
     - --speculative-config
     - '{"method":"mtp","num_speculative_tokens":3}'
+    - --compilation-config
+    - '{"cudagraph_mode":"FULL_AND_PIECEWISE","custom_ops":["all"]}'
     - --gdn-decode-kernel
+    - b12x
+    - --gdn-prefill-backend
     - b12x
     - --linear-backend
     - b12x
@@ -76,6 +85,7 @@ runtime:
     - --disable-access-log-for-endpoints
     - /metrics,/v1/models
   base_env:
+    CUTE_DSL_ARCH: sm_121a
     # Only the V2 model runner's model state calls prepare_disk() for the
     # io_uring PLE table. Without it the first forward pass raises.
     VLLM_USE_V2_MODEL_RUNNER: "1"
@@ -93,9 +103,17 @@ runtime:
     HF_HOME: /models
     HF_HUB_OFFLINE: "1"
     TRANSFORMERS_OFFLINE: "1"
+    INSTANTTENSOR_BACKEND: BUFFERED
+    INSTANTTENSOR_BUFFER_SIZE: "1342177280"
+    INSTANTTENSOR_CONCURRENCY: "1"
+    INSTANTTENSOR_IO_DEPTH: "3"
     # b12x one-shot RoCE collectives for the cross-node TP group. Fail-stop: if
     # a rank cannot take part, the backend is disabled on every rank at init.
     VLLM_ENABLE_ROCE_ALLREDUCE: "1"
+    VLLM_ROCE_ALLREDUCE_MAX_SIZE: "41943040"
+    VLLM_QWEN3_8_PREFILL_COALESCE: "1"
+    VLLM_B12X_DENSE_ACTIVATION_MODE: a16
+    VLLM_SHM_BROADCAST_ADAPTIVE_MAX_GRACE_MS: "2"
     # The first-boot RoCE preparation race times out at sequence 1 with the
     # default spin budget on this topology.
     B12X_ROCE_SPIN_LIMIT: "600000000"
@@ -108,6 +126,8 @@ runtime:
     NCCL_IGNORE_CPU_AFFINITY: "1"
     NCCL_NVLS_ENABLE: "0"
     NCCL_DEBUG: WARN
+    OMP_NUM_THREADS: "2"
+    VLLM_MARLIN_USE_ATOMIC_ADD: "1"
     TORCH_NCCL_ASYNC_ERROR_HANDLING: "1"
     VLLM_CACHE_ROOT: /cache/vllm
     # b12x compiles its native loader on first use and caches it under
@@ -117,6 +137,9 @@ runtime:
     TORCHINDUCTOR_CACHE_DIR: /cache/torchinductor
     FLASHINFER_WORKSPACE_BASE: /cache/flashinfer
     VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS: "1800"
+    VLLM_USE_AOT_COMPILE: "1"
+    VLLM_USE_MEGA_AOT_ARTIFACT: "1"
+    VLLM_ENABLE_PCIE_ALLREDUCE: "0"
 deployment:
   nodes: 2
   tensor_parallel_size: 2
@@ -273,12 +296,12 @@ deployment:
       description: Routing-only accepted Envoy GatewayClass supplied by the cluster operator.
       help: {label: Install or inspect GatewayClass, href: guides/cluster-prerequisites/#install-envoy-gateway-183}
 validation:
-  image: ghcr.io/randomvariable/vllm-b12x-multi@sha256:6391d8c2f20c3fd476606f28a45a92d6cbc0ae20486ef84769fc759046f244d3
+  image: ghcr.io/randomvariable/vllm-b12x-multi@sha256:3db7f3d50d139a4e07acbda9e4caf8815a740d31981224d707466d150c331956
   lws: verified
   docker: unverified
-  evidence: Accepted live on 2026-09-16 in the author's two-node GB10 cluster on kubeadm with Cilium, then measured with the Estonia profile at concurrency 1, 2 and 4. This records functional acceptance and a small measurement, not a stable performance baseline.
+  evidence: Accepted live on 2026-09-18 in the author's two-node GB10 cluster on kubeadm with Cilium. The deployed image digest, engine arguments, and explicit runtime environment above are from the Ready LWS. An unprofiled, 30-second-per-cell decode sweep covered concurrency 1, 2, 4, and 8 with 0, 8K, 32K, 64K, and 128K prompt tokens. The run used A16 dense activation and a direct port-forward, so it has no hardware panel and is not directly comparable to the earlier max-seqs=4 baseline.
 guide:
   hardware: Two arm64 GB10 nodes, one physical integrated GPU per node, with a working RoCE secondary network and at least 130 GiB free model storage per node for the 99 GiB checkpoint.
-  fixed_tuning: TP=2, MTP depth 3, 0.80 GPU memory utilization, 1,048,576-token maximum context from a 4x YaRN override, four sequences, 4,096 batched tokens, SSD-backed PLE tables.
+  fixed_tuning: TP=2, MTP depth 3, 0.77 GPU memory utilization, 1,048,576-token maximum context from a 4x YaRN override, eight sequences, 8,192 batched tokens, FP8 KV cache, full and piecewise CUDA graphs, B12X GDN prefill and decode, and SSD-backed PLE tables.
   networking: Primary control traffic uses the operator-selected socket interfaces; tensor-parallel collectives use the selected RDMA HCAs. Kubernetes allocator units do not describe physical device counts.
   safety: Stop both ranks gracefully with a 120-second timeout. A long kernel is not grounds for force-killing a GB10 process.

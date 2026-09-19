@@ -18,23 +18,27 @@ def _provenance_layer_impl(ctx):
         args.add("--source-identity", "%s=%s" % (name, files[0].path))
 
     ctx.actions.run(
-        executable = ctx.file._python,
+        executable = ctx.executable._python,
         inputs = depset(direct = [
-            ctx.file._python,
+            ctx.executable._python,
             ctx.file._action_lib,
             ctx.file._driver,
             ctx.file.manifest,
-        ] + ctx.files._python_runtime + identities),
+        ] + identities + ctx.files._python_runtime),
         outputs = [output],
         arguments = [args],
         mnemonic = "AssembleProvenanceLayer",
         progress_message = "Recording resolved source lock %{label}",
-        use_default_shell_env = True,
+        use_default_shell_env = False,
     )
     return [DefaultInfo(files = depset([output]))]
 
 provenance_layer = rule(
     implementation = _provenance_layer_impl,
+    exec_compatible_with = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
     attrs = {
         "manifest": attr.label(mandatory = True, allow_single_file = True),
         "build_version": attr.string(mandatory = True),
@@ -44,12 +48,14 @@ provenance_layer = rule(
         ),
         "output": attr.string(mandatory = True),
         "_python": attr.label(
-            default = Label("@python_3_12//:python3"),
-            allow_single_file = True,
+            default = Label("//platforms:x86_64_python"),
+            executable = True,
+            cfg = "exec",
         ),
         "_python_runtime": attr.label(
             default = Label("@python_3_12//:files"),
             allow_files = True,
+            cfg = "exec",
         ),
         "_action_lib": attr.label(
             default = Label("//bazel:action_lib.py"),

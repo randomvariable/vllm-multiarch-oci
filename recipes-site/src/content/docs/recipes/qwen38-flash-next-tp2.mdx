@@ -13,7 +13,7 @@ This is the public, parameterized form of the two-node NVIDIA DGX Spark deployme
 
 <div class="release-strip" aria-label="Recipe validation status">
   <span>Validated image</span>
-  <code>ghcr.io/randomvariable/vllm-b12x-multi@sha256:6391d8c2f20c3fd476606f28a45a92d6cbc0ae20486ef84769fc759046f244d3</code>
+  <code>ghcr.io/randomvariable/vllm-b12x-multi@sha256:3db7f3d50d139a4e07acbda9e4caf8815a740d31981224d707466d150c331956</code>
   <a href="#recipe-builder-title">Configure</a>
 </div>
 
@@ -26,7 +26,7 @@ This is the public, parameterized form of the two-node NVIDIA DGX Spark deployme
 
 ## What is fixed
 
-The recipe preserves the runtime command and tuning I accepted: B12X GDN decode, linear and MoE backends, InstantTensor loading, NVFP4 weights through `modelopt_mixed`, MTP speculation at depth 3, GPU utilization `0.80`, four sequences, and a 4,096-token batch budget.
+The recipe preserves the live runtime command and tuning accepted on 2026-09-18: B12X GDN prefill and decode, linear and MoE backends, buffered InstantTensor loading, NVFP4 weights through `modelopt_mixed`, MTP speculation at depth 3, FP8 KV cache, full and piecewise CUDA graphs, GPU utilization `0.77`, eight sequences, and an 8,192-token batch budget. It also selects the tested A16 dense-activation path, one-shot RoCE all-reduce limits, adaptive shared-memory broadcast grace, and the image's AOT artifacts.
 
 Two settings deserve attention because they are not interchangeable with defaults.
 
@@ -42,46 +42,59 @@ The [deployment benchmark guide](/vllm-multiarch-oci/guides/benchmark-deployment
 
 <div class="benchmark-panel">
   <div class="benchmark-context">
-    <span>Estonia profile</span>
-    <span>136,562 prompt tokens</span>
+    <span>Decode capacity sweep</span>
     <span>Benchmark v0.4.29</span>
-    <span>Temperature 0</span>
-    <span>One wave per concurrency</span>
+    <span>30 seconds per cell</span>
+    <span>Concurrency 1, 2, 4, 8</span>
+    <span>Contexts 0 to 128K</span>
   </div>
   <div class="benchmark-table" role="table" aria-label="Qwen3.8 Flash Next deployment benchmark results">
     <div class="benchmark-row benchmark-header" role="row">
-      <span role="columnheader">Concurrency</span>
-      <span role="columnheader">Start time / TTFT</span>
-      <span role="columnheader">Per-request decode</span>
-      <span role="columnheader">Mean request</span>
-      <span role="columnheader">Completed</span>
+      <span role="columnheader">Prompt context</span>
+      <span role="columnheader">C=8 aggregate decode</span>
+      <span role="columnheader">C=8 per-user decode</span>
+      <span role="columnheader">Integrated prefill</span>
+      <span role="columnheader">Scheduler state</span>
     </div>
     <div class="benchmark-row" role="row">
-      <strong role="cell">1</strong>
-      <span role="cell" class="benchmark-primary"><b>57.55</b> s<small>Cold prefill</small><small>Warm TTFT: 0.37 s</small></span>
-      <span role="cell"><b>68.17</b> tok/s</span>
-      <span role="cell"><b>32.54</b> s</span>
-      <span role="cell">1 / 1</span>
+      <strong role="cell">0</strong>
+      <span role="cell" class="benchmark-primary"><b>182.1</b> tok/s</span>
+      <span role="cell"><b>22.8</b> tok/s</span>
+      <span role="cell">Not measured</span>
+      <span role="cell">8 / 8 running</span>
     </div>
     <div class="benchmark-row" role="row">
-      <strong role="cell">2</strong>
-      <span role="cell" class="benchmark-primary"><b>0.54</b> s<small>Warm TTFT</small></span>
-      <span role="cell"><b>53.34</b> tok/s</span>
-      <span role="cell"><b>33.44</b> s</span>
-      <span role="cell">2 / 2</span>
+      <strong role="cell">8K</strong>
+      <span role="cell" class="benchmark-primary"><b>178.7</b> tok/s</span>
+      <span role="cell"><b>22.3</b> tok/s</span>
+      <span role="cell"><b>2,524</b> tok/s</span>
+      <span role="cell">8 / 8 running</span>
     </div>
     <div class="benchmark-row" role="row">
-      <strong role="cell">4</strong>
-      <span role="cell" class="benchmark-primary"><b>0.97</b> s<small>Warm TTFT</small></span>
-      <span role="cell"><b>40.54</b> tok/s</span>
-      <span role="cell"><b>40.12</b> s</span>
-      <span role="cell">4 / 4</span>
+      <strong role="cell">32K</strong>
+      <span role="cell" class="benchmark-primary"><b>175.7</b> tok/s</span>
+      <span role="cell"><b>22.0</b> tok/s</span>
+      <span role="cell"><b>2,401</b> tok/s</span>
+      <span role="cell">8 / 8 running</span>
+    </div>
+    <div class="benchmark-row" role="row">
+      <strong role="cell">64K</strong>
+      <span role="cell" class="benchmark-primary"><b>171.0</b> tok/s</span>
+      <span role="cell"><b>21.4</b> tok/s</span>
+      <span role="cell"><b>2,311</b> tok/s</span>
+      <span role="cell">8 / 8 running</span>
+    </div>
+    <div class="benchmark-row" role="row">
+      <strong role="cell">128K</strong>
+      <span role="cell" class="benchmark-primary"><b>181.0</b> tok/s</span>
+      <span role="cell"><b>22.6</b> tok/s</span>
+      <span role="cell"><b>2,147</b> tok/s</span>
+      <span role="cell">8 / 8 running</span>
     </div>
   </div>
-  <p class="benchmark-note"><strong>Cold prefill:</strong> the concurrency-one scout processed the 136,562-token prompt in 57.55 seconds, which is 2,373 tokens/s. Every later request in every row hit the warm prefix cache, so their sub-second start times are cache lookups and not prefill throughput.</p>
-  <p class="benchmark-note"><strong>Correctness:</strong> every request at every level answered Estonia with its evidence chain, finished on <code>stop</code> rather than the 40,000-token budget, and none was truncated. There were no errors and no stalls before a first token.</p>
-  <p class="benchmark-note">Per-request decode fell from 68.17 to 53.34 to 40.54 tokens/s as concurrency rose. The benchmark reports this as <code>aggregate_gen_tok_s</code>, which divides total generated tokens by the sum of each request's generation duration. Concurrent intervals overlap, so this is a duration-weighted per-request rate, not total server throughput.</p>
-  <p class="benchmark-note"><strong>Where the ceiling is:</strong> the recipe sets <code>--max-num-seqs 4</code>, so concurrency 4 exactly fills the scheduler's sequence slots. Higher concurrency queues rather than batches. I have not measured above 4, and three single waves are a smoke measurement, not a statistical baseline.</p>
+  <p class="benchmark-note"><strong>Method:</strong> this unprofiled sustained-decode run used a direct port-forward from the benchmark client, max output length 8,192, integrated prefill scouts, and one 30-second cell for each concurrency and context combination. vLLM metrics were available. No hardware panel was collected because the client did not have <code>nvidia-smi</code>.</p>
+  <p class="benchmark-note"><strong>Capacity:</strong> each C=8 cell reached eight running requests with no queue. The recipe sets <code>--max-num-seqs 8</code>, so C=8 fills the scheduler's sequence slots. The reported aggregate is duration-weighted per-request decode, not total server throughput, because concurrent generation intervals overlap.</p>
+  <p class="benchmark-note"><strong>Provenance:</strong> the deployment used GitOps revision <code>0527ce13c</code>, the live LWS reached 2/2 ready, and the runtime selected <code>VLLM_B12X_DENSE_ACTIVATION_MODE=a16</code>. Do not compare this result directly with the older max-seqs=4 baseline because that baseline used a different dense-activation configuration.</p>
 </div>
 
 :::caution[Allocator units are not physical devices]

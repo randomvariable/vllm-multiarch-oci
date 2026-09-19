@@ -73,14 +73,24 @@ class RefreshVLLMB12XTest(unittest.TestCase):
 
 
 class CanonicalSourceRefTest(unittest.TestCase):
+    def test_cmake_source_inventory_covers_deepselect(self):
+        self.assertEqual(
+            REFRESH.CMAKE_SOURCES["vllm_cmake_deepselect"],
+            (
+                "cmake/external_projects/deepselect.cmake",
+                "https://github.com/vllm-project/DeepSelect.git",
+                "GIT_TAG",
+            ),
+        )
+
     def test_lock_records_a_branch_ref_or_a_commit(self):
         self.assertEqual(
             REFRESH.canonical_source_ref("dev/rv-jovian-judgement-profile-base"),
             "refs/heads/dev/rv-jovian-judgement-profile-base",
         )
         self.assertEqual(
-            REFRESH.canonical_source_ref("refs/heads/dev/jovian-judgement"),
-            "refs/heads/dev/jovian-judgement",
+            REFRESH.canonical_source_ref("refs/heads/dev/karmic-kraken"),
+            "refs/heads/dev/karmic-kraken",
         )
         self.assertEqual(REFRESH.canonical_source_ref("c" * 40), "c" * 40)
         with self.assertRaisesRegex(RuntimeError, "branch or a commit"):

@@ -12,6 +12,8 @@ from action_lib import (  # noqa: E402
     configure_compiler_cache,
     configure_compiler_sysroot,
     configure_cargo_vendor,
+    configure_reproducible_compilation,
+    create_nvcc_wrapper,
     extract,
     extract_durable,
     extract_wheel_script,
@@ -20,6 +22,7 @@ from action_lib import (  # noqa: E402
     materialize_vllm_cmake_sources,
     rewrite_sysconfig,
     run,
+    target_abi,
     work_root,
     write_tar,
 )
@@ -47,6 +50,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cargo-vendor-tar", required=True)
     parser.add_argument("--ccache-tar", required=True)
     parser.add_argument("--gcc-sysroot-tar", required=True)
+    parser.add_argument("--target-cpu", required=True)
     parser.add_argument("--max-jobs", required=True, type=int)
     parser.add_argument("--cuda-architecture", required=True)
     parser.add_argument("--output", required=True)
@@ -122,8 +126,14 @@ def main() -> None:
         part for part in (env.get("CMAKE_ARGS"), "-DPython3_EXECUTABLE=" + str(python)) if part
     )
 
-    configure_compiler_sysroot(path_from_execroot(args.gcc_sysroot_tar), work, env)
-    ccache_launcher = configure_compiler_cache(work, path_from_execroot(args.ccache_tar), env)
+    configure_compiler_sysroot(
+        path_from_execroot(args.gcc_sysroot_tar), work, env, target_cpu=args.target_cpu
+    )
+    reproducible = configure_reproducible_compilation(work, source, env)
+    nvcc = create_nvcc_wrapper(work, cuda / "bin" / "nvcc")
+    ccache_launcher = configure_compiler_cache(
+        work, path_from_execroot(args.ccache_tar), env, target_cpu=args.target_cpu
+    )
     # This action owns the log, so its counters cannot include another build.
     env["CCACHE_STATSLOG"] = str(work / "ccache.statslog")
     # The declared vendor archive makes Cargo's complete source set available
@@ -135,6 +145,12 @@ def main() -> None:
     env["CARGO_HOME"] = str(cargo_home)
     env["CARGO_TARGET_DIR"] = str(cargo_target)
     env["CARGO_NET_OFFLINE"] = "true"
+    # Cargo's build scripts resolve the bare `cc` linker. Bind both its
+    # generic and target-specific forms to the declared hermetic wrapper.
+    rust_target = target_abi(args.target_cpu)["rust_triple"].upper().replace("-", "_")
+    env["CC_" + rust_target] = env["CC"]
+    env["CXX_" + rust_target] = env["CXX"]
+    env["CARGO_TARGET_" + rust_target + "_LINKER"] = env["CC"]
 
     run([str(python), "tools/build_rust.py", "--release"], cwd=source, env=env)
     configure = [
@@ -147,7 +163,8 @@ def main() -> None:
         "Ninja",
         "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
         "-DCMAKE_CUDA_ARCHITECTURES=" + args.cuda_architecture,
-        "-DCMAKE_CUDA_COMPILER=" + str(cuda / "bin" / "nvcc"),
+        "-DCMAKE_CUDA_COMPILER=" + str(nvcc),
+        "-DCMAKE_CUDA_FLAGS=" + reproducible["cuda"],
         "-DCMAKE_INSTALL_PREFIX=" + str(extensions),
         "-DVLLM_TARGET_DEVICE=cuda",
         "-DVLLM_PYTHON_EXECUTABLE=" + str(python),
