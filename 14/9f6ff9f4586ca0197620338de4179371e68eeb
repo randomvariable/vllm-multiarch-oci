@@ -1,0 +1,14 @@
+.bazelrc
+  h_15da545fc8cfbe 14-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "149f6ff9f4586ca0197620338de4179371e68eeb",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
