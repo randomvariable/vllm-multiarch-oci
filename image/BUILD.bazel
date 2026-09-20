@@ -92,11 +92,11 @@ write_file(
     out = "vllmb12x-arm64.env",
     content = [
         "CUDA_HOME=/usr/local/cuda",
-        "FLASHINFER_CUDA_ARCH_LIST=12.1f",
+        "FLASHINFER_CUDA_ARCH_LIST=12.0f",
         "LD_LIBRARY_PATH=/opt/nccl/lib:/opt/cusparselt/lib:/usr/local/cuda/lib64:$LD_LIBRARY_PATH",
         "LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libmimalloc.so.3",
         "PATH=/opt/venv/bin:$PATH",
-        "TORCH_CUDA_ARCH_LIST=12.1a",
+        "TORCH_CUDA_ARCH_LIST=12.0f",
         "VLLM_DISABLED_KERNELS=MarlinFP8ScaledMMLinearKernel",
     ],
 )
@@ -116,8 +116,8 @@ write_file(
 )
 
 _IMAGE_ENV = select({
-    "//platforms:linux_aarch64": ":vllmb12x_arm64_env",
-    "//platforms:linux_x86_64": ":vllmb12x_x86_64_env",
+    "//platforms:cuda_sm12x": ":vllmb12x_arm64_env",
+    "//platforms:cuda_sm120": ":vllmb12x_x86_64_env",
 })
 
 venv_layer(
@@ -214,7 +214,7 @@ oci_image_index(
     name = "vllmb12x",
     images = [":vllmb12x_image"],
     platforms = [
-        "//platforms:spark_arm64_sm121",
+        "//platforms:blackwell_arm64_sm12x",
         "//platforms:blackwell_x86_64_sm120",
     ],
 )

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Verify the registered C++ toolchain has no worker-path fallback."""
 
+import json
 import subprocess
 import tempfile
 import unittest
@@ -12,7 +13,7 @@ import importlib.util
 
 ROOT = Path(__file__).resolve().parents[1]
 BAZEL = "bazelisk"
-PLATFORM = "//platforms:spark_arm64_sm121"
+PLATFORM = "//platforms:blackwell_arm64_sm12x"
 X86_PLATFORM = "//platforms:blackwell_x86_64_sm120"
 PROBE = "//platforms:hermetic_cc_toolchain_probe"
 ARM64_PYTHON_PROBE = "//platforms:arm64_python_probe"
@@ -34,6 +35,29 @@ def bazel(*args: str, env: dict[str, str] | None = None) -> subprocess.Completed
 
 
 class HermeticCCToolchainTest(unittest.TestCase):
+    def test_arm64_sm12x_vllm_extensions_target_full_blackwell_family(self) -> None:
+        result = bazel(
+            "aquery",
+            "mnemonic('CompileVLLMExtensions', //components:vllm)",
+            "--platforms=" + PLATFORM,
+            "--extra_execution_platforms=//platforms:local_x86_64," + PLATFORM,
+            "--output=text",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("CMAKE_CUDA_ARCHITECTURES=120f", result.stdout)
+
+    def test_arm64_sm12x_nccl_target_retains_family_architecture(self) -> None:
+        result = bazel(
+            "aquery",
+            "mnemonic('BuildNCCL', //components/nccl:libnccl)",
+            "--platforms=" + PLATFORM,
+            "--extra_execution_platforms=//platforms:local_x86_64," + PLATFORM,
+            "--output=jsonproto",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        arguments = json.loads(result.stdout)["actions"][0]["arguments"]
+        self.assertEqual(arguments[arguments.index("--cuda-arch") + 1], "120f")
+
     def test_arm64_python_runs_with_declared_loader_and_emulator(self) -> None:
         result = bazel(
             "build",

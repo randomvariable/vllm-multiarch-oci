@@ -8,8 +8,8 @@ _TARGET_CPU = select({
     "//platforms:linux_x86_64": "x86_64",
 })
 _CUDA_ARCH = select({
-    "//platforms:linux_aarch64": "121a",
-    "//platforms:linux_x86_64": "120",
+    "//platforms:cuda_sm12x": "120f",
+    "//platforms:cuda_sm120": "120",
 })
 
 package(default_visibility = ["//visibility:public"])

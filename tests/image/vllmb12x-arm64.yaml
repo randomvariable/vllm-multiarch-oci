@@ -4,6 +4,10 @@ metadataTest:
   envVars:
     - key: "LD_PRELOAD"
       value: "/usr/lib/aarch64-linux-gnu/libmimalloc.so.3"
+    - key: "FLASHINFER_CUDA_ARCH_LIST"
+      value: "12.0f"
+    - key: "TORCH_CUDA_ARCH_LIST"
+      value: "12.0f"
 
 fileExistenceTests:
   - name: "RDMA verbs runtime"

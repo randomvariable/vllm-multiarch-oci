@@ -138,7 +138,7 @@ def release_notes(reference: str, publication_tag: str, release_tag: str, module
     version = re.search(r'VLLM_BUILD_VERSION = "([^"]+)"', VERSION.read_text()).group(1)
     repository = reference.split("@", 1)[0]
     return "\n".join((
-        f"Linux arm64 (sm_121a) and amd64 (sm_120) image index, vLLM `{version}`.",
+        f"Linux arm64 (SM12x family) and amd64 (sm_120) image index, vLLM `{version}`.",
         "",
         "```bash",
         f"docker pull {reference}",

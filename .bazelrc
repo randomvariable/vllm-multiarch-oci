@@ -5,15 +5,15 @@ build --disk_cache=.bazel-cache
 build --incompatible_strict_action_env
 test --test_output=errors
 
-# Native DGX Spark builds use the pinned aarch64/sm_121a platform.
-build:spark --platforms=//platforms:spark_arm64_sm121
+# Native ARM64 Blackwell builds target the full SM12x family.
+build:spark --platforms=//platforms:blackwell_arm64_sm12x
 
 # Private endpoint, credentials, and worker properties belong in the ignored
 # .bazelrc.user file. The repository owns only remote execution behaviour.
-build:remote-aarch64 --platforms=//platforms:spark_arm64_sm121
+build:remote-aarch64 --platforms=//platforms:blackwell_arm64_sm12x
 # The ARM64 image configuration materializes the pinned x86 QEMU runtime for
 # its hermetic Python launcher. Make both native execution platforms available.
-build:remote-aarch64 --extra_execution_platforms=//platforms:spark_arm64_sm121,//platforms:blackwell_x86_64_sm120
+build:remote-aarch64 --extra_execution_platforms=//platforms:blackwell_arm64_sm12x,//platforms:blackwell_x86_64_sm120
 build:remote-aarch64 --extra_toolchains=//platforms:hermetic_linux_aarch64_cc_toolchain
 build:remote-aarch64 --remote_timeout=21600
 build:remote-aarch64 --spawn_strategy=remote
@@ -37,7 +37,7 @@ build:remote-x86_64 --experimental_remote_cache_compression_threshold=1048576
 test:remote-x86_64 --nocache_test_results
 
 # Index transitions select the matching native architecture for each image.
-build:remote-multiarch --extra_execution_platforms=//platforms:spark_arm64_sm121,//platforms:blackwell_x86_64_sm120
+build:remote-multiarch --extra_execution_platforms=//platforms:blackwell_arm64_sm12x,//platforms:blackwell_x86_64_sm120
 build:remote-multiarch --extra_toolchains=//platforms:hermetic_linux_aarch64_cc_toolchain,//platforms:hermetic_linux_x86_64_cc_toolchain
 build:remote-multiarch --remote_timeout=21600
 build:remote-multiarch --spawn_strategy=remote

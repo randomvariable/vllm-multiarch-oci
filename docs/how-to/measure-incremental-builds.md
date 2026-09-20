@@ -40,7 +40,7 @@ Expect exit zero. Retain the terminal output, wall time, build events, profile, 
 Retrieve the compilation's declared cache-statistics output:
 
 ```bash
-just bazel build //components:vllm_compiler_cache_stats --platforms=//platforms:spark_arm64_sm121 --extra_execution_platforms=//platforms:spark_arm64_sm121 --spawn_strategy=local --disk_cache=.bazel-cache --incompatible_strict_action_env
+just bazel build //components:vllm_compiler_cache_stats --platforms=//platforms:blackwell_arm64_sm12x --extra_execution_platforms=//platforms:blackwell_arm64_sm12x --spawn_strategy=local --disk_cache=.bazel-cache --incompatible_strict_action_env
 ```
 
 Use the output path reported by Bazel to read the action-local statistics. Associate it with the measured native action. A cumulative shared-cache counter does not establish that this build reused objects. Reject a timing if the source identity was stale or the native action never executed.

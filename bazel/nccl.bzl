@@ -9,7 +9,6 @@ def _nccl_lib_impl(ctx):
     output = ctx.actions.declare_file(ctx.attr.output)
     sdk = ctx.actions.declare_file(ctx.attr.sdk_output)
     arch = ctx.attr.cuda_arch
-    compiler_arch = arch[:-1] if arch[-1] in "af" else arch
     args = ctx.actions.args()
     args.add(ctx.file._driver.path)
     args.add("--work-dir", ctx.label.name + ".work")
@@ -19,7 +18,7 @@ def _nccl_lib_impl(ctx):
     args.add("--ccache-tar", ctx.file.compiler_cache.path)
     args.add("--gcc-sysroot-tar", ctx.file.compiler_sysroot.path)
     args.add("--target-cpu", ctx.attr.target_cpu)
-    args.add("--cuda-arch", compiler_arch)
+    args.add("--cuda-arch", arch)
     args.add("--commit", ctx.attr.commit)
     args.add("--jobs", ctx.attr.jobs)
     args.add("--lib-output", output.path)

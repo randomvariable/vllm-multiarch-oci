@@ -165,8 +165,8 @@ def description_body(manifest: dict[str, Any], lock: dict[str, Any]) -> str:
         f"{repository}{' '.join(references)}" for repository, references in grouped.items()
     )
     body = (
-        f"{pins} for NVIDIA DGX Spark (GB10, sm_121a), carrying {numbers}. "
-        "Linux ARM64, CUDA 13.3.1, Python 3.12. "
+        f"{pins} for NVIDIA Blackwell SM12x GPUs, carrying {numbers}. "
+        "Linux ARM64 and AMD64, CUDA 13.3.1, Python 3.12. "
         "Full change ledger in the README below."
     )
     if "\n" in body:

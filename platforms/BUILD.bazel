@@ -15,7 +15,7 @@ load(
 
 string_flag(
     name = "cuda_arch",
-    build_setting_default = "121a",
+    build_setting_default = "120f",
     visibility = ["//visibility:public"],
 )
 
@@ -28,7 +28,7 @@ string_flag(
 )
 
 platform(
-    name = "spark_arm64_sm121",
+    name = "blackwell_arm64_sm12x",
     constraint_values = [
         "@platforms//cpu:aarch64",
         "@platforms//os:linux",
@@ -40,7 +40,7 @@ platform(
         "cpu_count": "1",
         "gpu": "nvidia-rtx-pro-6000-blackwell",
     },
-    flags = ["--//platforms:cuda_arch=121a"],
+    flags = ["--//platforms:cuda_arch=120f"],
     visibility = ["//visibility:public"],
 )
 
@@ -346,8 +346,8 @@ toolchain(
 )
 
 config_setting(
-    name = "cuda_sm121",
-    flag_values = {":cuda_arch": "121a"},
+    name = "cuda_sm12x",
+    flag_values = {":cuda_arch": "120f"},
     visibility = ["//visibility:public"],
 )
 

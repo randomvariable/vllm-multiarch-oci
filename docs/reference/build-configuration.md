@@ -109,7 +109,7 @@ NativeLink is our optional CI backend. The public `remote-aarch64` configuration
 | Property | Value |
 | --- | --- |
 | Image tag | `randomvariable/vllm-b12x-multi:<build version>` |
-| Platform | `linux/arm64` and `linux/amd64` |
+| Platform | `linux/arm64` (SM12x family) and `linux/amd64` (SM120) |
 | CUDA base | CUDA 13.3.1 cuDNN development image, Ubuntu 26.04, digest-pinned |
 | Python | 3.12 |
 | Entrypoint | `/opt/venv/bin/vllm` |
@@ -118,8 +118,8 @@ NativeLink is our optional CI backend. The public `remote-aarch64` configuration
 | NCCL library path | `/opt/nccl/lib` |
 | Allocator | mimalloc preloaded from the architecture-specific Ubuntu library path |
 | C/C++ toolchain | Pinned Ubuntu Resolute GCC 15 closure materialized by Bazel, with no worker `/usr` compiler or include paths |
-| Torch architecture | `12.1a` |
-| FlashInfer architecture | `12.1f` |
+| Torch architecture | `12.0f` |
+| FlashInfer architecture | `12.0f` |
 | Disabled kernel | `MarlinFP8ScaledMMLinearKernel` |
 | Mooncake Transfer Engine | CUDA 13 distribution `0.3.13.post1`; see [Mooncake Transfer Engine](mooncake-transfer-engine.md) |
 

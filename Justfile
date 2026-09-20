@@ -1,7 +1,7 @@
 # Local builds never load private Bazel rc files.
 set positional-arguments
 
-platform := "//platforms:spark_arm64_sm121"
+platform := "//platforms:blackwell_arm64_sm12x"
 cache_root := env_var_or_default("VLLMB12X_CACHE_ROOT", "")
 
 # List available tasks.
@@ -26,7 +26,7 @@ build *args:
 
 # Build the two-platform OCI index locally; extra arguments are forwarded to Bazel.
 build-multiarch *args:
-    bazel --ignore_all_rc_files build //image:vllmb12x --extra_execution_platforms=//platforms:local_x86_64,//platforms:spark_arm64_sm121,//platforms:blackwell_x86_64_sm120 --extra_toolchains=//platforms:hermetic_linux_aarch64_cc_toolchain,//platforms:hermetic_linux_x86_64_cc_toolchain --spawn_strategy=local --disk_cache=.bazel-cache --incompatible_strict_action_env --//platforms:vllmb12x_cache_root={{cache_root}} "$@"
+    bazel --ignore_all_rc_files build //image:vllmb12x --extra_execution_platforms=//platforms:local_x86_64,//platforms:blackwell_arm64_sm12x,//platforms:blackwell_x86_64_sm120 --extra_toolchains=//platforms:hermetic_linux_aarch64_cc_toolchain,//platforms:hermetic_linux_x86_64_cc_toolchain --spawn_strategy=local --disk_cache=.bazel-cache --incompatible_strict_action_env --//platforms:vllmb12x_cache_root={{cache_root}} "$@"
 
 # Run the local Docker-backed image contract.
 test *args:
