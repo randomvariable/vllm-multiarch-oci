@@ -1,0 +1,42 @@
+.bazelrc
+  h_15da545fc8cfbe 8-9,13,16,40
+Justfile
+  h_15da545fc8cfbe 4,29
+bazel/hermetic_cc_toolchain_test.py
+  h_15da545fc8cfbe 4,16,38-60
+bazel/nccl.bzl
+  h_15da545fc8cfbe 21
+components/BUILD.bazel
+  h_15da545fc8cfbe 66-67,70-71,74-75,89-90,93-94,97-98,101-102,104-108
+components/nccl/BUILD.bazel
+  h_15da545fc8cfbe 11-12
+docs/how-to/build-locally-on-spark.md
+  h_15da545fc8cfbe 1,3,5,11,28,46,51,56,66-67
+docs/how-to/measure-incremental-builds.md
+  h_15da545fc8cfbe 43
+docs/reference/build-configuration.md
+  h_15da545fc8cfbe 112,121-122
+image/BUILD.bazel
+  h_15da545fc8cfbe 95,99,119-120,217
+platforms/BUILD.bazel
+  h_15da545fc8cfbe 18,31,43,349-350
+profiles/vllmb12x/description.bzl
+  h_15da545fc8cfbe 5
+scripts/release-vllmb12x.py
+  h_15da545fc8cfbe 141
+scripts/vllmb12x-included-changes.py
+  h_15da545fc8cfbe 168-169
+tests/image/vllmb12x-arm64.yaml
+  h_15da545fc8cfbe 7-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "7347a4792e1e356e84258e6d9e475314136df60d",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
