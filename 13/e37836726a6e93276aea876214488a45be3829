@@ -1,0 +1,52 @@
+MODULE.bazel
+  h_15da545fc8cfbe 33-34,40-54,221-222
+MODULE.bazel.lock
+  h_15da545fc8cfbe 272,279,286,296,298,305,367,370-371,374-375,378,381-382,385-386,437
+README.md
+  h_15da545fc8cfbe 7,16-29
+bazel/cuda_redist.bzl
+  h_15da545fc8cfbe 155,160
+components/BUILD.bazel
+  h_15da545fc8cfbe 99-100
+cuda/BUILD.bazel
+  h_15da545fc8cfbe 3
+cuda/redistrib_13.4.1.json
+  h_15da545fc8cfbe 1-1085
+docs/reference/build-configuration.md
+  h_15da545fc8cfbe 113
+docs/reference/vllmb12x-runtime-configuration.md
+  h_15da545fc8cfbe 7-10,22,24,146
+image/BUILD.bazel
+  h_15da545fc8cfbe 79-80
+profiles/vllmb12x/description.bzl
+  h_15da545fc8cfbe 5
+profiles/vllmb12x/included-changes.json
+  h_15da545fc8cfbe 6,10,12-87
+profiles/vllmb12x/profile.json
+  h_15da545fc8cfbe 3,6,42-46,69
+profiles/vllmb12x/version.bzl
+  h_15da545fc8cfbe 5-7
+recipes-site/src/content/docs/image-releases/included-changes.mdx
+  h_15da545fc8cfbe 15-42,49
+scripts/vllmb12x-included-changes.py
+  h_15da545fc8cfbe 169
+scripts/vllmb12x-runtime-config.py
+  h_15da545fc8cfbe 8,12,15,26,29,31-32,35,37-40,121-130,320-322,325,328-331,486,505-508,519,551,553-554,558-566,579,589,596
+scripts/vllmb12x_runtime_config_test.py
+  h_15da545fc8cfbe 4,46-130,239-246
+tests/image/vllmb12x-arm64.yaml
+  h_15da545fc8cfbe 10
+third_party/BUILD.bazel
+  h_15da545fc8cfbe 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "13e37836726a6e93276aea876214488a45be3829",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
