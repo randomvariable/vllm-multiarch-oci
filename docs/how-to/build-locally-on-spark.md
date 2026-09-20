@@ -25,7 +25,7 @@ uname -m
 cargo --version
 ```
 
-Expect `aarch64` and successful command checks. The locked GCC archive provides the compiler, headers, binutils, libc, and linker inputs. The `120f` family target covers SM120 and SM121 devices. Do not inject host compiler paths through `CC`, `CXX`, `CPATH`, or `LIBRARY_PATH`.
+Expect `aarch64` and successful command checks. The locked GCC archive provides the compiler, headers, binutils, libc, and linker inputs. CUDA-native actions use the `120f` family target for SM120 and SM121 devices. PyTorch extensions use `12.0+PTX` because its parser does not accept the family suffix, and an SM121 driver JITs the portable SM120 PTX. Do not inject host compiler paths through `CC`, `CXX`, `CPATH`, or `LIBRARY_PATH`.
 
 ### Step 2: Check Persistent Cache Access
 

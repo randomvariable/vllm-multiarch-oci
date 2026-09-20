@@ -66,10 +66,8 @@ _CUDA_ARCH = select({
     "//platforms:cuda_sm12x": "120f",
     "//platforms:cuda_sm120": "120",
 })
-_TORCH_ARCH = select({
-    "//platforms:cuda_sm12x": "12.0f",
-    "//platforms:cuda_sm120": "12.0",
-})
+# PyTorch's extension helper does not yet recognise CUDA's Blackwell family
+# suffix. PTX compiled for 12.0 lets a 12.1 driver JIT its own device code.
 _FLASHINFER_ARCH = select({
     "//platforms:cuda_sm12x": "12.0f",
     "//platforms:cuda_sm120": "12.0",
@@ -94,18 +92,18 @@ _FLASHINFER_JIT_ENV = select({
     "//platforms:cuda_sm120": {"FLASHINFER_CUDA_ARCH_LIST": "12.0", "FLASHINFER_DISABLE_VERSION_CHECK": "1"},
 })
 _TORCH_ENV = select({
-    "//platforms:cuda_sm12x": {"BUILD_CAFFE2": "0", "BUILD_TEST": "0", "CMAKE_CUDA_ARCHITECTURES": "120f", "PYTORCH_BUILD_NUMBER": "1", "PYTORCH_BUILD_VERSION": "2.13.0", "TORCH_CUDA_ARCH_LIST": "12.0f", "USE_CUDA": "1", "USE_CUDNN": "1", "USE_CUFILE": "0", "USE_CUSPARSELT": "1", "USE_DISTRIBUTED": "1", "USE_NCCL": "1", "USE_SYSTEM_NCCL": "1"},
+    "//platforms:cuda_sm12x": {"BUILD_CAFFE2": "0", "BUILD_TEST": "0", "CMAKE_CUDA_ARCHITECTURES": "120f", "PYTORCH_BUILD_NUMBER": "1", "PYTORCH_BUILD_VERSION": "2.13.0", "TORCH_CUDA_ARCH_LIST": "12.0+PTX", "USE_CUDA": "1", "USE_CUDNN": "1", "USE_CUFILE": "0", "USE_CUSPARSELT": "1", "USE_DISTRIBUTED": "1", "USE_NCCL": "1", "USE_SYSTEM_NCCL": "1"},
     "//platforms:cuda_sm120": {"BUILD_CAFFE2": "0", "BUILD_TEST": "0", "CMAKE_CUDA_ARCHITECTURES": "120", "PYTORCH_BUILD_NUMBER": "1", "PYTORCH_BUILD_VERSION": "2.13.0", "TORCH_CUDA_ARCH_LIST": "12.0", "USE_CUDA": "1", "USE_CUDNN": "1", "USE_CUFILE": "0", "USE_CUSPARSELT": "1", "USE_DISTRIBUTED": "1", "USE_NCCL": "1", "USE_SYSTEM_NCCL": "1"},
 })
 _VLLM_ENV = select({
-    "//platforms:cuda_sm12x": {"CMAKE_CUDA_ARCHITECTURES": "120f", "TORCH_CUDA_ARCH_LIST": "12.0f", "VLLM_MAIN_CUDA_VERSION": "13.3", "VLLM_REQUIRE_RUST_FRONTEND": "1", "VLLM_RS_BUILD_VERSION": VLLM_BUILD_VERSION, "VLLM_DISABLED_KERNELS": "MarlinFP8ScaledMMLinearKernel", "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_VLLM_RUST_FRONTEND_BUILD": VLLM_BUILD_VERSION, "VLLM_TARGET_DEVICE": "cuda", "VLLM_VERSION_OVERRIDE": VLLM_BUILD_VERSION},
+    "//platforms:cuda_sm12x": {"CMAKE_CUDA_ARCHITECTURES": "120f", "TORCH_CUDA_ARCH_LIST": "12.0+PTX", "VLLM_MAIN_CUDA_VERSION": "13.3", "VLLM_REQUIRE_RUST_FRONTEND": "1", "VLLM_RS_BUILD_VERSION": VLLM_BUILD_VERSION, "VLLM_DISABLED_KERNELS": "MarlinFP8ScaledMMLinearKernel", "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_VLLM_RUST_FRONTEND_BUILD": VLLM_BUILD_VERSION, "VLLM_TARGET_DEVICE": "cuda", "VLLM_VERSION_OVERRIDE": VLLM_BUILD_VERSION},
     "//platforms:cuda_sm120": {"CMAKE_CUDA_ARCHITECTURES": "120", "TORCH_CUDA_ARCH_LIST": "12.0", "VLLM_MAIN_CUDA_VERSION": "13.3", "VLLM_REQUIRE_RUST_FRONTEND": "1", "VLLM_RS_BUILD_VERSION": VLLM_BUILD_VERSION, "VLLM_DISABLED_KERNELS": "MarlinFP8ScaledMMLinearKernel", "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_VLLM_RUST_FRONTEND_BUILD": VLLM_BUILD_VERSION, "VLLM_TARGET_DEVICE": "cuda", "VLLM_VERSION_OVERRIDE": VLLM_BUILD_VERSION},
 })
-_TORCHVISION_ENV = select({"//platforms:cuda_sm12x": {"FORCE_CUDA": "1", "PYTORCH_VERSION": "2.13.0", "TORCH_CUDA_ARCH_LIST": "12.0f"}, "//platforms:cuda_sm120": {"FORCE_CUDA": "1", "PYTORCH_VERSION": "2.13.0", "TORCH_CUDA_ARCH_LIST": "12.0"}})
-_TORCHAUDIO_ENV = select({"//platforms:cuda_sm12x": {"PYTORCH_VERSION": "2.13.0", "TORCH_CUDA_ARCH_LIST": "12.0f"}, "//platforms:cuda_sm120": {"PYTORCH_VERSION": "2.13.0", "TORCH_CUDA_ARCH_LIST": "12.0"}})
-_TORCH_ARCH_ENV = select({"//platforms:cuda_sm12x": {"TORCH_CUDA_ARCH_LIST": "12.0f"}, "//platforms:cuda_sm120": {"TORCH_CUDA_ARCH_LIST": "12.0"}})
-_DEEPGEMM_ENV = select({"//platforms:cuda_sm12x": {"DG_FORCE_BUILD": "1", "DG_USE_LOCAL_VERSION": "0", "TORCH_CUDA_ARCH_LIST": "12.0f"}, "//platforms:cuda_sm120": {"DG_FORCE_BUILD": "1", "DG_USE_LOCAL_VERSION": "0", "TORCH_CUDA_ARCH_LIST": "12.0"}})
-_LMCACHE_ENV = select({"//platforms:cuda_sm12x": {"BUILD_WITH_CUDA": "1", "LMCACHE_CUDA_MAJOR": "13", "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_LMCACHE": "0.5.3.dev3", "TORCH_CUDA_ARCH_LIST": "12.0f"}, "//platforms:cuda_sm120": {"BUILD_WITH_CUDA": "1", "LMCACHE_CUDA_MAJOR": "13", "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_LMCACHE": "0.5.3.dev3", "TORCH_CUDA_ARCH_LIST": "12.0"}})
+_TORCHVISION_ENV = select({"//platforms:cuda_sm12x": {"FORCE_CUDA": "1", "PYTORCH_VERSION": "2.13.0", "TORCH_CUDA_ARCH_LIST": "12.0+PTX"}, "//platforms:cuda_sm120": {"FORCE_CUDA": "1", "PYTORCH_VERSION": "2.13.0", "TORCH_CUDA_ARCH_LIST": "12.0"}})
+_TORCHAUDIO_ENV = select({"//platforms:cuda_sm12x": {"PYTORCH_VERSION": "2.13.0", "TORCH_CUDA_ARCH_LIST": "12.0+PTX"}, "//platforms:cuda_sm120": {"PYTORCH_VERSION": "2.13.0", "TORCH_CUDA_ARCH_LIST": "12.0"}})
+_TORCH_ARCH_ENV = select({"//platforms:cuda_sm12x": {"TORCH_CUDA_ARCH_LIST": "12.0+PTX"}, "//platforms:cuda_sm120": {"TORCH_CUDA_ARCH_LIST": "12.0"}})
+_DEEPGEMM_ENV = select({"//platforms:cuda_sm12x": {"DG_FORCE_BUILD": "1", "DG_USE_LOCAL_VERSION": "0", "TORCH_CUDA_ARCH_LIST": "12.0+PTX"}, "//platforms:cuda_sm120": {"DG_FORCE_BUILD": "1", "DG_USE_LOCAL_VERSION": "0", "TORCH_CUDA_ARCH_LIST": "12.0"}})
+_LMCACHE_ENV = select({"//platforms:cuda_sm12x": {"BUILD_WITH_CUDA": "1", "LMCACHE_CUDA_MAJOR": "13", "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_LMCACHE": "0.5.3.dev3", "TORCH_CUDA_ARCH_LIST": "12.0+PTX"}, "//platforms:cuda_sm120": {"BUILD_WITH_CUDA": "1", "LMCACHE_CUDA_MAJOR": "13", "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_LMCACHE": "0.5.3.dev3", "TORCH_CUDA_ARCH_LIST": "12.0"}})
 
 filegroup(
     name = "exllamav3_source",

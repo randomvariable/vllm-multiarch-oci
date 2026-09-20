@@ -40,7 +40,7 @@ class HermeticCCToolchainTest(unittest.TestCase):
             "aquery",
             "mnemonic('CompileVLLMExtensions', //components:vllm)",
             "--platforms=" + PLATFORM,
-            "--extra_execution_platforms=//platforms:local_x86_64," + PLATFORM,
+            "--extra_execution_platforms=" + PLATFORM,
             "--output=text",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -51,12 +51,27 @@ class HermeticCCToolchainTest(unittest.TestCase):
             "aquery",
             "mnemonic('BuildNCCL', //components/nccl:libnccl)",
             "--platforms=" + PLATFORM,
-            "--extra_execution_platforms=//platforms:local_x86_64," + PLATFORM,
+            "--extra_execution_platforms=" + PLATFORM,
             "--output=jsonproto",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         arguments = json.loads(result.stdout)["actions"][0]["arguments"]
         self.assertEqual(arguments[arguments.index("--cuda-arch") + 1], "120f")
+
+    def test_arm64_sm12x_torch_extensions_use_portable_ptx(self) -> None:
+        result = bazel(
+            "aquery",
+            "mnemonic('BuildCUDAWheel', //components:lmcache)",
+            "--platforms=" + PLATFORM,
+            "--extra_execution_platforms=" + PLATFORM,
+            "--output=jsonproto",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        action = json.loads(result.stdout)["actions"][0]
+        environment = {
+            entry["key"]: entry["value"] for entry in action["environmentVariables"]
+        }
+        self.assertEqual(environment["TORCH_CUDA_ARCH_LIST"], "12.0+PTX")
 
     def test_arm64_python_runs_with_declared_loader_and_emulator(self) -> None:
         result = bazel(

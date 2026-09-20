@@ -118,7 +118,7 @@ NativeLink is our optional CI backend. The public `remote-aarch64` configuration
 | NCCL library path | `/opt/nccl/lib` |
 | Allocator | mimalloc preloaded from the architecture-specific Ubuntu library path |
 | C/C++ toolchain | Pinned Ubuntu Resolute GCC 15 closure materialized by Bazel, with no worker `/usr` compiler or include paths |
-| Torch architecture | `12.0f` |
+| Torch architecture | `12.0+PTX`; PyTorch's parser does not support the CUDA SM12x family suffix, so the SM120 PTX lets SM121 drivers JIT device code |
 | FlashInfer architecture | `12.0f` |
 | Disabled kernel | `MarlinFP8ScaledMMLinearKernel` |
 | Mooncake Transfer Engine | CUDA 13 distribution `0.3.13.post1`; see [Mooncake Transfer Engine](mooncake-transfer-engine.md) |
