@@ -20,7 +20,7 @@ from action_lib import (
     write_tar,
 )
 
-_VERSION = b"NCCL version 2.30.4 compiled with CUDA 13.3"
+_VERSION = b"NCCL version 2.30.4 compiled with CUDA 13.4"
 def _action_path(value: str) -> Path:
     return Path.cwd() / value
 
@@ -99,7 +99,7 @@ def main() -> None:
     if not library.is_file():
         raise RuntimeError(f"NCCL build did not produce {library}")
     if _VERSION not in library.read_bytes():
-        raise RuntimeError("NCCL library does not contain expected CUDA 13.3 version")
+        raise RuntimeError("NCCL library does not contain expected CUDA 13.4 version")
 
     lib_output = _action_path(args.lib_output)
     lib_output.parent.mkdir(parents=True, exist_ok=True)
