@@ -1,0 +1,14 @@
+bazel/nccl_action.py
+  h_15da545fc8cfbe 23,102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "50c350faee9e6d58ae65860d16b32dd5e157b807",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
