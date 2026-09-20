@@ -269,21 +269,21 @@
     },
     "//bazel:cuda_redist.bzl%cuda_redist": {
       "general": {
-        "bzlTransitiveDigest": "NtXB5Ae2+e0vqCjDdXavaZhRsgtdevH6T6O15sw3kKI=",
+        "bzlTransitiveDigest": "Z342xSrREQPLWuCIiLaK9rpoLZ+dZYO9cs9ERl8otG4=",
         "usagesDigest": "Wtk+1XzSCymvErqO43LMhLFh4NXGYh4NDNgCdWtMzsA=",
         "recordedInputs": [],
         "generatedRepoSpecs": {
           "cuda_sbsa": {
             "repoRuleId": "@@//bazel:cuda_redist.bzl%_cuda_repository",
             "attributes": {
-              "manifest": "@@//cuda:redistrib_13.3.1.json",
+              "manifest": "@@//cuda:redistrib_13.4.1.json",
               "platform": "linux-sbsa"
             }
           },
           "cuda_x86_64": {
             "repoRuleId": "@@//bazel:cuda_redist.bzl%_cuda_repository",
             "attributes": {
-              "manifest": "@@//cuda:redistrib_13.3.1.json",
+              "manifest": "@@//cuda:redistrib_13.4.1.json",
               "platform": "linux-x86_64"
             }
           }
@@ -293,16 +293,16 @@
     "//bazel:sources.bzl%profile_sources": {
       "general": {
         "bzlTransitiveDigest": "hc26F5s55jBCXFimaxIvPmNc1rt22HMVwgH4iuCjKBU=",
-        "usagesDigest": "rxaW+jr2eXbzAn0FjibFjpTHe7cm+06a6TTnXin5cnU=",
+        "usagesDigest": "27S2nJnWs7icY1Yi+UWrPv4nfudZ01z3cIqvW9izwLY=",
         "recordedInputs": [
-          "FILE:@@//profiles/vllmb12x/profile.json b34bf63d198fa652dd6eb04f03785c7ddba86851a6988332f739c3cc5274a793"
+          "FILE:@@//profiles/vllmb12x/profile.json 77071dcf93b787c9c510683827a530d675074c4809930eadc837807b30f08b8a"
         ],
         "generatedRepoSpecs": {
           "vllmb12x_b12x": {
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/local-inference-lab/b12x.git",
-              "commit": "a83336581a3a907076e60797df69ab66df5a2ff1",
+              "commit": "0f3a8cbfd1c11d27f04e3ab37a802d522f4f1c68",
               "recursive_init_submodules": true,
               "patches": [],
               "cargo_vendor": false,
@@ -364,17 +364,6 @@
               "cargo_manifest": "rust/Cargo.toml"
             }
           },
-          "vllmb12x_lmcache": {
-            "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
-            "attributes": {
-              "remote": "https://github.com/local-inference-lab/LMCache.git",
-              "commit": "9cebd405d0caf4bebe01d694b5a8bf4e3e354314",
-              "recursive_init_submodules": true,
-              "patches": [],
-              "cargo_vendor": false,
-              "cargo_manifest": "rust/Cargo.toml"
-            }
-          },
           "vllmb12x_llguidance": {
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
@@ -384,6 +373,17 @@
               "patches": [],
               "cargo_vendor": true,
               "cargo_manifest": "python_ext/Cargo.toml"
+            }
+          },
+          "vllmb12x_lmcache": {
+            "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
+            "attributes": {
+              "remote": "https://github.com/local-inference-lab/LMCache.git",
+              "commit": "9cebd405d0caf4bebe01d694b5a8bf4e3e354314",
+              "recursive_init_submodules": true,
+              "patches": [],
+              "cargo_vendor": false,
+              "cargo_manifest": "rust/Cargo.toml"
             }
           },
           "vllmb12x_nccl": {
@@ -434,10 +434,9 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/local-inference-lab/vllm.git",
-              "commit": "ed6f2c5853c92a623c2550fad48696b0b288cfd4",
+              "commit": "79efdd6695839d6a14791f2dd4b6340e31f31a02",
               "recursive_init_submodules": true,
               "patches": [
-                "@@//third_party:vllm_shm_broadcast_spin_grace.patch",
                 "@@//third_party:vllm_flash_attn_cute_namespace.patch"
               ],
               "cargo_vendor": true,

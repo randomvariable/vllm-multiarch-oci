@@ -12,7 +12,6 @@ _LEDGER_INPUTS = [
     "//profiles/vllmb12x:profile.json",
     "//profiles/vllmb12x:version.bzl",
     "//third_party:vllm_flash_attn_cute_namespace.patch",
-    "//third_party:vllm_shm_broadcast_spin_grace.patch",
 ]
 
 py_test(

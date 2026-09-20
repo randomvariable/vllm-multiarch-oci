@@ -152,12 +152,12 @@ _cuda_repository = repository_rule(
 def _cuda_redist_impl(ctx):
     _cuda_repository(
         name = "cuda_sbsa",
-        manifest = Label("//cuda:redistrib_13.3.1.json"),
+        manifest = Label("//cuda:redistrib_13.4.1.json"),
         platform = "linux-sbsa",
     )
     _cuda_repository(
         name = "cuda_x86_64",
-        manifest = Label("//cuda:redistrib_13.3.1.json"),
+        manifest = Label("//cuda:redistrib_13.4.1.json"),
         platform = "linux-x86_64",
     )
 

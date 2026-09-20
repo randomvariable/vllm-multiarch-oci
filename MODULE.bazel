@@ -30,16 +30,28 @@ single_version_override(
 
 oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
 oci.pull(
-    name = "cuda_1331_cudnn_devel_ubuntu2604",
-    digest = "sha256:ac4f1f98a10e63a6c6fec134f6e234205f92498f794a49ea674fad3192f54a37",
+    name = "cuda_1341_cudnn_devel_ubuntu2604",
+    digest = "sha256:a452ee73c60203a0e30c499b4147c30d1e77acaa8230e0ce1b9cb40c6641c82d",
     image = "docker.io/nvidia/cuda",
     platforms = ["linux/amd64", "linux/arm64"],
 )
 use_repo(
     oci,
-    "cuda_1331_cudnn_devel_ubuntu2604",
-    "cuda_1331_cudnn_devel_ubuntu2604_linux_amd64",
-    "cuda_1331_cudnn_devel_ubuntu2604_linux_arm64",
+    "cuda_1341_cudnn_devel_ubuntu2604",
+    "cuda_1341_cudnn_devel_ubuntu2604_linux_amd64",
+    "cuda_1341_cudnn_devel_ubuntu2604_linux_arm64",
+)
+oci.pull(
+    name = "cuda_1341_cudnn_runtime_ubuntu2604",
+    digest = "sha256:4bbb58559d45745e63c63873ee3c7a31f20e8c083f9c09a36feebcb4211b0e4f",
+    image = "docker.io/nvidia/cuda",
+    platforms = ["linux/amd64", "linux/arm64"],
+)
+use_repo(
+    oci,
+    "cuda_1341_cudnn_runtime_ubuntu2604",
+    "cuda_1341_cudnn_runtime_ubuntu2604_linux_amd64",
+    "cuda_1341_cudnn_runtime_ubuntu2604_linux_arm64",
 )
 
 # The CUDA base owns CUDA and cuDNN. Install only the runtime tools that vLLM
@@ -206,10 +218,9 @@ use_repo(cuda, "cuda_sbsa", "cuda_x86_64")
 sources = use_extension("//bazel:sources.bzl", "profile_sources")
 sources.profile(
     manifest = "//profiles/vllmb12x:profile.json",
-    # Keep the Spark thermal scheduling control as a declared source input.
-    # Its hash becomes part of source.identity.json.
+    # Builder-specific source repairs are declared inputs. Their hashes become
+    # part of source.identity.json.
     vllm_patches = [
-        "//third_party:vllm_shm_broadcast_spin_grace.patch",
         "//third_party:vllm_flash_attn_cute_namespace.patch",
     ],
 )

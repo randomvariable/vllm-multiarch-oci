@@ -166,7 +166,7 @@ def description_body(manifest: dict[str, Any], lock: dict[str, Any]) -> str:
     )
     body = (
         f"{pins} for NVIDIA Blackwell SM12x GPUs, carrying {numbers}. "
-        "Linux ARM64 and AMD64, CUDA 13.3.1, Python 3.12. "
+        "Linux ARM64 and AMD64, CUDA 13.4.1, Python 3.12. "
         "Full change ledger in the README below."
     )
     if "\n" in body:

@@ -4,7 +4,7 @@ This repository is the Bazel builder and deployment recipe site for [local-infer
 
 The local build path targets DGX Spark. Bazel compiles PyTorch and CUDA extensions from source, then assembles their wheels into layered Python runtimes.
 
-The implemented image targets Linux ARM64, CUDA 13.3.1, and Python 3.12. The x86-64 platform declaration is not a verified second image build.
+The implemented image targets Linux ARM64, CUDA 13.4.1, and Python 3.12. The x86-64 platform declaration is not a verified second image build.
 
 ## Included Upstream Changes
 
@@ -13,8 +13,20 @@ The image is built from pinned fork revisions rather than from upstream branches
 
 | Component | Change | Included as |
 | --- | --- | --- |
-| vLLM `ed6f2c5853c9` | [vllm-project/vllm#52917](https://github.com/vllm-project/vllm/pull/52917) Adaptive spin grace and bounded architectural waits for shm_broadcast | Applied at build time by `third_party/vllm_shm_broadcast_spin_grace.patch` |
-| vLLM `ed6f2c5853c9` | Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute (no upstream pull request) | Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch` |
+| vLLM `79efdd669583` | [local-inference-lab/vllm#777](https://github.com/local-inference-lab/vllm/pull/777) Qwen MTP positional overrides | Merged into the pinned revision (1 commits) |
+| vLLM `79efdd669583` | [local-inference-lab/vllm#798](https://github.com/local-inference-lab/vllm/pull/798) GLM pooled-indexer workspace ownership | Merged into the pinned revision (6 commits) |
+| vLLM `79efdd669583` | [local-inference-lab/vllm#800](https://github.com/local-inference-lab/vllm/pull/800) Bounded shared-memory broadcast waits | Merged into the pinned revision (1 commits) |
+| vLLM `79efdd669583` | [local-inference-lab/vllm#801](https://github.com/local-inference-lab/vllm/pull/801) Sparse MLA preparation release | Merged into the pinned revision (6 commits) |
+| vLLM `79efdd669583` | [local-inference-lab/vllm#802](https://github.com/local-inference-lab/vllm/pull/802) SM120 FlashKDA workspace copies | Merged into the pinned revision (1 commits) |
+| vLLM `79efdd669583` | [local-inference-lab/vllm#803](https://github.com/local-inference-lab/vllm/pull/803) KDA preparation workspace reuse | Merged into the pinned revision (5 commits) |
+| vLLM `79efdd669583` | [local-inference-lab/vllm#805](https://github.com/local-inference-lab/vllm/pull/805) NVFP4 Marlin scale-factor memory bounds | Merged into the pinned revision (6 commits) |
+| vLLM `79efdd669583` | [local-inference-lab/vllm#806](https://github.com/local-inference-lab/vllm/pull/806) GLM DCP attention workspace reuse | Merged into the pinned revision (5 commits) |
+| vLLM `79efdd669583` | [local-inference-lab/vllm#807](https://github.com/local-inference-lab/vllm/pull/807) KV cache profile ownership | Merged into the pinned revision (5 commits) |
+| vLLM `79efdd669583` | [local-inference-lab/vllm#809](https://github.com/local-inference-lab/vllm/pull/809) Boundary checkpoint cache retention | Merged into the pinned revision (6 commits) |
+| vLLM `79efdd669583` | [local-inference-lab/vllm#810](https://github.com/local-inference-lab/vllm/pull/810) B12X MoE input-scale ownership | Merged into the pinned revision (1 commits) |
+| vLLM `79efdd669583` | [local-inference-lab/vllm#812](https://github.com/local-inference-lab/vllm/pull/812) DeepSeek WO plan ownership | Merged into the pinned revision (2 commits) |
+| vLLM `79efdd669583` | [local-inference-lab/vllm#813](https://github.com/local-inference-lab/vllm/pull/813) B12X shared-expert tuning context | Merged into the pinned revision (5 commits) |
+| vLLM `79efdd669583` | Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute (no upstream pull request) | Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch` |
 <!-- included-changes:end -->
 
 ## Getting Started

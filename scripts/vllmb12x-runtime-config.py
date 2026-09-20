@@ -5,11 +5,14 @@ from __future__ import annotations
 
 import argparse
 import ast
+import io
 import hashlib
 import html
 import json
+import os
 import re
 import subprocess
+import tarfile
 import tempfile
 from collections import defaultdict
 from dataclasses import dataclass
@@ -20,12 +23,21 @@ from typing import Iterable
 ENVIRONMENT_NAME = re.compile(r"(?:VLLM|B12X)_[A-Z0-9_]+$")
 SOURCE_SUFFIXES = {".py", ".pyi"}
 SKIP_DIRECTORIES = {
+    ".agents",
     ".buildkite",
     ".git",
+    ".omp",
     ".venv",
+    ".omp-test-venv",
+    "assets",
     "benchmarks",
     "build",
+    "coverage",
     "docs",
+    "examples",
+    "external",
+    "node_modules",
+    "output",
     "scripts",
     "tests",
     "tools",
@@ -106,10 +118,16 @@ def description_mixin(path: Path) -> dict[str, str]:
 
 
 def source_files(root: Path) -> Iterable[Path]:
-    for path in root.rglob("*"):
-        if path.suffix not in SOURCE_SUFFIXES or any(part in SKIP_DIRECTORIES for part in path.parts):
-            continue
-        yield path
+    for directory, directories, files in os.walk(root):
+        directories[:] = [
+            child
+            for child in directories
+            if child not in SKIP_DIRECTORIES and not child.startswith(".venv")
+        ]
+        for name in files:
+            path = Path(directory, name)
+            if path.suffix in SOURCE_SUFFIXES:
+                yield path
 
 
 def string(node: ast.AST | None) -> str | None:
@@ -299,13 +317,18 @@ def registered_environment(root: Path) -> list[Control]:
 
 def scan(root: Path) -> dict[str, list[Control]]:
     result: dict[str, list[Control]] = defaultdict(list)
-    for path in source_files(root):
+    package_root = root / "b12x"
+    scan_root = package_root if package_root.is_dir() else root
+    for path in source_files(scan_root):
         try:
             tree = ast.parse(path.read_text(), filename=str(path))
-        except (SyntaxError, UnicodeDecodeError):
+        except (RecursionError, SyntaxError, UnicodeDecodeError):
             continue
         scanner = Scanner(root, path)
-        scanner.visit(tree)
+        try:
+            scanner.visit(tree)
+        except RecursionError:
+            continue
         result["environment"].extend(scanner.environment)
         result["cli"].extend(scanner.cli)
         result["additional_config"].extend(scanner.additional_config)
@@ -460,6 +483,7 @@ def render(
     b12x_commit: str,
     controls: list[tuple[str, Control]],
     b12x: dict[str, list[Control]],
+    applied_patches: Iterable[Path] = (),
     descriptions: dict[str, str] | None = None,
 ) -> str:
     descriptions = descriptions or {}
@@ -478,6 +502,10 @@ def render(
             for surface, control in rows
         ).encode()
     ).hexdigest()
+    patch_lines = [
+        f"- The build applies `{patch.as_posix()}` to the locked vLLM tree."
+        for patch in applied_patches
+    ]
     body = [
         "# VLLMB12X Runtime Configuration",
         "",
@@ -488,7 +516,7 @@ def render(
         f"- Stock vLLM merge-base: `{stock_commit}`.",
         f"- Locked randomvariable/vLLM integration before profile patches: `{vllm_commit}`.",
         f"- Locked B12X integration: `{b12x_commit}`.",
-        "- The build applies `third_party/vllm_shm_broadcast_spin_grace.patch` to the locked vLLM tree. Its controls are listed as vLLM #52917.",
+        *patch_lines,
         "",
         "This inventory contains runtime controls added or whose default or accepted values changed relative to the stock vLLM merge-base, plus every B12X environment control consumed by the locked B12X source. Descriptions come from source help text, field docstrings, source comments, or the checked-in description mixin when the source has no prose. Static inspection records each environment value as a string because the source performs its own parsing. `unset` means the cited read has no source default. `source expression` identifies an indirect control name or nonliteral source default.",
         "For regular vLLM configuration, see the [vLLM configuration reference](https://docs.vllm.ai/en/latest/configuration/).",
@@ -520,15 +548,22 @@ def render(
     return "\n".join(body)
 
 
-def apply_patch(root: Path, patch: Path) -> Path:
+def apply_patches(root: Path, patches: Iterable[Path]) -> Path:
     destination = Path(tempfile.mkdtemp(prefix="vllmb12x-runtime-config-")) / "vllm"
-    subprocess.run(["cp", "-a", root, destination], check=True)
-    subprocess.run(
-        ["patch", "-d", destination, "-p1", "-i", patch.resolve()],
+    archive = subprocess.run(
+        ["git", "-C", root, "archive", "--format=tar", "HEAD"],
         check=True,
         capture_output=True,
-        text=True,
     )
+    with tarfile.open(fileobj=io.BytesIO(archive.stdout)) as tar:
+        tar.extractall(destination, filter="tar")
+    for patch in patches:
+        subprocess.run(
+            ["patch", "-d", destination, "-p1", "-i", patch.resolve()],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
     return destination
 
 
@@ -541,7 +576,7 @@ def main() -> None:
     parser.add_argument("--stock-root", type=Path, required=True)
     parser.add_argument("--vllm-root", type=Path, required=True)
     parser.add_argument("--b12x-root", type=Path, required=True)
-    parser.add_argument("--vllm-patch", type=Path, required=True)
+    parser.add_argument("--vllm-patch", type=Path, action="append", default=[])
     parser.add_argument(
         "--description-mixin",
         type=Path,
@@ -551,13 +586,14 @@ def main() -> None:
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
 
-    integration = apply_patch(args.vllm_root, args.vllm_patch)
+    integration = apply_patches(args.vllm_root, args.vllm_patch)
     content = render(
         git_revision(args.stock_root),
         git_revision(args.vllm_root),
         git_revision(args.b12x_root),
         vllm_controls(scan(args.stock_root), scan(integration)),
         scan(args.b12x_root),
+        args.vllm_patch,
         description_mixin(args.description_mixin),
     )
     if args.check:

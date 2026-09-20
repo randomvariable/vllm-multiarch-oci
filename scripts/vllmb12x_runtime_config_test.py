@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import importlib.util
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -41,6 +42,91 @@ class RuntimeConfigInventoryTest(unittest.TestCase):
             scanned["additional_config"][0].name,
             "ple_table_memory",
         )
+
+    def test_skips_nested_virtual_environments(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            virtualenv = root / ".venv-test/lib/python3.12/site-packages"
+            virtualenv.mkdir(parents=True)
+            (virtualenv / "third_party.py").write_text(
+                'value = os.getenv("VLLM_UNRELATED")\n'
+            )
+            source = root / "vllm/envs.py"
+            source.parent.mkdir()
+            source.write_text('value = os.getenv("VLLM_TRACKED")\n')
+
+            scanned = INVENTORY.scan(root)
+            sources = list(INVENTORY.source_files(root))
+
+        names = {control.name for control in scanned["environment"]}
+        self.assertEqual(names, {"VLLM_TRACKED"})
+        self.assertEqual(
+            sources,
+            [source],
+        )
+
+    def test_skips_agent_metadata_directories(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "vllm/controls.py"
+            source.parent.mkdir()
+            source.write_text("VLLM_TRACKED = 1\n")
+            agent_source = root / ".agents/controls.py"
+            agent_source.parent.mkdir()
+            agent_source.write_text("VLLM_UNTRACKED = 1\n")
+
+            sources = list(INVENTORY.source_files(root))
+
+        self.assertEqual(sources, [source])
+
+    def test_skips_generated_and_documentation_directories(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "b12x/controls.py"
+            source.parent.mkdir()
+            source.write_text("B12X_TRACKED = 1\n")
+            for skipped in ("assets", "docs", "examples", "output"):
+                skipped_source = root / skipped / "controls.py"
+                skipped_source.parent.mkdir()
+                skipped_source.write_text("B12X_UNTRACKED = 1\n")
+
+            sources = list(INVENTORY.source_files(root))
+
+        self.assertEqual(sources, [source])
+
+    def test_skips_pathological_nested_expressions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "vllm/generated.py"
+            source.parent.mkdir()
+            source.write_text("value = root" + ".attribute" * 1500 + "\n")
+
+            scanned = INVENTORY.scan(root)
+
+        self.assertEqual(scanned["environment"], [])
+        self.assertEqual(scanned["cli"], [])
+
+    def test_scans_only_the_b12x_package_when_present(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package_source = root / "b12x/package.py"
+            package_source.parent.mkdir()
+            package_source.write_text("B12X_PACKAGE = 1\n")
+            workspace_source = root / "unrelated.py"
+            workspace_source.write_text("B12X_WORKSPACE = 1\n")
+
+            scanned = INVENTORY.scan(root)
+
+        self.assertEqual(scanned["environment"], [])
+        self.assertEqual(scanned["cli"], [])
+
+    def test_rejects_non_git_source_tree(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "source"
+            root.mkdir()
+
+            with self.assertRaises(subprocess.CalledProcessError):
+                INVENTORY.apply_patches(root, [])
 
     def test_reports_added_and_changed_defaults_only(self):
         stock = {
@@ -149,6 +235,14 @@ class RuntimeConfigInventoryTest(unittest.TestCase):
         self.assertNotIn("Classification", rendered)
         self.assertNotIn("Provenance", rendered)
         self.assertNotIn("Qwen recipe", rendered)
+
+    def test_renders_only_declared_source_patches(self):
+        control = INVENTORY.Control("VLLM_SETTING", "vllm/envs.py", 1, "unset", "environment string")
+        empty = {surface: [] for surface in ("environment", "cli", "additional_config", "config")}
+
+        rendered = INVENTORY.render("stock", "vllm", "b12x", [("environment", control)], empty)
+
+        self.assertNotIn("The build applies", rendered)
 
     def test_source_description_precedes_mixin_fallback(self):
         control = INVENTORY.Control(

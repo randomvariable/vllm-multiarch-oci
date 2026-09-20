@@ -110,7 +110,7 @@ NativeLink is our optional CI backend. The public `remote-aarch64` configuration
 | --- | --- |
 | Image tag | `randomvariable/vllm-b12x-multi:<build version>` |
 | Platform | `linux/arm64` (SM12x family) and `linux/amd64` (SM120) |
-| CUDA base | CUDA 13.3.1 cuDNN development image, Ubuntu 26.04, digest-pinned |
+| CUDA base | CUDA 13.4.1 cuDNN development image, Ubuntu 26.04, digest-pinned |
 | Python | 3.12 |
 | Entrypoint | `/opt/venv/bin/vllm` |
 | Working directory | `/root` |

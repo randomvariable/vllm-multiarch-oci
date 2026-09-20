@@ -76,8 +76,8 @@ _RUNTIME_WHEELS = select({
 })
 
 _IMAGE_BASE = select({
-    "//platforms:linux_aarch64": "@cuda_1331_cudnn_devel_ubuntu2604_linux_arm64//:cuda_1331_cudnn_devel_ubuntu2604_linux_arm64",
-    "//platforms:linux_x86_64": "@cuda_1331_cudnn_devel_ubuntu2604_linux_amd64//:cuda_1331_cudnn_devel_ubuntu2604_linux_amd64",
+    "//platforms:linux_aarch64": "@cuda_1341_cudnn_runtime_ubuntu2604_linux_arm64//:cuda_1341_cudnn_runtime_ubuntu2604_linux_arm64",
+    "//platforms:linux_x86_64": "@cuda_1341_cudnn_runtime_ubuntu2604_linux_amd64//:cuda_1341_cudnn_runtime_ubuntu2604_linux_amd64",
 })
 filegroup(
     name = "cusparselt_layer",

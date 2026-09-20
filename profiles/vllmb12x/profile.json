@@ -1,9 +1,9 @@
 {
   "name": "vllmb12x",
-  "source_ref": "refs/heads/dev/karmic-kraken",
+  "source_ref": "refs/heads/cycle/karmic-kraken",
   "sources": {
     "b12x": {
-      "commit": "a83336581a3a907076e60797df69ab66df5a2ff1",
+      "commit": "0f3a8cbfd1c11d27f04e3ab37a802d522f4f1c68",
       "recursive_init_submodules": true,
       "remote": "https://github.com/local-inference-lab/b12x.git"
     },
@@ -32,17 +32,17 @@
       "recursive_init_submodules": true,
       "remote": "https://github.com/voipmonitor/InstantTensor.git"
     },
-    "lmcache": {
-      "commit": "9cebd405d0caf4bebe01d694b5a8bf4e3e354314",
-      "recursive_init_submodules": true,
-      "remote": "https://github.com/local-inference-lab/LMCache.git"
-    },
     "llguidance": {
       "cargo_manifest": "python_ext/Cargo.toml",
       "cargo_vendor": true,
       "commit": "0384f3f6aab6cebe8abf9b74db0079b96f5837ef",
       "recursive_init_submodules": true,
       "remote": "https://github.com/microsoft/llguidance.git"
+    },
+    "lmcache": {
+      "commit": "9cebd405d0caf4bebe01d694b5a8bf4e3e354314",
+      "recursive_init_submodules": true,
+      "remote": "https://github.com/local-inference-lab/LMCache.git"
     },
     "nccl": {
       "commit": "dfab7c1ace32da250ba97757879429c341b7bcf9",
@@ -66,7 +66,7 @@
     },
     "vllm": {
       "cargo_vendor": true,
-      "commit": "ed6f2c5853c92a623c2550fad48696b0b288cfd4",
+      "commit": "79efdd6695839d6a14791f2dd4b6340e31f31a02",
       "recursive_init_submodules": true,
       "remote": "https://github.com/local-inference-lab/vllm.git"
     },

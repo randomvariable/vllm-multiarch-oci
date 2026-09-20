@@ -12,18 +12,41 @@ A change reaches the build in one of two ways. It is either already merged into 
 {/* included-changes:start */}
 ## vLLM
 
-Pinned at [`ed6f2c5853c9`](https://github.com/local-inference-lab/vllm/commit/ed6f2c5853c92a623c2550fad48696b0b288cfd4), branched from [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm) `dev/karmic-kraken`.
+Pinned at [`79efdd669583`](https://github.com/local-inference-lab/vllm/commit/79efdd6695839d6a14791f2dd4b6340e31f31a02), branched from [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm) `dev/karmic-kraken`.
 
-- **[vllm-project/vllm#52917](https://github.com/vllm-project/vllm/pull/52917)** — Adaptive spin grace and bounded architectural waits for shm_broadcast
-  - Applied at build time by `third_party/vllm_shm_broadcast_spin_grace.patch`.
-  - The selected Karmic revision carries the bounded-wait half. The patch adds the adaptive grace half. Keep it for every tensor-parallel model: without it the mp executor busy-spins.
+- **[local-inference-lab/vllm#777](https://github.com/local-inference-lab/vllm/pull/777)** — Qwen MTP positional overrides
+  - Merged into the pinned revision (1 commits).
+- **[local-inference-lab/vllm#798](https://github.com/local-inference-lab/vllm/pull/798)** — GLM pooled-indexer workspace ownership
+  - Merged into the pinned revision (6 commits).
+- **[local-inference-lab/vllm#800](https://github.com/local-inference-lab/vllm/pull/800)** — Bounded shared-memory broadcast waits
+  - Merged into the pinned revision (1 commits).
+- **[local-inference-lab/vllm#801](https://github.com/local-inference-lab/vllm/pull/801)** — Sparse MLA preparation release
+  - Merged into the pinned revision (6 commits).
+- **[local-inference-lab/vllm#802](https://github.com/local-inference-lab/vllm/pull/802)** — SM120 FlashKDA workspace copies
+  - Merged into the pinned revision (1 commits).
+- **[local-inference-lab/vllm#803](https://github.com/local-inference-lab/vllm/pull/803)** — KDA preparation workspace reuse
+  - Merged into the pinned revision (5 commits).
+- **[local-inference-lab/vllm#805](https://github.com/local-inference-lab/vllm/pull/805)** — NVFP4 Marlin scale-factor memory bounds
+  - Merged into the pinned revision (6 commits).
+- **[local-inference-lab/vllm#806](https://github.com/local-inference-lab/vllm/pull/806)** — GLM DCP attention workspace reuse
+  - Merged into the pinned revision (5 commits).
+- **[local-inference-lab/vllm#807](https://github.com/local-inference-lab/vllm/pull/807)** — KV cache profile ownership
+  - Merged into the pinned revision (5 commits).
+- **[local-inference-lab/vllm#809](https://github.com/local-inference-lab/vllm/pull/809)** — Boundary checkpoint cache retention
+  - Merged into the pinned revision (6 commits).
+- **[local-inference-lab/vllm#810](https://github.com/local-inference-lab/vllm/pull/810)** — B12X MoE input-scale ownership
+  - Merged into the pinned revision (1 commits).
+- **[local-inference-lab/vllm#812](https://github.com/local-inference-lab/vllm/pull/812)** — DeepSeek WO plan ownership
+  - Merged into the pinned revision (2 commits).
+- **[local-inference-lab/vllm#813](https://github.com/local-inference-lab/vllm/pull/813)** — B12X shared-expert tuning context
+  - Merged into the pinned revision (5 commits).
 - **Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute** — no upstream pull request
   - Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch`.
   - Packaging repair for this builder's symlink install path, which skips the import rewrite the upstream CMake copy performs. It carries no upstream change.
 
 ## B12X
 
-Pinned at [`a83336581a3a`](https://github.com/local-inference-lab/b12x/commit/a83336581a3a907076e60797df69ab66df5a2ff1), branched from [`local-inference-lab/b12x`](https://github.com/local-inference-lab/b12x) `master`.
+Pinned at [`0f3a8cbfd1c1`](https://github.com/local-inference-lab/b12x/commit/0f3a8cbfd1c11d27f04e3ab37a802d522f4f1c68), branched from [`local-inference-lab/b12x`](https://github.com/local-inference-lab/b12x) `master`.
 {/* included-changes:end */}
 
 ## Keeping this list honest
