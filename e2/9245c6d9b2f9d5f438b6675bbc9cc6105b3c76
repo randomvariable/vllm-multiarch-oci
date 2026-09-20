@@ -1,0 +1,22 @@
+bazel/hermetic_cc_toolchain_test.py
+  h_15da545fc8cfbe 43,54,61-75
+components/BUILD.bazel
+  h_15da545fc8cfbe 69-70,95,99,102-106
+docs/how-to/build-locally-on-spark.md
+  h_15da545fc8cfbe 28
+docs/reference/build-configuration.md
+  h_15da545fc8cfbe 121
+image/BUILD.bazel
+  h_15da545fc8cfbe 99
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e29245c6d9b2f9d5f438b6675bbc9cc6105b3c76",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
