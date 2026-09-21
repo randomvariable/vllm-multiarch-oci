@@ -16,6 +16,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Sequence
 from pathlib import Path, PurePosixPath
 
 
@@ -195,7 +196,17 @@ def _safe_relative(name: str) -> Path:
     return Path(*pure.parts)
 
 
-def _validate_snapshot(snapshot: Path) -> int:
+def _default_env(name: str, value: str) -> None:
+    """Supply a Hugging Face cache location unless the deployment pinned one.
+
+    Deployments keep the Xet chunk cache on a scratch volume rather than the
+    model store, so an explicit value wins.
+    """
+    if not os.environ.get(name):
+        os.environ[name] = value
+
+
+def _validate_snapshot(snapshot: Path, required: Sequence[str] = ()) -> int:
     config = snapshot / "config.json"
     if not config.is_file() or config.stat().st_size == 0:
         raise CommandError("incomplete model snapshot: config.json is missing or empty", EXIT_MODEL)
@@ -213,8 +224,12 @@ def _validate_snapshot(snapshot: Path) -> int:
     if not shards:
         raise CommandError("incomplete model snapshot: no safetensors weights or index found", EXIT_MODEL)
     bad = [str(path) for path in sorted(shards) if not (snapshot / path).is_file() or (snapshot / path).stat().st_size == 0]
+    for name in required:
+        path = _safe_relative(name)
+        if not (snapshot / path).is_file() or (snapshot / path).stat().st_size == 0:
+            bad.append(str(path))
     if bad:
-        raise CommandError(f"incomplete model snapshot: missing or empty shards: {', '.join(bad)}", EXIT_MODEL)
+        raise CommandError(f"incomplete model snapshot: missing or empty files: {', '.join(bad)}", EXIT_MODEL)
     return len(shards)
 
 
@@ -245,9 +260,9 @@ def model_sync(args: argparse.Namespace) -> None:
         raise CommandError("revision must be a full lowercase 40-hex Hugging Face commit OID", EXIT_CONFIG)
     root = args.storage_root.resolve()
     root.mkdir(parents=True, exist_ok=True)
-    os.environ["HF_HOME"] = str(root)
-    os.environ["HF_HUB_CACHE"] = str(root / "hub")
-    os.environ["HF_XET_CACHE"] = str(root / "xet")
+    _default_env("HF_HOME", str(root))
+    _default_env("HF_HUB_CACHE", str(root / "hub"))
+    _default_env("HF_XET_CACHE", str(root / "xet"))
     free = os.statvfs(root).f_bavail * os.statvfs(root).f_frsize
     minimum = args.min_free_bytes if args.min_free_bytes is not None else int(args.min_free_gib * 1024**3)
     if free < minimum:
@@ -264,7 +279,7 @@ def model_sync(args: argparse.Namespace) -> None:
                 saved = json.loads(marker.read_text())
                 if saved.get("repo") == args.repo and saved.get("revision") == args.revision:
                     snapshot = Path(saved["snapshot"])
-                    _validate_snapshot(snapshot)
+                    _validate_snapshot(snapshot, args.require)
             except (OSError, KeyError, json.JSONDecodeError, CommandError):
                 snapshot = None
         if snapshot is None:
@@ -279,10 +294,10 @@ def model_sync(args: argparse.Namespace) -> None:
                 ignore_patterns=args.ignore or None,
                 token=token,
             )).resolve()
-            count = _validate_snapshot(snapshot)
+            count = _validate_snapshot(snapshot, args.require)
             _atomic_json(marker, {"repo": args.repo, "revision": args.revision, "snapshot": str(snapshot)})
         else:
-            count = _validate_snapshot(snapshot)
+            count = _validate_snapshot(snapshot, args.require)
         _publish(snapshot, args.publish.absolute())
     print(f"model-sync: published {args.repo}@{args.revision} ({count} shards) at {args.publish}", flush=True)
 
@@ -313,6 +328,16 @@ def parser() -> argparse.ArgumentParser:
     minimum.add_argument("--min-free-gib", type=float, default=0)
     sync.add_argument("--workers", type=int, default=8)
     sync.add_argument("--ignore", action="append", default=[])
+    # Checkpoints carry assets vLLM loads after the weights, such as the
+    # tokenizer template and configuration. A deployment that depends on one
+    # names it here instead of re-checking the snapshot in an init container.
+    sync.add_argument(
+        "--require",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help="snapshot-relative file that must exist and be non-empty",
+    )
     token = sync.add_mutually_exclusive_group()
     token.add_argument("--token")
     token.add_argument("--token-env", default="HF_TOKEN")

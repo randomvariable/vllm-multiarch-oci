@@ -27,6 +27,8 @@ initContainers:
       - "8"
       - --ignore
       - examples/*
+      - --require
+      - chat_template.jinja
     env:
       - name: HF_TOKEN
         valueFrom:
@@ -36,7 +38,7 @@ initContainers:
       - {name: published-model, mountPath: /models}
 ```
 
-The command sets `HF_HOME`, `HF_HUB_CACHE`, and `HF_XET_CACHE` below `--storage-root`. It validates `config.json` and all shards named by each safetensors index. It then atomically replaces `--publish` with a symlink to the validated snapshot. A revision-specific marker makes a valid completed download idempotent. Partial or stale snapshots do not receive a completion marker.
+The command sets `HF_HOME`, `HF_HUB_CACHE`, and `HF_XET_CACHE` below `--storage-root` unless the deployment already supplies them. A deployment that keeps the Xet chunk cache on a scratch volume therefore keeps that location, and the model store does not absorb the cache. It validates `config.json` and all shards named by each safetensors index. `--require` names additional snapshot-relative files that must exist and be non-empty, for assets the engine loads after the weights. It then atomically replaces `--publish` with a symlink to the validated snapshot. A revision-specific marker makes a valid completed download idempotent. Partial or stale snapshots do not receive a completion marker.
 
 ## Wait for the Leader Rendezvous
 

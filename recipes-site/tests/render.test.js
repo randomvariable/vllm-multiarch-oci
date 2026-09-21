@@ -120,6 +120,19 @@ test("LWS renders explicit rank templates from one fixed runtime definition", ()
   }
 });
 
+test("a recipe that declares required files passes them to the model-sync helper", () => {
+  const qwen = parseAllDocuments(readFileSync(resolve(siteRoot, "../recipes/local-inference-lab/Qwen3.8-Flash-Next-NVFP4.yaml"), "utf8"))[0].toJS();
+  const result = renderRecipe(qwen, parameters, qwen.validation.image, "lws");
+  const lws = findDocument(documents(result.files[`${parameters.name}-lws.yaml`]), "LeaderWorkerSet");
+  const init = lws.spec.leaderWorkerTemplate.leaderTemplate.spec.initContainers[0];
+
+  assert(Array.isArray(qwen.deployment.required_files) && qwen.deployment.required_files.length > 0);
+  assert.deepEqual(
+    init.args.filter((value, index, args) => args[index - 1] === "--require"),
+    qwen.deployment.required_files,
+  );
+});
+
 test("Docker scripts preserve literal paths, isolate token use, and pass shell syntax", () => {
   const result = renderRecipe(recipe, parameters, image, "docker");
   const leader = result.files["deepseek-vision-leader.sh"];

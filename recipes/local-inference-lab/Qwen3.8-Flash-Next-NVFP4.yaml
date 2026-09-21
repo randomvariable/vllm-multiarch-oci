@@ -151,6 +151,11 @@ deployment:
   storage_min_free_gib: 130
   download_workers: 8
   ignore_patterns: []
+  # Loaded after the weights. Naming them lets the image helper fail on a
+  # truncated snapshot instead of the engine failing at model load.
+  required_files:
+    - tokenizer_config.json
+    - chat_template.jinja
   parameters:
     namespace:
       label: Kubernetes namespace
