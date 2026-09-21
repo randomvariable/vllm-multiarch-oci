@@ -27,4 +27,10 @@ container_structure_test(
     driver = "docker",
     image = _IMAGE,
     platform = _PLATFORM,
+    # Bazel's default is 300s for an untimed test. Loading a ~16GB image into
+    # the worker's daemon plus 41 assertions, several of which compile C shims
+    # in the container, exceeds that — and the load is cold after every worker
+    # roll because the daemon keeps its store in the pod. 900s leaves room
+    # without hiding a genuinely wedged run.
+    timeout = "long",
 )
