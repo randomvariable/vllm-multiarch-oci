@@ -1,0 +1,14 @@
+docs/reference/build-configuration.md
+  h_15da545fc8cfbe 109,112-113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c8fd9f5b52e1231389f58d1dd36213b057278bde",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
