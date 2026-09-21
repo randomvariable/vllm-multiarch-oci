@@ -150,6 +150,7 @@ NativeLink is our optional CI backend. The public `remote-aarch64` configuration
 | Torch architecture | `12.0+PTX`; PyTorch's parser does not support the CUDA SM12x family suffix, so the SM120 PTX lets SM121 drivers JIT device code |
 | FlashInfer architecture | `12.0f` |
 | Disabled kernel | `MarlinFP8ScaledMMLinearKernel` |
+| Unusable control | `B12X_DENSE_ATOM_24=1` aborts preparation on SM120 with `std::get: wrong index for variant`, raised from `b12x.gemm.blockscaled._preparation:compile_packed` at engine init. Reported by the Qwen deployment that measured it; not re-measured on the revisions this profile currently pins. Treat it as unusable rather than slow and do not spend a restart on it. |
 | Mooncake Transfer Engine | CUDA 13 distribution `0.3.13.post1`; see [Mooncake Transfer Engine](mooncake-transfer-engine.md) |
 
 Source: [image rule](../../bazel/vllm_image.bzl). Each image uses a native architecture-specific PyTorch wheel, not a `torch_libtorch`/Python-only split.

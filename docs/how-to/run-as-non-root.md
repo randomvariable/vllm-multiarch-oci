@@ -21,6 +21,7 @@ spec:
       env:
         - {name: HOME, value: /cache/vllm-home}
         - {name: FLASHINFER_WORKSPACE_BASE, value: /cache/flashinfer}
+        - {name: B12X_COMPILE_CACHE_DIR, value: /cache/b12x-compile}
       volumeMounts:
         - {name: cache, mountPath: /cache}
   volumes:
@@ -28,7 +29,9 @@ spec:
       hostPath: {path: /var/lib/vllm-cache, type: DirectoryOrCreate}
 ```
 
-Set `HOME` and `FLASHINFER_WORKSPACE_BASE` explicitly. Treat both as required for a pod that sets its own `runAsUser`, and do not rely on `~` being resolved for you.
+Set `HOME`, `FLASHINFER_WORKSPACE_BASE` and `B12X_COMPILE_CACHE_DIR` explicitly. Treat all three as required for a pod that sets its own `runAsUser`, and do not rely on `~` being resolved for you.
+
+`B12X_COMPILE_CACHE_DIR` is the same class of defect as the other two. B12X resolves its generated-kernel cache as `B12X_COMPILE_CACHE_DIR`, then `$XDG_CACHE_HOME/b12x/compile`, then `~/.cache/b12x/compile`, and that last step is why the location can end up inherited from its environment instead of chosen. Measured by the Qwen deployment on this image: engine initialisation took 172 s cold against 61 s warm, so losing the cache costs about two minutes on every start, silently. The image cannot decide this for you, because the correct path is a mounted volume rather than anything inside the container.
 
 ## Point HOME at Durable Storage
 
