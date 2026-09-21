@@ -76,8 +76,13 @@ _RUNTIME_WHEELS = select({
 })
 
 _IMAGE_BASE = select({
-    "//platforms:linux_aarch64": "@cuda_1341_cudnn_runtime_ubuntu2604_linux_arm64//:cuda_1341_cudnn_runtime_ubuntu2604_linux_arm64",
-    "//platforms:linux_x86_64": "@cuda_1341_cudnn_runtime_ubuntu2604_linux_amd64//:cuda_1341_cudnn_runtime_ubuntu2604_linux_amd64",
+    # The b12x PLE reader and RoCE proxy compile inside the running container
+    # (b12x/loader/_native.py, b12x/comm/roce/_proxy.py), so the base must ship
+    # a C compiler, the CUDA headers under CUDA_HOME, the libcudart.so link,
+    # and libgomp.so.1 for torch's OpenMP. Only the cudnn-devel variant has
+    # all four; the runtime variant passed nothing but file-existence tests.
+    "//platforms:linux_aarch64": "@cuda_1341_cudnn_devel_ubuntu2604_linux_arm64//:cuda_1341_cudnn_devel_ubuntu2604_linux_arm64",
+    "//platforms:linux_x86_64": "@cuda_1341_cudnn_devel_ubuntu2604_linux_amd64//:cuda_1341_cudnn_devel_ubuntu2604_linux_amd64",
 })
 filegroup(
     name = "cusparselt_layer",

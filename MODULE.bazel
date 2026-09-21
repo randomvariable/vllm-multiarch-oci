@@ -41,18 +41,6 @@ use_repo(
     "cuda_1341_cudnn_devel_ubuntu2604_linux_amd64",
     "cuda_1341_cudnn_devel_ubuntu2604_linux_arm64",
 )
-oci.pull(
-    name = "cuda_1341_cudnn_runtime_ubuntu2604",
-    digest = "sha256:4bbb58559d45745e63c63873ee3c7a31f20e8c083f9c09a36feebcb4211b0e4f",
-    image = "docker.io/nvidia/cuda",
-    platforms = ["linux/amd64", "linux/arm64"],
-)
-use_repo(
-    oci,
-    "cuda_1341_cudnn_runtime_ubuntu2604",
-    "cuda_1341_cudnn_runtime_ubuntu2604_linux_amd64",
-    "cuda_1341_cudnn_runtime_ubuntu2604_linux_arm64",
-)
 
 # The CUDA base owns CUDA and cuDNN. Install only the runtime tools that vLLM
 # and B12X need, from a pinned Ubuntu archive for deterministic ARM64 layers.
