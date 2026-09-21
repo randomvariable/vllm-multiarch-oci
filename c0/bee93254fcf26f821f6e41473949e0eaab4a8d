@@ -1,0 +1,26 @@
+docs/reference/build-configuration.md
+  h_15da545fc8cfbe 103-128
+image/BUILD.bazel
+  h_15da545fc8cfbe 226-230
+profiles/vllmb12x/profile.json
+  h_15da545fc8cfbe 128-129
+profiles/vllmb12x/version.bzl
+  h_15da545fc8cfbe 3,5-12
+scripts/refresh-vllmb12x.py
+  h_15da545fc8cfbe 6-11,17,98-159,177,181-188,190,202,218-220,241-249
+scripts/refresh_vllmb12x_test.py
+  h_15da545fc8cfbe 7,25,62,77-128
+tests/image/vllmb12x.yaml
+  h_15da545fc8cfbe 13-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c0bee93254fcf26f821f6e41473949e0eaab4a8d",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
