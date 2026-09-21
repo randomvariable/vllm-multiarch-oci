@@ -295,7 +295,7 @@
         "bzlTransitiveDigest": "hc26F5s55jBCXFimaxIvPmNc1rt22HMVwgH4iuCjKBU=",
         "usagesDigest": "27S2nJnWs7icY1Yi+UWrPv4nfudZ01z3cIqvW9izwLY=",
         "recordedInputs": [
-          "FILE:@@//profiles/vllmb12x/profile.json 77071dcf93b787c9c510683827a530d675074c4809930eadc837807b30f08b8a"
+          "FILE:@@//profiles/vllmb12x/profile.json 08ebbf5624fc6cf7271793e9770e8056281f81d83071ef954e4c2eb65a75aa9e"
         ],
         "generatedRepoSpecs": {
           "vllmb12x_b12x": {
@@ -433,8 +433,8 @@
           "vllmb12x_vllm": {
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
-              "remote": "https://github.com/local-inference-lab/vllm.git",
-              "commit": "79efdd6695839d6a14791f2dd4b6340e31f31a02",
+              "remote": "https://github.com/randomvariable/vllm.git",
+              "commit": "c1a8a38c49576d2d078958f4923420d52a2c4872",
               "recursive_init_submodules": true,
               "patches": [
                 "@@//third_party:vllm_flash_attn_cute_namespace.patch"

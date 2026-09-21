@@ -9,6 +9,6 @@ pure function of the manifest, so identical inputs rebuild the same version;
 recompute it with `scripts/refresh-vllmb12x.py --dry-run`.
 """
 
-VLLM_BUILD_VERSION = "0.29.0+karmic.kraken.24cddfd39ccf"
+VLLM_BUILD_VERSION = "0.29.0+karmic.kraken.b5c8dffd967f"
 VLLM_SOURCE_REF = "refs/heads/cycle/karmic-kraken"
-VLLM_SOURCE_REVISION = "79efdd6695839d6a14791f2dd4b6340e31f31a02"
+VLLM_SOURCE_REVISION = "c1a8a38c49576d2d078958f4923420d52a2c4872"

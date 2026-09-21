@@ -66,9 +66,9 @@
     },
     "vllm": {
       "cargo_vendor": true,
-      "commit": "79efdd6695839d6a14791f2dd4b6340e31f31a02",
+      "commit": "c1a8a38c49576d2d078958f4923420d52a2c4872",
       "recursive_init_submodules": true,
-      "remote": "https://github.com/local-inference-lab/vllm.git"
+      "remote": "https://github.com/randomvariable/vllm.git"
     },
     "vllm_cmake_cutlass": {
       "commit": "cb4247394dd82148787aed73e5dc7cef33cbf862",
