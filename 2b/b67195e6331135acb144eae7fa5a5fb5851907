@@ -1,0 +1,28 @@
+README.md
+  h_15da545fc8cfbe 58
+bazel/BUILD.bazel
+  h_15da545fc8cfbe 24-25
+bazel/accounts_layer.bzl
+  h_15da545fc8cfbe 1-80
+bazel/accounts_layer_action.py
+  h_15da545fc8cfbe 1-227
+bazel/vllm_image.bzl
+  h_15da545fc8cfbe 12,37-41
+docs/how-to/run-as-non-root.md
+  h_15da545fc8cfbe 1-45
+image/BUILD.bazel
+  h_15da545fc8cfbe 8,199-210,213
+tests/image/vllmb12x.yaml
+  h_15da545fc8cfbe 90-103,188-203
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2bb67195e6331135acb144eae7fa5a5fb5851907",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
