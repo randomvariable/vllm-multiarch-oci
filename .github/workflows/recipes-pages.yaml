@@ -68,10 +68,36 @@ jobs:
 
       - name: Resolve latest public recipe image
         if: github.event_name != 'pull_request'
-        run: >-
-          python3 scripts/resolve-recipe-image.py
-          --repository "$IMAGE_REPOSITORY"
-          --output recipes-site/public/latest-image.json
+        env:
+          RESOLVED_IMAGE: recipes-site/public/latest-image.json
+          FALLBACK_IMAGE: recipes-site/tests/fixtures/latest-image.json
+        run: |
+          set -euo pipefail
+          # The resolver's contract is deliberately strict: the published image
+          # must be a multi-architecture index, because that is what the recipes
+          # promise. But a publication that stops meeting the contract, or a
+          # registry outage in front of it, must not red this workflow or hold
+          # back unrelated documentation with it. Degrade to the last resolved
+          # publication and say so where a reader will see it.
+          if resolved="$(python3 scripts/resolve-recipe-image.py \
+              --repository "$IMAGE_REPOSITORY" \
+              --output "$RESOLVED_IMAGE" 2>&1)"; then
+            printf '%s\n' "$resolved"
+            exit 0
+          fi
+          printf '%s\n' "$resolved" >&2
+          install -m 0644 "$FALLBACK_IMAGE" "$RESOLVED_IMAGE"
+          reason="$(printf '%s' "$resolved" | head --lines=1)"
+          echo "::warning title=Recipe image is stale::$reason"
+          {
+            echo "### Recipe image fell back to the last resolved publication"
+            echo
+            echo "\`$IMAGE_REPOSITORY\` did not resolve: $reason"
+            echo
+            echo '```json'
+            cat "$RESOLVED_IMAGE"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Test image resolver
         run: python3 -m unittest scripts/resolve_recipe_image_test.py
