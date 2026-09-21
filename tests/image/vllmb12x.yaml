@@ -10,7 +10,10 @@ metadataTest:
       value: "[0-9a-f]{40}"
       isRegex: true
     - key: "org.opencontainers.image.version"
-      value: "0\\.1\\.dev1\\+vllmb12x\\.g[0-9a-f]{12}"
+      # Upstream vLLM base version, the cycle the source ref names, and the
+      # digest over the locked source set. The cycle carries its PEP 440
+      # spelling, which is what the wheel filename and metadata carry too.
+      value: "[0-9]+\\.[0-9]+\\.[0-9]+\\+karmic\\.kraken\\.[0-9a-f]{12}"
       isRegex: true
     - key: "uk.co.randomvariable.vllmb12x.vllm-source-ref"
       value: "(refs/heads/.+|[0-9a-f]{40})"

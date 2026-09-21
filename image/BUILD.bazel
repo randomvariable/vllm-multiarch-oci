@@ -223,7 +223,11 @@ vllm_image(
     ],
     title = "vllm-b12x-multi",
     description = VLLM_IMAGE_DESCRIPTION,
-    local_tag = VLLM_BUILD_VERSION,
+    # PEP 440 separates the local version with "+", which a docker tag rejects
+    # (its grammar is [A-Za-z0-9_.-]), so the local loader uses "-" instead.
+    # The published registry tag is allocated after the build and never carries
+    # this string.
+    local_tag = VLLM_BUILD_VERSION.replace("+", "-"),
     vllm_version = VLLM_BUILD_VERSION,
     vllm_source_ref = VLLM_SOURCE_REF,
     vllm_revision = VLLM_SOURCE_REVISION,

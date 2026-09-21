@@ -100,6 +100,32 @@ The command refuses rather than releases when the image does not belong to this 
 
 Release tags are calendar, not semantic. This builder tracks moving upstream fork branches, so a version number would imply a compatibility promise it cannot keep.
 
+## Image Version
+
+The version baked into the wheel and advertised by the image composes three values:
+
+```
+<upstream vLLM base>+<local-inference-lab cycle>.<source digest>
+0.29.0+karmic.kraken.24cddfd39ccf
+```
+
+- **Base** is the upstream release this cycle tracks. The cycle branch merges upstream pull requests selectively, so tag ancestry does not prove which release it descends from. The value is a reviewed claim: `vllm_base_version` in `profiles/vllmb12x/profile.json`, set with `scripts/refresh-vllmb12x.py --vllm-base-version`.
+- **Cycle** is the branch `source_ref` names, without its `cycle/` or `dev/` namespace, spelled as packaging spells a local version segment: `cycle/karmic-kraken` becomes `karmic.kraken`. Packaging rewrites `-` and `_` to `.` there, so building from the branch spelling would leave the wheel filename and distribution metadata disagreeing with the label.
+- **Digest** is the first twelve hexadecimal digits of the SHA-256 over `source_ref` and every locked `commit` and `remote`. It changes exactly when a pin changes, and any reader recomputes it from the committed manifest:
+
+```bash
+python3 -c '
+import hashlib, json, pathlib
+m = json.loads(pathlib.Path("profiles/vllmb12x/profile.json").read_text())
+c = json.dumps({"source_ref": m["source_ref"],
+                "sources": {n: {"commit": s["commit"], "remote": s["remote"]}
+                            for n, s in sorted(m["sources"].items())}},
+               separators=(",", ":"), sort_keys=True)
+print(hashlib.sha256(c.encode()).hexdigest()[:12])'
+```
+
+A calendar component would make two builds of identical inputs disagree, so the digest takes its place. `scripts/refresh-vllmb12x.py` writes `profiles/vllmb12x/version.bzl`, whose value sets `VLLM_VERSION_OVERRIDE` for the wheel build; the wheel filename, `vllm.__version__`, and the `org.opencontainers.image.version` label therefore carry one string. The local loader tag substitutes `-` for `+`, because a docker tag cannot contain `+`.
+
 ## Optional CI Configuration
 
 NativeLink is our optional CI backend. The public `remote-aarch64` configuration selects remote execution with no local fallback, minimal downloads, compression, and a 21600-second remote timeout. Endpoints, authentication, and execution properties must be supplied separately by CI. No private infrastructure is configured in the repository. Local Justfile recipes do not use this configuration.

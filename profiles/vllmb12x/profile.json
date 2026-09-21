@@ -125,5 +125,6 @@
       "recursive_init_submodules": true,
       "remote": "https://github.com/mlc-ai/xgrammar.git"
     }
-  }
+  },
+  "vllm_base_version": "0.29.0"
 }
