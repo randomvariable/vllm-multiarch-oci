@@ -197,10 +197,61 @@ class CommandTests(unittest.TestCase):
             ])
             fake = mock.Mock(return_value=str(snapshot))
             with mock.patch.dict(sys.modules, {"huggingface_hub": mock.Mock(snapshot_download=fake)}):
-                with self.assertRaisesRegex(vllm_image.CommandError, "missing or empty shards"):
+                with self.assertRaisesRegex(vllm_image.CommandError, "missing or empty files: part.safetensors"):
                     vllm_image.model_sync(args)
             self.assertFalse((root / "published").exists())
             self.assertEqual(list((root / ".vllm-image/model-sync").glob("*.json")), [])
+
+    def test_model_sync_rejects_missing_declared_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            snapshot = self.snapshot(root, "d" * 40)
+            args = vllm_image.parser().parse_args([
+                "model-sync", "--repo", "org/model", "--revision", "d" * 40,
+                "--storage-root", str(root), "--publish", str(root / "published"),
+                "--require", "tokenizer_config.json",
+            ])
+            fake = mock.Mock(return_value=str(snapshot))
+            with mock.patch.dict(sys.modules, {"huggingface_hub": mock.Mock(snapshot_download=fake)}):
+                with self.assertRaisesRegex(vllm_image.CommandError, "missing or empty files: tokenizer_config.json"):
+                    vllm_image.model_sync(args)
+            self.assertFalse((root / "published").exists())
+            self.assertEqual(list((root / ".vllm-image/model-sync").glob("*.json")), [])
+
+    def test_model_sync_rejects_unsafe_required_path(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            snapshot = self.snapshot(root, "e" * 40)
+            args = vllm_image.parser().parse_args([
+                "model-sync", "--repo", "org/model", "--revision", "e" * 40,
+                "--storage-root", str(root), "--publish", str(root / "published"),
+                "--require", "../escape.json",
+            ])
+            fake = mock.Mock(return_value=str(snapshot))
+            with mock.patch.dict(sys.modules, {"huggingface_hub": mock.Mock(snapshot_download=fake)}):
+                with self.assertRaisesRegex(vllm_image.CommandError, "invalid indexed shard path"):
+                    vllm_image.model_sync(args)
+
+    def test_model_sync_preserves_declared_cache_locations(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            snapshot = self.snapshot(root, "f" * 40)
+            args = vllm_image.parser().parse_args([
+                "model-sync", "--repo", "org/model", "--revision", "f" * 40,
+                "--storage-root", str(root), "--publish", str(root / "published"),
+            ])
+            fake = mock.Mock(return_value=str(snapshot))
+            scratch = str(root / "scratch-xet")
+            with (
+                mock.patch.dict(sys.modules, {"huggingface_hub": mock.Mock(snapshot_download=fake)}),
+                mock.patch.dict(os.environ, {"HF_XET_CACHE": scratch}),
+            ):
+                for name in ("HF_HOME", "HF_HUB_CACHE"):
+                    os.environ.pop(name, None)
+                vllm_image.model_sync(args)
+                self.assertEqual(os.environ["HF_XET_CACHE"], scratch)
+                self.assertEqual(os.environ["HF_HOME"], str(root.resolve()))
+                self.assertEqual(os.environ["HF_HUB_CACHE"], str(root.resolve() / "hub"))
 
     def test_model_sync_ignores_stale_marker_and_publishes_atomically(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -225,9 +276,6 @@ class CommandTests(unittest.TestCase):
             saved = json.loads(marker.read_text())
             self.assertEqual(saved["revision"], revision)
             self.assertEqual(fake.call_args.kwargs["ignore_patterns"], ["examples/*"])
-            self.assertEqual(os.environ["HF_HOME"], str(root.resolve()))
-            self.assertEqual(os.environ["HF_HUB_CACHE"], str(root.resolve() / "hub"))
-            self.assertEqual(os.environ["HF_XET_CACHE"], str(root.resolve() / "xet"))
             self.assertEqual(list(root.glob(".published.tmp-*")), [])
 
     def test_model_sync_accepts_only_hub_full_commit_oid(self):

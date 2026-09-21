@@ -11,6 +11,7 @@ numpy
 pyyaml
 wheel
 jinja2
+maturin>=1,<2
 requests
 six
 typing-extensions>=4.15.0

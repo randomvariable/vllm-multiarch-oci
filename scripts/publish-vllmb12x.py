@@ -29,6 +29,7 @@ PROFILE: Final = ROOT / "profiles/vllmb12x/profile.json"
 _COMMIT: Final = re.compile(r"[0-9a-f]{40}")
 _DATE: Final = re.compile(r"[0-9]{8}")
 _REF_PREFIX: Final = "refs/heads/"
+_MULTIARCH_PLATFORMS: Final = frozenset({("linux", "arm64"), ("linux", "amd64")})
 
 
 def source_branch(profile: Path) -> str:
@@ -124,6 +125,70 @@ def materialize_layout(layout: Path, destination: Path) -> Path:
     return destination
 
 
+def image_layout(bazel: str, image_target: str, bazel_args: list[str]) -> Path:
+    """Return the one OCI layout emitted by the already-built image target."""
+    result = subprocess.run(
+        [bazel, "cquery", *bazel_args, "--output=files", image_target],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode:
+        raise RuntimeError(
+            f"could not resolve Bazel output for {image_target}: "
+            f"{result.stderr.strip() or result.stdout.strip()}"
+        )
+    candidates = [
+        (ROOT / line).resolve() if not Path(line).is_absolute() else Path(line)
+        for line in result.stdout.splitlines()
+        if line.strip()
+    ]
+    layouts = [path for path in candidates if path.is_dir() and (path / "index.json").is_file()]
+    if len(layouts) != 1:
+        raise RuntimeError(
+            f"{image_target} must produce exactly one OCI layout, found {layouts!r}"
+        )
+    validate_multiarch_layout(layouts[0])
+    return layouts[0]
+
+
+def validate_multiarch_layout(layout: Path) -> None:
+    """Reject leaf layouts and malformed platform descriptors before registry mutation."""
+    try:
+        root = json.loads((layout / "index.json").read_text())
+    except (OSError, KeyError, TypeError, json.JSONDecodeError) as error:
+        raise RuntimeError(f"invalid OCI index layout at {layout}: {error}") from error
+
+    def platforms_from(index: object) -> list[tuple[object, object]]:
+        if not isinstance(index, dict) or not isinstance(index.get("manifests"), list):
+            raise RuntimeError(f"invalid OCI index layout at {layout}: manifests is not a list")
+
+        platforms = []
+        for descriptor in index["manifests"]:
+            if not isinstance(descriptor, dict):
+                raise RuntimeError(f"invalid OCI index layout at {layout}: manifest is not an object")
+            platform = descriptor.get("platform")
+            if isinstance(platform, dict):
+                platforms.append((platform.get("os"), platform.get("architecture")))
+                continue
+
+            digest = descriptor.get("digest")
+            if not isinstance(digest, str) or not digest.startswith("sha256:"):
+                raise RuntimeError(f"invalid OCI index layout at {layout}: child lacks a platform")
+            try:
+                child = json.loads((layout / "blobs" / "sha256" / digest.removeprefix("sha256:")).read_text())
+            except (OSError, json.JSONDecodeError) as error:
+                raise RuntimeError(f"invalid OCI index layout at {layout}: cannot read child index") from error
+            platforms.extend(platforms_from(child))
+        return platforms
+
+    platforms = platforms_from(root)
+    if len(platforms) != len(set(platforms)) or set(platforms) != _MULTIARCH_PLATFORMS:
+        raise RuntimeError(
+            f"OCI index at {layout} must contain exactly linux/arm64 and linux/amd64, got {platforms!r}"
+        )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repository", required=True, help="Registry repository without a tag")
@@ -166,12 +231,12 @@ def main() -> None:
         ],
         check=True,
     )
-    image_layout = ROOT / "bazel-bin/image/vllmb12x"
+    layout = image_layout(args.bazel, args.image_target, args.bazel_arg)
     if args.pull_request is not None:
         # A pull-request image is addressed by its own tag and nothing else
         # points at it, so there is no shared registry state to serialize.
         tag = pull_request_tag(args.pull_request, revision, args.build_revision)
-        reference = push(args.crane, image_layout, args.repository, tag)
+        reference = push(args.crane, layout, args.repository, tag)
         report(args, tag, reference)
         return
     date = args.date or utc_now().strftime("%Y%m%d")
@@ -179,7 +244,7 @@ def main() -> None:
     sequence = lease.acquire()
     tag = allocate_tag(branch, revision, args.build_revision, date, sequence)
     try:
-        reference = push(args.crane, image_layout, args.repository, tag)
+        reference = push(args.crane, layout, args.repository, tag)
         # The immutable tag is safe after the lease expires. `latest` is not.
         lease.assert_held()
         subprocess.run(

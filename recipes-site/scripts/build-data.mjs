@@ -7,6 +7,8 @@ const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const REPOSITORY_ROOT = resolve(SITE_ROOT, "..");
 const RECIPES_ROOT = join(REPOSITORY_ROOT, "recipes");
 const PUBLIC_ROOT = join(SITE_ROOT, "public");
+const RUNTIME_CONFIGURATION_SOURCE = join(REPOSITORY_ROOT, "docs/reference/vllmb12x-runtime-configuration.md");
+const RUNTIME_CONFIGURATION_PAGE = join(SITE_ROOT, "src/content/docs/reference/vllmb12x-runtime-configuration.md");
 const COMMIT = /^[0-9a-f]{40}$/;
 const DIGEST_REFERENCE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*(?::[0-9]+)?(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)+@sha256:[0-9a-f]{64}$/;
 const IMMUTABLE_TAG = /^vllmb12x-[a-z0-9][a-z0-9-]*-[0-9a-f]{12}-[0-9a-f]{12}-[0-9]{8}-n[1-9][0-9]*$/;
@@ -88,6 +90,22 @@ function validateDependencies(data) {
   return data;
 }
 
+// The runtime configuration inventory is generated from the pinned vLLM and
+// B12X sources by scripts/vllmb12x-runtime-config.py, so the site publishes
+// that file rather than keeping a second copy that can drift from the lock.
+async function publishRuntimeConfiguration() {
+  const source = await readFile(RUNTIME_CONFIGURATION_SOURCE, "utf8");
+  const [heading, ...body] = source.split("\n");
+  assert(heading === "# VLLMB12X Runtime Configuration", `${RUNTIME_CONFIGURATION_SOURCE}: unexpected heading ${heading}`);
+  const frontmatter = [
+    "---",
+    "title: VLLMB12X runtime configuration",
+    "description: Source-backed descriptions and values for runtime controls added or changed by the pinned local-inference-lab vLLM and B12X sources.",
+    "---",
+  ].join("\n");
+  await writeFile(RUNTIME_CONFIGURATION_PAGE, `${frontmatter}\n${body.join("\n")}`);
+}
+
 async function main() {
   const recipes = [];
   for (const path of await recipeFiles(RECIPES_ROOT)) recipes.push(validateRecipe(parseYaml(await readFile(path, "utf8")), path));
@@ -96,6 +114,7 @@ async function main() {
   assert(new Set(slugs).size === slugs.length, "recipe slugs must be unique");
   validateLatest(JSON.parse(await readFile(join(PUBLIC_ROOT, "latest-image.json"), "utf8")));
   validateDependencies(parseYaml(await readFile(join(SITE_ROOT, "src/data/platform-dependencies.yaml"), "utf8")));
+  await publishRuntimeConfiguration();
   await writeFile(join(PUBLIC_ROOT, "recipes.json"), `${JSON.stringify({ recipes }, null, 2)}\n`);
 }
 

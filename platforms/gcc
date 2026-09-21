@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+ : "${HERMETIC_CC_SYSROOT:?missing pinned compiler sysroot}"
+ : "${HERMETIC_CC_TRIPLE:?missing pinned compiler triple}"
+export LD_LIBRARY_PATH="$HERMETIC_CC_SYSROOT/usr/lib/$HERMETIC_CC_TRIPLE:$HERMETIC_CC_SYSROOT/usr/lib"
+ : "${HERMETIC_CC_PREFIX:=}"
+unset CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH LIBRARY_PATH COMPILER_PATH GCC_EXEC_PREFIX
+if [ "$HERMETIC_CC_TRIPLE" = "x86_64-linux-gnu" ]; then
+    set -- --sysroot="$HERMETIC_CC_SYSROOT" "$@"
+fi
+exec "$HERMETIC_CC_SYSROOT/usr/bin/${HERMETIC_CC_PREFIX}gcc" \
+    -B"$HERMETIC_CC_SYSROOT/usr/bin" \
+    -B"$HERMETIC_CC_SYSROOT/usr/lib/gcc/${HERMETIC_CC_TRIPLE}/15" \
+    "$@"

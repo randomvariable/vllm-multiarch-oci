@@ -9,8 +9,10 @@ BUILDER_REPOSITORY = "https://github.com/randomvariable/vllm-multiarch-oci"
 def vllm_image(
         name,
         base,
+        accounts_layer,
         apt_layer,
         cuda_layer,
+        env,
         provenance_layer,
         venv_layers,
         title,
@@ -28,27 +30,16 @@ def vllm_image(
     oci_image(
         name = name,
         base = base,
-        # The pinned CUDA base and all native wheels are ARM64-only. The
-        # x86 Blackwell platform is a declaration for future profiles, not a
-        # valid configuration for this image.
-        target_compatible_with = [
-            "@platforms//cpu:aarch64",
-            "@platforms//os:linux",
-        ],
         tars = [
             apt_layer,
             cuda_layer,
             provenance_layer,
-        ] + venv_layers,
-        env = {
-            "CUDA_HOME": "/usr/local/cuda",
-            "FLASHINFER_CUDA_ARCH_LIST": "12.1f",
-            # The pinned CUDA image owns the CUDA, cuBLAS, and cuDNN ABI.
-            "LD_LIBRARY_PATH": "/opt/nccl/lib:/opt/cusparselt/lib:/usr/local/cuda/lib64:$LD_LIBRARY_PATH",
-            "PATH": "/opt/venv/bin:$PATH",
-            "TORCH_CUDA_ARCH_LIST": "12.1a",
-            "VLLM_DISABLED_KERNELS": "MarlinFP8ScaledMMLinearKernel",
-        },
+        ] + venv_layers + [
+            # Last, so the account files this layer owns win over anything the
+            # base or an earlier layer put at the same path.
+            accounts_layer,
+        ],
+        env = env,
         entrypoint = ["/opt/venv/bin/vllm"],
         labels = {
             "org.opencontainers.image.title": title,

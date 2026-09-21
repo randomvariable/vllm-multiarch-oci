@@ -95,13 +95,16 @@ def _pinned_source_repository_impl(ctx):
         "remote": ctx.attr.remote,
     }) + "\n")
     if ctx.attr.cargo_vendor:
+        manifest = source
+        for component in ctx.attr.cargo_manifest.split("/"):
+            manifest = manifest.get_child(component)
         vendor = ctx.path("cargo-vendor")
         result = ctx.execute([
             "cargo",
             "vendor",
             "--locked",
             "--manifest-path",
-            source.get_child("rust/Cargo.toml"),
+            manifest,
             vendor.get_child("vendor"),
         ], timeout = _NETWORK_TIMEOUT)
         if result.return_code:
@@ -137,6 +140,7 @@ _pinned_source_repository = repository_rule(
         "recursive_init_submodules": attr.bool(default = False),
         "patches": attr.label_list(allow_files = True),
         "cargo_vendor": attr.bool(default = False),
+        "cargo_manifest": attr.string(default = "rust/Cargo.toml"),
     },
 )
 
@@ -154,6 +158,7 @@ def _sources_impl(ctx):
                     recursive_init_submodules = source.get("recursive_init_submodules", False),
                     patches = tag.vllm_patches if name == "vllm" else [],
                     cargo_vendor = source.get("cargo_vendor", False),
+                    cargo_manifest = source.get("cargo_manifest", "rust/Cargo.toml"),
                 )
 
 profile_sources = module_extension(

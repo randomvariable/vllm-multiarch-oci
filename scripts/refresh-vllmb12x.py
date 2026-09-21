@@ -3,25 +3,28 @@
 
 The vLLM branch is moving input only to this command. Bazel consumes the
 resulting full commit SHAs and never resolves a branch itself.
+
+The generated version composes three things: the upstream vLLM base version
+declared in the manifest, the local-inference-lab cycle the source ref names,
+and a digest of the locked source set. The digest stands in for a build date,
+so rebuilding identical inputs reproduces the same version, wheel filename and
+image label.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 ROOT: Final = Path(__file__).resolve().parents[1]
 PROFILE: Final = ROOT / "profiles/vllmb12x/profile.json"
 VERSION: Final = ROOT / "profiles/vllmb12x/version.bzl"
-DEFAULT_VLLM_REMOTE: Final = "https://github.com/local-inference-lab/vllm.git"
-DEFAULT_VLLM_REF: Final = "refs/heads/dev/jovian-judgement"
-DEFAULT_B12X_REMOTE: Final = "https://github.com/local-inference-lab/b12x.git"
-DEFAULT_B12X_REF: Final = "refs/heads/master"
 
 # These are every CMake download that the CUDA profile replaces through an
 # explicit *_SRC_DIR. A new CMake source declaration must be classified here
@@ -29,6 +32,7 @@ DEFAULT_B12X_REF: Final = "refs/heads/master"
 CMAKE_SOURCES: Final = {
     "vllm_cmake_cutlass": ("CMakeLists.txt", "https://github.com/nvidia/cutlass.git", "CUTLASS_REVISION"),
     "vllm_cmake_deepgemm": ("cmake/external_projects/deepgemm.cmake", "https://github.com/deepseek-ai/DeepGEMM.git", "_DEEPGEMM_UPSTREAM_TAG"),
+    "vllm_cmake_deepselect": ("cmake/external_projects/deepselect.cmake", "https://github.com/vllm-project/DeepSelect.git", "GIT_TAG"),
     "vllm_cmake_qutlass": ("cmake/external_projects/qutlass.cmake", "https://github.com/IST-DASLab/qutlass.git", "_QUTLASS_UPSTREAM_TAG"),
     "vllm_cmake_triton": ("cmake/external_projects/triton_kernels.cmake", "https://github.com/triton-lang/triton.git", "TRITON_KERNELS_TAG"),
     "vllm_cmake_msa": ("cmake/external_projects/fmha_sm100.cmake", "https://github.com/vllm-project/MSA.git", "GIT_TAG"),
@@ -40,7 +44,7 @@ CMAKE_SOURCES: Final = {
 
 
 def run(*command: str, cwd: Path | None = None) -> str:
-    result = subprocess.run(command, cwd=cwd, text=True, capture_output=True)
+    result = subprocess.run(command, cwd=cwd, text=True, capture_output=True, check=False)
     if result.returncode:
         raise RuntimeError(
             f"{' '.join(command)} failed with {result.returncode}: {result.stderr.strip()}"
@@ -87,12 +91,79 @@ def cmake_value(source: Path, variable: str) -> str:
     raise RuntimeError(f"cannot extract {variable} from {source}")
 
 
-def source_version(commit: str) -> str:
-    # This fork publishes no release tags. Its own pinned CI synthesizes this
-    # setuptools-scm public version for a detached branch checkout. The local
-    # segment below carries the full selected immutable revision.
-    del commit
-    return "0.1.dev1"
+def sources_digest(source_ref: str, sources: dict[str, dict[str, str]]) -> str:
+    """Return the digest of every source the image is built from.
+
+    The image is assembled from many pinned repositories, so no single commit
+    identifies it. Hashing each locked remote and commit makes the version
+    change exactly when a pin changes, and lets anyone recompute the value from
+    the committed manifest.
+    """
+    canonical = json.dumps(
+        {
+            "source_ref": source_ref,
+            "sources": {
+                name: {"commit": source["commit"], "remote": source["remote"]}
+                for name, source in sorted(sources.items())
+            },
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def cycle_name(source_ref: str) -> str:
+    """Return the local-inference-lab cycle a source ref names."""
+    if re.fullmatch(r"[0-9a-f]{40}", source_ref):
+        raise RuntimeError(
+            f"a version names the cycle, so the vLLM ref must be a branch: {source_ref!r}"
+        )
+    branch = source_ref.removeprefix("refs/heads/")
+    for prefix in ("cycle/", "dev/"):
+        if branch.startswith(prefix):
+            return branch[len(prefix):]
+    return branch
+
+
+def base_version(declared: str | None, requested: str | None) -> str:
+    """Return the upstream vLLM base version, preferring the requested value.
+
+    The cycle branch merges upstream pull requests selectively, so tag ancestry
+    does not prove which release it descends from. The base is therefore a
+    reviewed claim recorded in the manifest, not a value inferred from tags.
+    """
+    value = requested or declared
+    if not value:
+        raise RuntimeError(
+            "profile.json needs vllm_base_version; set it with --vllm-base-version"
+        )
+    if not re.fullmatch(r"\d+\.\d+\.\d+(?:[-.][0-9A-Za-z.-]+)?", value):
+        raise RuntimeError(f"vLLM base version must look like 0.29.0: {value!r}")
+    return value
+
+
+def build_version(
+    base: str, cycle: str, vllm_commit: str, b12x_commit: str, digest: str
+) -> str:
+    """Compose the PEP 440 distribution version recorded in the image.
+
+    The image is built from two pins that move independently — the vLLM fork
+    and B12X — so both are named, in the same twelve-hexadecimal form the
+    publication tag uses for the vLLM revision. The digest follows them and
+    covers every remaining source, so a change in torch, NCCL or a CMake
+    download moves the version even though neither named pin did.
+
+    Packaging normalises "-" and "_" to "." inside a local version segment, so
+    a version built from the branch spelling would reach the wheel filename and
+    the distribution metadata differently from the image label. Building from
+    the normalised spelling keeps one string everywhere; the branch itself is
+    still named by VLLM_SOURCE_REF.
+    """
+    return (
+        f"{base}+{re.sub(r'[-_]+', '.', cycle).lower()}"
+        f".{vllm_commit[:12]}.{b12x_commit[:12]}.{digest[:12]}"
+    )
 
 
 def canonical_source_ref(ref: str) -> str:
@@ -106,18 +177,69 @@ def canonical_source_ref(ref: str) -> str:
         return ref
     branch = ref.removeprefix("refs/heads/")
     if branch.startswith("refs/") or not re.fullmatch(r"[A-Za-z0-9._][A-Za-z0-9._/-]*", branch):
-        raise RuntimeError(f"vLLM source ref must name a branch or a commit: {ref!r}")
+        raise RuntimeError(f"source ref must name a branch or a commit: {ref!r}")
     return f"refs/heads/{branch}"
 
 
-def version_module(public_version: str, source_ref: str, commit: str) -> str:
-    build_version = f"{public_version}+vllmb12x.g{commit[:12]}"
+def tracked_pair(manifest: dict[str, Any], name: str) -> tuple[str, str]:
+    """Return the remote and ref the manifest records for one source.
+
+    The manifest, not this script, decides which lineage a pin follows: the
+    remote is recorded per source, and the ref is recorded as `source_ref` for
+    vLLM and `b12x_ref` for B12X. Script defaults cannot hold these, because a
+    default that drifts from the profile resolves another lineage and rewrites
+    the pin silently.
+    """
+    key = "source_ref" if name == "vllm" else f"{name}_ref"
+    if key not in manifest or "remote" not in manifest["sources"][name]:
+        raise RuntimeError(
+            f"profile.json does not record {key} and the {name} remote; "
+            "pass the remote and ref explicitly"
+        )
+    return manifest["sources"][name]["remote"], canonical_source_ref(manifest[key])
+
+
+def select_pair(
+    name: str,
+    manifest: dict[str, Any],
+    remote: str | None,
+    ref: str | None,
+    allow_change: bool,
+) -> tuple[str, str]:
+    """Return the remote and ref to resolve, refusing an unrequested move.
+
+    Resolving a pair other than the recorded one rewrites the pin onto another
+    lineage, which is how a bare refresh would walk a pin backwards after the
+    fork pair changed. The move is therefore an explicit act.
+    """
+    recorded_remote, recorded_ref = tracked_pair(manifest, name)
+    if remote is None and ref is None:
+        return recorded_remote, recorded_ref
+    selected_remote = remote or recorded_remote
+    selected_ref = canonical_source_ref(ref or recorded_ref)
+    if (selected_remote, selected_ref) != (recorded_remote, recorded_ref) and not allow_change:
+        raise RuntimeError(
+            f"{name} is tracked at {recorded_remote} {recorded_ref}, but this run would "
+            f"resolve {selected_remote} {selected_ref}; pass --allow-source-change to move it"
+        )
+    return selected_remote, selected_ref
+
+
+def version_module(version: str, source_ref: str, commit: str) -> str:
     return "\n".join((
         "# SPDX-License-Identifier: Apache-2.0",
         "# Generated by scripts/refresh-vllmb12x.py. Do not edit by hand.",
-        '"""PEP 440 distribution version for the vLLM wheel this profile builds."""',
+        '"""PEP 440 distribution version for the vLLM wheel this profile builds.',
         "",
-        f'VLLM_BUILD_VERSION = "{build_version}"',
+        "Composed from the upstream vLLM base version declared in profile.json, the",
+        "local-inference-lab cycle that VLLM_SOURCE_REF names, the vLLM and B12X",
+        "commits the manifest pins, and the first twelve hexadecimal digits of the",
+        "digest over the locked source set. Every part is a pure function of the",
+        "manifest, so identical inputs rebuild the same version; recompute it with",
+        "`scripts/refresh-vllmb12x.py --dry-run`.",
+        '"""',
+        "",
+        f'VLLM_BUILD_VERSION = "{version}"',
         f'VLLM_SOURCE_REF = "{source_ref}"',
         f'VLLM_SOURCE_REVISION = "{commit}"',
         "",
@@ -126,28 +248,40 @@ def version_module(public_version: str, source_ref: str, commit: str) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--vllm-remote", default=DEFAULT_VLLM_REMOTE)
-    parser.add_argument("--vllm-ref", default=DEFAULT_VLLM_REF)
+    parser.add_argument("--vllm-remote")
+    parser.add_argument("--vllm-ref")
     parser.add_argument("--vllm-commit")
-    parser.add_argument("--b12x-remote", default=DEFAULT_B12X_REMOTE)
-    parser.add_argument("--b12x-ref", default=DEFAULT_B12X_REF)
+    parser.add_argument("--vllm-base-version")
+    parser.add_argument("--b12x-remote")
+    parser.add_argument("--b12x-ref")
     parser.add_argument("--b12x-commit")
+    parser.add_argument("--allow-source-change", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     manifest = json.loads(PROFILE.read_text())
     with tempfile.TemporaryDirectory(prefix="refresh-vllmb12x-") as temporary:
         checkout_root = Path(temporary) / "vllm"
-        source_ref = canonical_source_ref(args.vllm_ref)
-        vllm_commit = resolve_ref(args.vllm_remote, args.vllm_commit or args.vllm_ref)
-        b12x_commit = resolve_ref(args.b12x_remote, args.b12x_commit or args.b12x_ref)
-        checkout(args.vllm_remote, vllm_commit, checkout_root)
+        vllm_remote, vllm_ref = select_pair(
+            "vllm", manifest, args.vllm_remote, args.vllm_ref, args.allow_source_change
+        )
+        b12x_remote, b12x_ref = select_pair(
+            "b12x", manifest, args.b12x_remote, args.b12x_ref, args.allow_source_change
+        )
+        source_ref = canonical_source_ref(vllm_ref)
+        vllm_commit = resolve_ref(vllm_remote, args.vllm_commit or vllm_ref)
+        b12x_commit = resolve_ref(b12x_remote, args.b12x_commit or b12x_ref)
+        checkout(vllm_remote, vllm_commit, checkout_root)
 
         updated = json.loads(json.dumps(manifest))
+        updated["vllm_base_version"] = base_version(
+            manifest.get("vllm_base_version"), args.vllm_base_version
+        )
         updated["source_ref"] = source_ref
-        updated["sources"]["vllm"]["remote"] = args.vllm_remote
+        updated["b12x_ref"] = canonical_source_ref(b12x_ref)
+        updated["sources"]["vllm"]["remote"] = vllm_remote
         updated["sources"]["vllm"]["commit"] = vllm_commit
-        updated["sources"]["b12x"]["remote"] = args.b12x_remote
+        updated["sources"]["b12x"]["remote"] = b12x_remote
         updated["sources"]["b12x"]["commit"] = b12x_commit
         for name, (relative_path, remote, variable) in CMAKE_SOURCES.items():
             source = checkout_root / relative_path
@@ -164,7 +298,17 @@ def main() -> None:
             resolve_ref(source["remote"], source["commit"])
 
         content = json.dumps(updated, indent=2, sort_keys=True) + "\n"
-        version = version_module(source_version(vllm_commit), source_ref, vllm_commit)
+        version = version_module(
+            build_version(
+                updated["vllm_base_version"],
+                cycle_name(source_ref),
+                vllm_commit,
+                b12x_commit,
+                sources_digest(source_ref, updated["sources"]),
+            ),
+            source_ref,
+            vllm_commit,
+        )
         if args.dry_run:
             print(content, end="")
             print(version, end="")

@@ -10,7 +10,11 @@ metadataTest:
       value: "[0-9a-f]{40}"
       isRegex: true
     - key: "org.opencontainers.image.version"
-      value: "0\\.1\\.dev1\\+vllmb12x\\.g[0-9a-f]{12}"
+      # Upstream vLLM base version, the cycle the source ref names, the pinned
+      # vLLM and B12X commits, and the digest over the locked source set. The
+      # cycle carries its PEP 440 spelling, which is what the wheel filename
+      # and metadata carry too.
+      value: "[0-9]+\\.[0-9]+\\.[0-9]+\\+karmic\\.kraken(\\.[0-9a-f]{12}){3}"
       isRegex: true
     - key: "uk.co.randomvariable.vllmb12x.vllm-source-ref"
       value: "(refs/heads/.+|[0-9a-f]{40})"
@@ -66,12 +70,6 @@ fileExistenceTests:
   - name: "profile-pinned NCCL"
     path: "/opt/nccl/lib/libnccl.so.2.30.4"
     shouldExist: true
-  - name: "RDMA verbs runtime"
-    path: "/usr/lib/aarch64-linux-gnu/libibverbs.so.1"
-    shouldExist: true
-  - name: "Mellanox RDMA provider"
-    path: "/usr/lib/aarch64-linux-gnu/libibverbs/libmlx5-rdmav59.so"
-    shouldExist: true
   - name: "CUDA 13 cuSPARSELt runtime"
     path: "/opt/cusparselt/lib/libcusparseLt.so.0"
     shouldExist: true
@@ -80,9 +78,6 @@ fileExistenceTests:
     shouldExist: true
   - name: "B12X source identities"
     path: "/opt/vllmb12x/source-identity/vllm.json"
-    shouldExist: true
-  - name: "liburing runtime"
-    path: "/usr/lib/aarch64-linux-gnu/liburing.so.2"
     shouldExist: true
   # b12x compiles its PLE reader in the container and only enables the
   # io_uring path when pkg-config reports liburing, so the headers and
@@ -96,6 +91,20 @@ fileExistenceTests:
   - name: "RDMA verbs development headers"
     path: "/usr/include/infiniband/verbs.h"
     shouldExist: true
+  - name: "Named non-root account home"
+    path: "/home/vllm"
+    shouldExist: true
+    permissions: "drwxr-xr-x"
+
+# Ubuntu resolves accounts through these files, so the named account has to
+# appear in both.
+fileContentTests:
+  - name: "Named non-root account is in passwd"
+    path: "/etc/passwd"
+    expectedContents: ["vllm:x:10001:10001:[^:]*:/home/vllm:/bin/bash"]
+  - name: "Named non-root account is in group"
+    path: "/etc/group"
+    expectedContents: ["vllm:x:10001:"]
 
 commandTests:
   - name: "Generic image helper exposes stable commands"
@@ -114,6 +123,19 @@ commandTests:
       - "-c"
       - "import torch; print('cudnn', torch.backends.cudnn.version())"
     expectedOutput: ["cudnn 9[0-9]+"]
+  - name: "Python runs with mimalloc preloaded"
+    command: "/opt/venv/bin/python"
+    args:
+      - "-c"
+      - "from pathlib import Path; assert 'libmimalloc.so.3' in Path('/proc/self/maps').read_text(); print('mimalloc preloaded')"
+    expectedOutput: ["mimalloc preloaded"]
+  - name: "vLLM CLI starts with mimalloc preloaded"
+    command: "/opt/venv/bin/vllm"
+    envVars:
+      - key: "VLLM_TARGET_DEVICE"
+        value: "cpu"
+    args: ["--help"]
+    expectedOutput: ["vLLM CLI"]
   - name: "Mooncake Python modules and CLI entry points are installed"
     command: "/opt/venv/bin/python"
     args:
@@ -167,3 +189,28 @@ commandTests:
       - "-c"
       - "from b12x.comm.roce import _proxy; print('roce proxy', _proxy._build().name)"
     expectedOutput: ["roce proxy roce_proxy-[0-9a-f]+\\.so"]
+  # A pod that pins its own runAsUser previously had no passwd entry, so
+  # expanduser("~") resolved to "/" and imports that create a workspace below
+  # the home directory failed. Drop to the named account and prove the home
+  # directory resolves and is writable.
+  #
+  # HOME is cleared deliberately: CST runs this container as the image's
+  # default user, where the runtime does export HOME=/root, and setpriv would
+  # inherit it. A pod that pins runAsUser is not given that variable, so
+  # leaving it set would test the runtime's root environment instead of the
+  # account, and fail on a correct image.
+  - name: "Non-root account resolves and can write its home directory"
+    command: "/usr/bin/setpriv"
+    args:
+      - "--reuid"
+      - "10001"
+      - "--regid"
+      - "10001"
+      - "--clear-groups"
+      - "/usr/bin/env"
+      - "-u"
+      - "HOME"
+      - "/opt/venv/bin/python"
+      - "-c"
+      - "import os, pathlib; home = pathlib.Path(os.path.expanduser('~')); workspace = home / 'workspace'; workspace.mkdir(parents=True, exist_ok=True); (workspace / 'ok').write_text('ok'); print('uid', os.getuid(), 'home', home)"
+    expectedOutput: ["uid 10001 home /home/vllm"]

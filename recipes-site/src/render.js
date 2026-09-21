@@ -48,6 +48,10 @@ function validateRecipe(recipe) {
   if (recipe.deployment.nodes !== 2 || recipe.deployment.tensor_parallel_size !== 2) fail("this renderer requires the fixed two-node TP=2 topology");
   if (!/^[0-9a-f]{40}$/.test(recipe.model.revision)) fail("model.revision must be a full lowercase commit OID");
   if (!DIGEST_REFERENCE.test(recipe.validation.image)) fail("validation.image must be digest-qualified");
+  const requiredFiles = recipe.deployment.required_files;
+  if (requiredFiles !== undefined && (!Array.isArray(requiredFiles) || !requiredFiles.every((value) => typeof value === "string" && value.trim() !== ""))) {
+    fail("deployment.required_files must be a string array");
+  }
 }
 
 function normalizedParameters(recipe, supplied, target) {
@@ -93,6 +97,10 @@ function modelSyncArgs(recipe) {
     "--min-free-gib", String(recipe.deployment.storage_min_free_gib), "--workers", String(recipe.deployment.download_workers),
   ];
   for (const pattern of recipe.deployment.ignore_patterns) args.push("--ignore", pattern);
+  // Checkpoint assets loaded after the weights. Naming them here keeps the
+  // truncation check inside the image helper instead of an init-container
+  // script that re-walks the snapshot.
+  for (const name of recipe.deployment.required_files ?? []) args.push("--require", name);
   args.push("--token-env", "HF_TOKEN");
   return args;
 }

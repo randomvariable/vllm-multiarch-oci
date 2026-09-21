@@ -3,30 +3,88 @@
     {
       "name": "vllm",
       "title": "vLLM",
-      "branch": "refs/heads/dev/rv-jovian-judgement-profile-base",
+      "branch": "refs/heads/cycle/karmic-kraken",
       "upstream": "local-inference-lab/vllm",
-      "upstream_base": "refs/heads/dev/jovian-judgement",
+      "upstream_base": "refs/heads/dev/karmic-kraken",
       "changes": [
+
         {
           "pull_request": "local-inference-lab/vllm#777",
-          "title": "fix(qwen): propagate MTP positional overrides",
+          "title": "Qwen MTP positional overrides",
           "inclusion": "branch",
-          "commits": 3,
-          "note": "The draft model resolved 262,144 positions from its checkpoint while the target resolved 1,048,576, so a full-length prefill was rejected."
+          "commits": 1
         },
         {
-          "pull_request": "local-inference-lab/vllm#779",
-          "title": "perf(qwen): shard TP4 HC prefill and coalesce recurrent checkpoints",
+          "pull_request": "local-inference-lab/vllm#798",
+          "title": "GLM pooled-indexer workspace ownership",
           "inclusion": "branch",
-          "commits": 9,
-          "note": "Opt-in: the tail coalescing and token-ownership paths are off unless the deployment enables them."
+          "commits": 6
         },
         {
-          "pull_request": "vllm-project/vllm#52917",
-          "title": "Adaptive spin grace and bounded architectural waits for shm_broadcast",
-          "inclusion": "patch",
-          "patch": "third_party/vllm_shm_broadcast_spin_grace.patch",
-          "note": "The pinned revision carries the bounded-wait half. The patch adds the adaptive grace half, reproducing randomvariable/vllm refs/heads/dev/rv-jovian-judgement at 3c948029c899219ce5d7c4bbb565e20d7bc6a837. Keep it for every tensor-parallel model: without it the mp executor busy-spins."
+          "pull_request": "local-inference-lab/vllm#800",
+          "title": "Bounded shared-memory broadcast waits",
+          "inclusion": "branch",
+          "commits": 1
+        },
+        {
+          "pull_request": "local-inference-lab/vllm#801",
+          "title": "Sparse MLA preparation release",
+          "inclusion": "branch",
+          "commits": 6
+        },
+        {
+          "pull_request": "local-inference-lab/vllm#802",
+          "title": "SM120 FlashKDA workspace copies",
+          "inclusion": "branch",
+          "commits": 1
+        },
+        {
+          "pull_request": "local-inference-lab/vllm#803",
+          "title": "KDA preparation workspace reuse",
+          "inclusion": "branch",
+          "commits": 5
+        },
+        {
+          "pull_request": "local-inference-lab/vllm#805",
+          "title": "NVFP4 Marlin scale-factor memory bounds",
+          "inclusion": "branch",
+          "commits": 6
+        },
+        {
+          "pull_request": "local-inference-lab/vllm#806",
+          "title": "GLM DCP attention workspace reuse",
+          "inclusion": "branch",
+          "commits": 5
+        },
+        {
+          "pull_request": "local-inference-lab/vllm#807",
+          "title": "KV cache profile ownership",
+          "inclusion": "branch",
+          "commits": 5
+        },
+        {
+          "pull_request": "local-inference-lab/vllm#809",
+          "title": "Boundary checkpoint cache retention",
+          "inclusion": "branch",
+          "commits": 6
+        },
+        {
+          "pull_request": "local-inference-lab/vllm#810",
+          "title": "B12X MoE input-scale ownership",
+          "inclusion": "branch",
+          "commits": 1
+        },
+        {
+          "pull_request": "local-inference-lab/vllm#812",
+          "title": "DeepSeek WO plan ownership",
+          "inclusion": "branch",
+          "commits": 2
+        },
+        {
+          "pull_request": "local-inference-lab/vllm#813",
+          "title": "B12X shared-expert tuning context",
+          "inclusion": "branch",
+          "commits": 5
         },
         {
           "pull_request": null,
@@ -40,30 +98,10 @@
     {
       "name": "b12x",
       "title": "B12X",
-      "branch": "refs/heads/dev/rv-jovian-judgement",
+      "branch": "refs/heads/master",
       "upstream": "local-inference-lab/b12x",
       "upstream_base": "refs/heads/master",
-      "changes": [
-        {
-          "pull_request": "local-inference-lab/b12x#384",
-          "title": "fix(preparation): retain prepared launchers and coordinate collectives",
-          "inclusion": "branch",
-          "commits": 10,
-          "note": "Includes the RoCE one-shot dtype fix, the collective entry barrier, and the source-hashed JIT extension build directory."
-        },
-        {
-          "pull_request": "local-inference-lab/b12x#386",
-          "title": "feat(ple): export prepared internal prefill checkpoints",
-          "inclusion": "branch",
-          "commits": 2
-        },
-        {
-          "pull_request": "local-inference-lab/b12x#387",
-          "title": "perf(qsa): reuse representative keys across paired queries",
-          "inclusion": "branch",
-          "commits": 4
-        }
-      ]
+      "changes": []
     }
   ]
 }

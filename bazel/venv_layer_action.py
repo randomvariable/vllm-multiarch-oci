@@ -40,8 +40,8 @@ def materialize_console_scripts(site: Path, destination: Path) -> None:
                 "#!/bin/sh\nexec /opt/venv/bin/python -c "
                 + shlex.quote(
                     "import sys; from importlib.metadata import distribution; "
-                    "entry = distribution(%r).entry_points.select("
-                    "group='console_scripts', name=%r)[0]; sys.exit(entry.load()())"
+                    "entry = next(iter(distribution(%r).entry_points.select("
+                    "group='console_scripts', name=%r))); sys.exit(entry.load()())"
                     % (distribution.metadata["Name"], entry_point.name)
                 )
                 + ' "$@"\n'

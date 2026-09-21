@@ -19,6 +19,7 @@ single_version_override(
 bazel_dep(name = "rules_rust", version = "0.73.0")
 bazel_dep(name = "rules_shell", version = "0.8.0")
 bazel_dep(name = "rules_distroless", version = "0.9.4")
+bazel_dep(name = "aspect_bazel_lib", version = "2.21.1")
 bazel_dep(name = "container_structure_test", version = "1.22.1")
 
 single_version_override(
@@ -29,23 +30,24 @@ single_version_override(
 
 oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
 oci.pull(
-    name = "cuda_1331_cudnn_devel_ubuntu2604",
-    digest = "sha256:0528eebc7f005a7408b9a2e2128fcb7bc14237d59c7d6bb69787bde3234ac43a",
+    name = "cuda_1341_cudnn_devel_ubuntu2604",
+    digest = "sha256:a452ee73c60203a0e30c499b4147c30d1e77acaa8230e0ce1b9cb40c6641c82d",
     image = "docker.io/nvidia/cuda",
-    platforms = ["linux/arm64"],
+    platforms = ["linux/amd64", "linux/arm64"],
 )
 use_repo(
     oci,
-    "cuda_1331_cudnn_devel_ubuntu2604",
-    "cuda_1331_cudnn_devel_ubuntu2604_linux_arm64",
+    "cuda_1341_cudnn_devel_ubuntu2604",
+    "cuda_1341_cudnn_devel_ubuntu2604_linux_amd64",
+    "cuda_1341_cudnn_devel_ubuntu2604_linux_arm64",
 )
 
 # The CUDA base owns CUDA and cuDNN. Install only the runtime tools that vLLM
 # and B12X need, from a pinned Ubuntu archive for deterministic ARM64 layers.
 apt = use_extension("@rules_distroless//apt:extensions.bzl", "apt")
 apt.sources_list(
-    architectures = ["arm64"],
-    components = ["main"],
+    architectures = ["amd64", "arm64"],
+    components = ["main", "universe"],
     suites = [
         "resolute",
         "resolute-security",
@@ -54,8 +56,14 @@ apt.sources_list(
     # Keep the snapshot as the authoritative index and checksum source. The
     # ports mirror supplies identical content-addressed debs when the snapshot
     # origin has a transient package-blob outage.
+    #
+    # The ports mirror carries arm64 only, so on its own it cannot cover the
+    # amd64 index: a snapshot outage strands that architecture with no working
+    # index and fails the whole build. The archive mirror carries amd64, and a
+    # mirror is consulted only after the snapshot origin fails.
     uris = [
         "https://snapshot.ubuntu.com/ubuntu/20260901T000000Z",
+        "mirror+https://archive.ubuntu.com/ubuntu",
         "mirror+https://ports.ubuntu.com/ubuntu-ports",
     ],
 )
@@ -76,10 +84,53 @@ apt.install(
         # pkg-config reports liburing. Without the headers and pkgconf here,
         # disk-backed PLE fails at the first forward pass.
         "liburing-dev:arm64",
+        # FlexKV builds its C++ core in the container, both through its
+        # documented ./build.sh (csrc/transfer_ssd.h includes liburing.h) and
+        # through setup.py, which links -lhiredis when FLEXKV_ENABLE_P2P is set
+        # (csrc/dist/redis_meta_channel.cpp includes hiredis/hiredis.h). Neither
+        # header is in the base. FlexKV vendors xxHash and installs its own
+        # copy, so libxxhash-dev follows its README rather than its build; the
+        # runtime libxxhash.so.0 already arrives with the base image.
+        "libxxhash-dev:arm64",
+        "libhiredis-dev:arm64",
+        # build.sh configures with cmake before setup.py packages the result.
+        # The CUDA development base ships gcc, g++, and make, but no cmake.
+        "cmake:arm64",
+        # Mooncake's transfer engine loads libcurl.so.4 at run time. The base
+        # ships no curl at all, so this is the only provider of that soname.
+        "libcurl4t64:arm64",
+        # vLLM and its Python runtime preload mimalloc to replace glibc's
+        # allocator throughout the serving process.
+        "libmimalloc3:arm64",
         "pkgconf:arm64",
         "libnuma1:arm64",
         "pciutils:arm64",
         "python3:arm64",
+    ],
+    suites = [
+        "resolute",
+        "resolute-security",
+    ],
+)
+
+apt.install(
+    dependency_set = "runtime_apt_x86_64",
+    packages = [
+        "ca-certificates:amd64",
+        "ibverbs-providers:amd64",
+        "libibverbs1:amd64",
+        "libibverbs-dev:amd64",
+        "liburing2:amd64",
+        "liburing-dev:amd64",
+        "libxxhash-dev:amd64",
+        "libhiredis-dev:amd64",
+        "cmake:amd64",
+        "libcurl4t64:amd64",
+        "libmimalloc3:amd64",
+        "pkgconf:amd64",
+        "libnuma1:amd64",
+        "pciutils:amd64",
+        "python3:amd64",
     ],
     suites = [
         "resolute",
@@ -93,9 +144,28 @@ apt.install(
     dependency_set = "gcc_15_sysroot",
     packages = [
         "g++:arm64",
+        # Native actions invoke these binaries directly. Keep them in the
+        # declared sysroot instead of relying on a worker's PATH.
+        "coreutils:arm64",
+        "bash:arm64",
+        "gawk:arm64",
+        # PyTorch's CMake configuration runs ldd after linking host tools.
+        # It must come from this declared sysroot, never from the worker.
+        "libc-bin:arm64",
+        "findutils:arm64",
+        "grep:arm64",
+        "make:arm64",
+        # vLLM's Rust frontend vendors OpenSSL, whose Configure script is Perl.
+        "perl:arm64",
+        "patch:arm64",
+        "pkgconf:arm64",
+        "sed:arm64",
+        "which:arm64",
         # Compile NCCL's net_ib and GDAKI transports against the same pinned
         # RDMA userspace ABI shipped in the runtime image.
         "libibverbs-dev:arm64",
+        # DeepGEMM's deep_jit backend uses libdwfl for ELF inspection.
+        "libdw-dev:arm64",
         "liburing-dev:arm64",
     ],
     suites = [
@@ -103,24 +173,67 @@ apt.install(
         "resolute-security",
     ],
 )
-use_repo(apt, "gcc_15_sysroot", "runtime_apt")
+
+apt.install(
+    dependency_set = "gcc_15_sysroot_x86_64",
+    packages = [
+        "g++:amd64",
+        "coreutils:amd64",
+        "bash:amd64",
+        "gawk:amd64",
+        "libc-bin:amd64",
+        "findutils:amd64",
+        "grep:amd64",
+        "make:amd64",
+        "perl:amd64",
+        "patch:amd64",
+        "pkgconf:amd64",
+        "sed:amd64",
+        "which:amd64",
+        "libibverbs-dev:amd64",
+        "libdw-dev:amd64",
+        "liburing-dev:amd64",
+    ],
+    suites = [
+        "resolute",
+        "resolute-security",
+    ],
+)
+
+# Local x86-64 builds execute ARM64 Python actions through this pinned static
+# emulator. It is an action input, never a worker `/usr/bin` dependency.
+apt.install(
+    dependency_set = "qemu_aarch64_emulator",
+    packages = ["qemu-user-static:amd64"],
+    suites = [
+        "resolute",
+        "resolute-security",
+    ],
+)
+use_repo(
+    apt,
+    "gcc_15_sysroot",
+    "gcc_15_sysroot_x86_64",
+    "qemu_aarch64_emulator",
+    "runtime_apt",
+    "runtime_apt_x86_64",
+)
 
 # Bazel caches whole actions, so one changed source recompiles a component from
 # scratch. vLLM's incremental-build guide recovers per-file reuse through a
 # compiler launcher; this supplies that launcher to the CUDA build actions.
 ccache = use_extension("//bazel:ccache.bzl", "ccache")
-use_repo(ccache, "ccache")
+use_repo(ccache, "ccache", "ccache_x86_64")
 
 cuda = use_extension("//bazel:cuda_redist.bzl", "cuda_redist")
-use_repo(cuda, "cuda_sbsa")
+use_repo(cuda, "cuda_sbsa", "cuda_x86_64")
 
 sources = use_extension("//bazel:sources.bzl", "profile_sources")
 sources.profile(
     manifest = "//profiles/vllmb12x:profile.json",
-    # Keep the Spark thermal scheduling control as a declared source input.
-    # Its hash becomes part of source.identity.json.
+    # Builder-specific source repairs are declared inputs. Their hashes become
+    # part of source.identity.json.
     vllm_patches = [
-        "//third_party:vllm_shm_broadcast_spin_grace.patch",
         "//third_party:vllm_flash_attn_cute_namespace.patch",
     ],
 )
@@ -133,6 +246,7 @@ use_repo(
     "vllmb12x_flashinfer",
     "vllmb12x_instanttensor",
     "vllmb12x_lmcache",
+    "vllmb12x_llguidance",
     "vllmb12x_nccl",
     "vllmb12x_torch",
     "vllmb12x_torchaudio",
@@ -140,6 +254,7 @@ use_repo(
     "vllmb12x_vllm",
     "vllmb12x_vllm_cmake_cutlass",
     "vllmb12x_vllm_cmake_deepgemm",
+    "vllmb12x_vllm_cmake_deepselect",
     "vllmb12x_vllm_cmake_flash_attn",
     "vllmb12x_vllm_cmake_flashkda",
     "vllmb12x_vllm_cmake_flashmla",
@@ -153,7 +268,10 @@ use_repo(
 rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
 rust.toolchain(
     edition = "2024",
-    extra_target_triples = ["aarch64-unknown-linux-gnu"],
+    extra_target_triples = [
+        "aarch64-unknown-linux-gnu",
+        "x86_64-unknown-linux-gnu",
+    ],
     versions = ["1.95.0"],
 )
 use_repo(rust, "rust_toolchains")
@@ -182,6 +300,22 @@ pip.default(
         "manylinux_2_28_aarch64",
         "manylinux_2_27_aarch64",
         "manylinux2014_aarch64",
+    ],
+)
+
+pip.default(
+    arch_name = "x86_64",
+    config_settings = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
+    os_name = "linux",
+    platform = "manylinux_2_31_x86_64",
+    whl_abi_tags = ["cp{major}{minor}"],
+    whl_platform_tags = [
+        "manylinux_2_31_x86_64",
+        "manylinux_2_28_x86_64",
+        "manylinux2014_x86_64",
     ],
 )
 pip.parse(
@@ -216,6 +350,41 @@ pip.parse(
     python_version = "3.12",
     requirements_lock = "//profiles/vllmb12x:requirements.lock",
 )
-use_repo(pip, "host_deps", "runtime_deps")
+pip.parse(
+    download_only = True,
+    extra_pip_args = [
+        "--platform=manylinux_2_34_x86_64",
+        "--platform=manylinux_2_31_x86_64",
+        "--platform=manylinux_2_28_x86_64",
+        "--platform=manylinux2014_x86_64",
+        "--python-version=312",
+        "--implementation=cp",
+        "--abi=cp312",
+        "--abi=abi3",
+    ],
+    hub_name = "host_deps_x86_64",
+    python_version = "3.12",
+    requirements_lock = "//profiles/vllmb12x:host-build-requirements-x86_64.lock",
+)
+pip.parse(
+    download_only = True,
+    extra_pip_args = [
+        "--platform=manylinux_2_34_x86_64",
+        "--platform=manylinux_2_31_x86_64",
+        "--platform=manylinux_2_28_x86_64",
+        "--platform=manylinux2014_x86_64",
+        "--python-version=312",
+        "--implementation=cp",
+        "--abi=cp312",
+        "--abi=abi3",
+    ],
+    hub_name = "runtime_deps_x86_64",
+    python_version = "3.12",
+    requirements_lock = "//profiles/vllmb12x:requirements-x86_64.lock",
+)
+use_repo(pip, "host_deps", "host_deps_x86_64", "runtime_deps", "runtime_deps_x86_64")
 
-register_toolchains("//platforms:remote_linux_aarch64_cc_toolchain")
+register_toolchains(
+    "//platforms:hermetic_linux_aarch64_cc_toolchain",
+    "//platforms:hermetic_linux_x86_64_cc_toolchain",
+)

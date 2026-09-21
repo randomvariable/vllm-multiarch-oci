@@ -22,29 +22,41 @@ _CUDA_COMPONENTS = [
     "libnvjpeg",
 ]
 
-_CUDA_AUXILIARY_ARCHIVES = [
-    {
+_CUDA_AUXILIARY_ARCHIVES = {
+    "linux-sbsa": [
+        {
         "url": "https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-sbsa/cudnn-linux-sbsa-9.24.0.43_cuda13-archive.tar.xz",
         "sha256": "f9b71a8a070073f20224746d9216ac4e28de7f59b54a8c47200ff506e6d4d830",
-    },
-    {
+        },
+        {
         "url": "https://developer.download.nvidia.com/compute/cusparselt/redist/libcusparse_lt/linux-aarch64/libcusparse_lt-linux-aarch64-0.8.1.1_cuda13-archive.tar.xz",
         "sha256": "0fcf5808f66c71f755b4a73af2e955292e4334fec6a851eea1ac2e20878602b7",
-    },
-]
+        },
+    ],
+    "linux-x86_64": [
+        {
+            "url": "https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-9.24.0.43_cuda13-archive.tar.xz",
+            "sha256": "63f1900222c69ee7e94583408181ccdb988dc2833531ce6bde0df43bbdd04a6d",
+        },
+        {
+            "url": "https://developer.download.nvidia.com/compute/cusparselt/redist/libcusparse_lt/linux-x86_64/libcusparse_lt-linux-x86_64-0.8.1.1_cuda13-archive.tar.xz",
+            "sha256": "82dd3e5ebc199a27011f58857a80cd825e77bba634ab2286ba3d4e13115db89a",
+        },
+    ],
+}
 
 
 def _cuda_repository_impl(ctx):
     manifest = json.decode(ctx.read(ctx.attr.manifest))
     for component in _CUDA_COMPONENTS:
-        entry = manifest[component]["linux-sbsa"]
+        entry = manifest[component][ctx.attr.platform]
         ctx.download_and_extract(
             url = "https://developer.download.nvidia.com/compute/cuda/redist/%s" % entry["relative_path"],
             output = "components/%s" % component,
             sha256 = entry["sha256"],
         )
 
-    for index, archive in enumerate(_CUDA_AUXILIARY_ARCHIVES):
+    for index, archive in enumerate(_CUDA_AUXILIARY_ARCHIVES[ctx.attr.platform]):
         ctx.download_and_extract(
             url = archive["url"],
             output = "components/aux_%d" % index,
@@ -130,14 +142,23 @@ def _write_cusparselt_tar(ctx):
 
 _cuda_repository = repository_rule(
     implementation = _cuda_repository_impl,
-    attrs = {"manifest": attr.label(allow_single_file = True, mandatory = True)},
+    attrs = {
+        "manifest": attr.label(allow_single_file = True, mandatory = True),
+        "platform": attr.string(values = ["linux-sbsa", "linux-x86_64"], mandatory = True),
+    },
 )
 
 
 def _cuda_redist_impl(ctx):
     _cuda_repository(
         name = "cuda_sbsa",
-        manifest = Label("//cuda:redistrib_13.3.1.json"),
+        manifest = Label("//cuda:redistrib_13.4.1.json"),
+        platform = "linux-sbsa",
+    )
+    _cuda_repository(
+        name = "cuda_x86_64",
+        manifest = Label("//cuda:redistrib_13.4.1.json"),
+        platform = "linux-x86_64",
     )
 
 cuda_redist = module_extension(implementation = _cuda_redist_impl)

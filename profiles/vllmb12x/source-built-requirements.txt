@@ -1,0 +1,3 @@
+# These PyPI requirements are replaced by source wheels built from profile.json.
+# Keep versions aligned with their upstream requirement constraints.
+llguidance==1.7.6

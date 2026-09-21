@@ -27,4 +27,4 @@ torchcodec>=0.14
 
 # Source-built wheels installed by venv_layer, excluded from Bazel's PyPI hub.
 # torch, torchvision, torchaudio, flashinfer-python, flashinfer-cubin, xgrammar,
-# deepgemm, b12x, vllm, exllamav3, lmcache, instanttensor
+# deepgemm, b12x, vllm, exllamav3, lmcache, instanttensor, llguidance

@@ -2,17 +2,27 @@
 
 load("//bazel:nccl.bzl", "nccl_lib")
 
+_CUDA_TOOLKIT = "//platforms:cuda_toolkit"
+_TARGET_CPU = select({
+    "//platforms:linux_aarch64": "aarch64",
+    "//platforms:linux_x86_64": "x86_64",
+})
+_CUDA_ARCH = select({
+    "//platforms:cuda_sm12x": "120f",
+    "//platforms:cuda_sm120": "120",
+})
+
 package(default_visibility = ["//visibility:public"])
 
 nccl_lib(
     name = "libnccl",
     src = "@vllmb12x_nccl//:source.tar",
-    cuda = "@cuda_sbsa//:toolkit.tar",
+    cuda = _CUDA_TOOLKIT,
     commit = "dfab7c1ace32da250ba97757879429c341b7bcf9",
-    cuda_arch = "121a",
+    cuda_arch = _CUDA_ARCH,
+    target_cpu = _TARGET_CPU,
     python = "@python_3_12//:python3",
     python_runtime = "@python_3_12//:files",
-    target_compatible_with = ["@platforms//cpu:aarch64"],
 )
 
 filegroup(

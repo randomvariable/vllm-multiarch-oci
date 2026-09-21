@@ -14,13 +14,19 @@ sys.path.insert(0, str(Path(__file__).parent))
 from action_lib import (
     configure_compiler_cache,
     configure_compiler_sysroot,
+    configure_cargo_vendor,
+    configure_reproducible_compilation,
+    create_nvcc_wrapper,
     extract,
     extract_durable,
     extract_wheel_script,
     install_wheels,
+    materialize_console_scripts,
     rewrite_sysconfig,
     run,
     single_wheel,
+    target_abi,
+    wheel_scripts,
     work_root,
 )
 
@@ -35,8 +41,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--build-script", required=True)
     parser.add_argument("--ccache-tar", required=True)
     parser.add_argument("--gcc-sysroot-tar", required=True)
+    parser.add_argument("--target-cpu", required=True)
     parser.add_argument("--max-jobs", required=True, type=int)
     parser.add_argument("--output", required=True)
+    parser.add_argument("--rustc")
+    parser.add_argument("--cargo")
+    parser.add_argument("--cargo-vendor-tar")
     parser.add_argument("--host-wheel", action="append", default=[])
     return parser.parse_args()
 
@@ -68,7 +78,10 @@ def main() -> None:
         extract(work_root(args.nccl_tar), nccl)
 
     install_wheels(python, site, wheels)
+    materialize_console_scripts(python, site, site / "bin")
     for wheel in wheels:
+        for script in wheel_scripts(wheel, site / "bin"):
+            script.chmod(0o755)
         if wheel.name.startswith("ninja-"):
             extract_wheel_script(wheel, "ninja", site / "bin" / "ninja")
 
@@ -116,8 +129,40 @@ def main() -> None:
     env["CMAKE_ARGS"] = _append_argument(
         env.get("CMAKE_ARGS"), "-DPython3_EXECUTABLE=" + str(python)
     )
-    configure_compiler_sysroot(gcc_sysroot_tar, work, env)
-    configure_compiler_cache(work, ccache_tar, env)
+    configure_compiler_sysroot(gcc_sysroot_tar, work, env, target_cpu=args.target_cpu)
+    configure_compiler_cache(work, ccache_tar, env, target_cpu=args.target_cpu)
+    reproducible = configure_reproducible_compilation(work, source, env)
+    nvcc = create_nvcc_wrapper(work, cuda / "bin" / "nvcc")
+    env["CMAKE_ARGS"] = _append_argument(
+        env.get("CMAKE_ARGS"), "-DCMAKE_CUDA_COMPILER=" + str(nvcc)
+    )
+    env["NVCC_FLAGS"] = _append_argument(
+        env.get("NVCC_FLAGS"), reproducible["cuda"]
+    )
+    if args.cargo_vendor_tar:
+        if not args.rustc or not args.cargo:
+            raise ValueError("Rust source wheel requires --rustc and --cargo")
+        cargo_home = configure_cargo_vendor(work_root(args.cargo_vendor_tar), work)
+        cargo_target = work / "cargo" / "target"
+        cargo_home.mkdir(parents=True, exist_ok=True)
+        cargo_target.mkdir(parents=True, exist_ok=True)
+        env.update(
+            {
+                "CARGO_HOME": str(cargo_home),
+                "CARGO_NET_OFFLINE": "true",
+                "CARGO_TARGET_DIR": str(cargo_target),
+                "RUSTC": str(work_root(args.rustc)),
+            }
+        )
+        env["PATH"] = _prepend_path(
+            env.get("PATH"), work_root(args.rustc).parent, work_root(args.cargo).parent
+        )
+        # Cargo uses the bare `cc` linker name by default. Point it at the
+        # declared compiler wrapper rather than requiring a host C compiler.
+        rust_target = target_abi(args.target_cpu)["rust_triple"].upper().replace("-", "_")
+        env["CC_" + rust_target] = env["CC"]
+        env["CXX_" + rust_target] = env["CXX"]
+        env["CARGO_TARGET_" + rust_target + "_LINKER"] = env["CC"]
 
     run([python, build_script, python, wheels_dir], cwd=source, env=env)
     wheel = single_wheel(wheels_dir)

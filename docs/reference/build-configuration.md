@@ -1,19 +1,20 @@
 # Build Configuration
 
-This reference describes the Bazel builder for [local-inference-lab/vllm](https://github.com/local-inference-lab/vllm) on consumer Blackwell. The implemented image profile targets DGX Spark ARM64; other platform declarations do not establish verified image support.
+This reference describes the Bazel builder for [local-inference-lab/vllm](https://github.com/local-inference-lab/vllm) on consumer Blackwell. The profile builds one OCI index containing native ARM64 and x86-64 image manifests.
 
 ## Targets
 
 | Target | Output or Behaviour |
 | --- | --- |
-| `//image:vllmb12x` | ARM64 OCI image layout |
+| `//image:vllmb12x` | Multiarchitecture OCI image index |
+| `//image:vllmb12x_image` | OCI image layout selected by the configured target platform |
 | `//image:vllmb12x_load` | Local image loader |
 | `//image:runtime_venv` | Python, NCCL, runtime wheels, and non-vLLM source wheels |
 | `//image:vllm_venv` | vLLM-only overlay tar |
 | `//components:torch` | Combined native-and-Python PyTorch wheel |
 | `//components:vllm` | vLLM wheel |
 | `//components:vllm_compiler_cache_stats` | Action-local compiler-cache statistics |
-| `//tests/image:vllmb12x_contract` | Docker-backed ARM64 metadata and file contract |
+| `//tests/image:vllmb12x_contract` | Docker-backed metadata and file contract selected by platform |
 
 Sources: [image targets](../../image/BUILD.bazel), [components](../../components/BUILD.bazel), [image contract](../../tests/image/BUILD.bazel).
 
@@ -38,18 +39,19 @@ All helpers ignore Bazel rc files, including private host configuration.
 | --- | --- |
 | `just analyze` | Local image analysis without compilation |
 | `just build [args...]` | Local ARM64 image build with optional Bazel arguments |
+| `just build-multiarch [args...]` | Local analysis or build of the ARM64 and x86-64 OCI index |
 | `just test [args...]` | Local Docker-backed image contract |
 | `just load [args...]` | Load the image into the local daemon |
 | `just refresh-vllmb12x` | Resolve the moving vLLM branch into the immutable profile lock |
 | `just bazel <command> [args...]` | Raw Bazel command without rc files; no platform or execution flags added |
 
-Build, test, and load select the ARM64 target and execution platform, local execution, `.bazel-cache`, and the strict action environment. Source actions require persistent writable `/ccache` independently of Bazel's disk cache.
+Build, test, and load select the ARM64 target and execution platform, local execution, `.bazel-cache`, and the strict action environment. Local source actions use standard ccache storage at `$XDG_CACHE_HOME/ccache`, defaulting to `~/.cache/ccache`. CI overwrites `VLLMB12X_CACHE_ROOT` with its durable cache volume independently of Bazel's disk cache.
 
 The generated [VLLMB12X Runtime Configuration](vllmb12x-runtime-configuration.md) lists every B12X runtime environment reader and every changed local-inference-lab/vLLM environment, CLI, or `additional_config` control relative to its pinned stock-vLLM merge-base. Regenerate it with `scripts/vllmb12x-runtime-config.py` whenever this profile changes source commits or patches.
 
 ## Nightly Publication
 
-The public PAC definition at [`.tekton/vllmb12x-nightly.yaml`](../../.tekton/vllmb12x-nightly.yaml) first builds the locked image and runs the image contract on the ARM64 remote worker. The publisher then rebuilds `//image:vllmb12x` with `--remote_download_outputs=all`, acquires a short Kubernetes Lease, and pushes the materialised OCI layout with a host `crane` rather than `//image:vllmb12x_push`. `rules_oci` packages `crane` and `jq` as exec-platform runfiles, so `bazel run` under the remote ARM64 configuration resolves binaries for the remote executor instead of the pipeline pod. Bazel symlinks the base-image and apt blobs into its external repository directories, and `crane` rejects a layout blob that is a symlink, so the publisher copies the layout beside the output base with hard links and pushes that copy.
+The public PAC definition at [`.tekton/vllmb12x-nightly.yaml`](../../.tekton/vllmb12x-nightly.yaml) builds the locked OCI index and runs the image contract independently for the ARM64 and x86-64 remote workers. The publisher then materializes `//image:vllmb12x`, acquires a short Kubernetes Lease, and pushes the OCI index with a host `crane` rather than `//image:vllmb12x_push`. `rules_oci` packages `crane` and `jq` as exec-platform runfiles, so `bazel run` under a remote configuration resolves binaries for the remote executor instead of the pipeline pod. Bazel symlinks the base-image and apt blobs into its external repository directories, and `crane` rejects a layout blob that is a symlink, so the publisher copies the layout beside the output base with hard links and pushes that copy.
 
 `scripts/publish-vllmb12x.py` gives each publication an immutable tag with this form:
 
@@ -98,6 +100,35 @@ The command refuses rather than releases when the image does not belong to this 
 
 Release tags are calendar, not semantic. This builder tracks moving upstream fork branches, so a version number would imply a compatibility promise it cannot keep.
 
+## Image Version
+
+The version baked into the wheel and advertised by the image composes three values:
+
+```
+<upstream vLLM base>+<local-inference-lab cycle>.<vLLM commit>.<B12X commit>.<source digest>
+0.29.0+karmic.kraken.<vLLM commit>.<B12X commit>.<source digest>
+```
+
+The commits and the digest are per-lock, so the value above illustrates the shape rather than naming a build; the value for the current lock is in `profiles/vllmb12x/version.bzl`.
+
+- **Base** is the upstream release this cycle tracks. The cycle branch merges upstream pull requests selectively, so tag ancestry does not prove which release it descends from. The value is a reviewed claim: `vllm_base_version` in `profiles/vllmb12x/profile.json`, set with `scripts/refresh-vllmb12x.py --vllm-base-version`.
+- **Cycle** is the branch `source_ref` names, without its `cycle/` or `dev/` namespace, spelled as packaging spells a local version segment: `cycle/karmic-kraken` becomes `karmic.kraken`. Packaging rewrites `-` and `_` to `.` there, so building from the branch spelling would leave the wheel filename and distribution metadata disagreeing with the label.
+- **Commits** are the vLLM and B12X revisions the manifest pins, each named by its first twelve hexadecimal digits, the same form the publication tag uses. Those two move independently, so naming both answers which B12X an image carries without unpacking the manifest.
+- **Digest** is the first twelve hexadecimal digits of the SHA-256 over `source_ref` and every locked `commit` and `remote`, so it also moves when a source neither named commit covers — torch, NCCL, a CMake download — changes. Any reader recomputes it from the committed manifest:
+
+```bash
+python3 -c '
+import hashlib, json, pathlib
+m = json.loads(pathlib.Path("profiles/vllmb12x/profile.json").read_text())
+c = json.dumps({"source_ref": m["source_ref"],
+                "sources": {n: {"commit": s["commit"], "remote": s["remote"]}
+                            for n, s in sorted(m["sources"].items())}},
+               separators=(",", ":"), sort_keys=True)
+print(hashlib.sha256(c.encode()).hexdigest()[:12])'
+```
+
+A calendar component would make two builds of identical inputs disagree, so the digest takes its place. `scripts/refresh-vllmb12x.py` writes `profiles/vllmb12x/version.bzl`, whose value sets `VLLM_VERSION_OVERRIDE` for the wheel build; the wheel filename, `vllm.__version__`, and the `org.opencontainers.image.version` label therefore carry one string. The local loader tag substitutes `-` for `+`, because a docker tag cannot contain `+`.
+
 ## Optional CI Configuration
 
 NativeLink is our optional CI backend. The public `remote-aarch64` configuration selects remote execution with no local fallback, minimal downloads, compression, and a 21600-second remote timeout. Endpoints, authentication, and execution properties must be supplied separately by CI. No private infrastructure is configured in the repository. Local Justfile recipes do not use this configuration.
@@ -107,19 +138,27 @@ NativeLink is our optional CI backend. The public `remote-aarch64` configuration
 | Property | Value |
 | --- | --- |
 | Image tag | `randomvariable/vllm-b12x-multi:<build version>` |
-| Platform | `linux/arm64` |
-| CUDA base | CUDA 13.3.1 cuDNN development image, Ubuntu 26.04, digest-pinned |
+| Platform | `linux/arm64` (SM12x family) and `linux/amd64` (SM120) |
+| CUDA base | CUDA 13.4.1 cuDNN development image, Ubuntu 26.04, digest-pinned |
 | Python | 3.12 |
 | Entrypoint | `/opt/venv/bin/vllm` |
 | Working directory | `/root` |
 | CUDA home | `/usr/local/cuda` |
 | NCCL library path | `/opt/nccl/lib` |
-| Torch architecture | `12.1a` |
-| FlashInfer architecture | `12.1f` |
+| Allocator | mimalloc preloaded from the architecture-specific Ubuntu library path |
+| C/C++ toolchain | Pinned Ubuntu Resolute GCC 15 closure materialized by Bazel, with no worker `/usr` compiler or include paths |
+| Torch architecture | `12.0+PTX`; PyTorch's parser does not support the CUDA SM12x family suffix, so the SM120 PTX lets SM121 drivers JIT device code |
+| FlashInfer architecture | `12.0f` |
 | Disabled kernel | `MarlinFP8ScaledMMLinearKernel` |
+| Unusable control | `B12X_DENSE_ATOM_24=1` aborts preparation on SM120 with `std::get: wrong index for variant`, raised from `b12x.gemm.blockscaled._preparation:compile_packed` at engine init. Reported by the Qwen deployment that measured it; not re-measured on the revisions this profile currently pins. Treat it as unusable rather than slow and do not spend a restart on it. |
 | Mooncake Transfer Engine | CUDA 13 distribution `0.3.13.post1`; see [Mooncake Transfer Engine](mooncake-transfer-engine.md) |
+| In-container build prerequisites | `cmake`, `liburing-dev`, `libxxhash-dev`, `libhiredis-dev` and `libcurl4t64`. The first four are there because b12x and FlexKV compile parts of themselves inside the running container — b12x's PLE reader and RoCE proxy, FlexKV's C++ core through its `build.sh` — rather than only at image build time. `libcurl4t64` is different: the transfer engine loads `libcurl.so.4` at run time and the CUDA base ships no curl at all. Do not remove them as unused build tooling; FlexKV additionally vendors xxHash, so `libxxhash-dev` follows its documented prerequisites rather than its build. |
 
-Source: [image rule](../../bazel/vllm_image.bzl). The x86-64 platform declaration does not establish a supported x86-64 image. PyTorch uses one wheel, not a `torch_libtorch`/Python-only split.
+Source: [image rule](../../bazel/vllm_image.bzl). Each image uses a native architecture-specific PyTorch wheel, not a `torch_libtorch`/Python-only split.
+
+Run `just toolchain-check` to compile the `@gawk` bootstrap dependency through the registered toolchain and verify that poisoned worker include paths do not enter C/C++ actions.
+
+On an x86-64 build client, ARM64 Python build actions use the pinned `qemu-user-binfmt-hwe` package with the declared GCC sysroot. Native ARM64 workers run the same interpreter directly. Neither path uses host binfmt registration or `/lib/ld-linux-aarch64.so.1`.
 
 ## Further Reading
 
