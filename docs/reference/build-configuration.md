@@ -106,8 +106,10 @@ The version baked into the wheel and advertised by the image composes three valu
 
 ```
 <upstream vLLM base>+<local-inference-lab cycle>.<source digest>
-0.29.0+karmic.kraken.24cddfd39ccf
+0.29.0+karmic.kraken.<digest>
 ```
+
+The digest is per-lock, so the value above illustrates the shape rather than naming a build; the value for the current lock is in `profiles/vllmb12x/version.bzl`.
 
 - **Base** is the upstream release this cycle tracks. The cycle branch merges upstream pull requests selectively, so tag ancestry does not prove which release it descends from. The value is a reviewed claim: `vllm_base_version` in `profiles/vllmb12x/profile.json`, set with `scripts/refresh-vllmb12x.py --vllm-base-version`.
 - **Cycle** is the branch `source_ref` names, without its `cycle/` or `dev/` namespace, spelled as packaging spells a local version segment: `cycle/karmic-kraken` becomes `karmic.kraken`. Packaging rewrites `-` and `_` to `.` there, so building from the branch spelling would leave the wheel filename and distribution metadata disagreeing with the label.
