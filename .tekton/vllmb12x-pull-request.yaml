@@ -8,8 +8,12 @@ kind: PipelineRun
 metadata:
   name: vllmb12x-pull-request
   annotations:
-    # Same exclusion as the nightly: the ARM64 build pool is not spent on
-    # commits that only change the website, prose, or recipe definitions.
+    # Same exclusion as the nightly, with one difference that costs a build to
+    # learn: on a pull request `files.all` is the pull request's whole file list,
+    # not the pushed commit's. The exclusion therefore fires only while nothing
+    # but the website, prose, or recipes has changed anywhere in the pull
+    # request; once it carries code, every push starts a run however small the
+    # commit, and cancel-in-progress stops the run already building.
     pipelinesascode.tekton.dev/on-cel-expression: |
       event == "pull_request"
       && target_branch == "main"
