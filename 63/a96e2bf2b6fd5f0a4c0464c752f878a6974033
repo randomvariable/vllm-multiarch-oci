@@ -1,0 +1,16 @@
+profiles/vllmb12x/profile.json
+  h_15da545fc8cfbe 70
+profiles/vllmb12x/version.bzl
+  h_15da545fc8cfbe 13,15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "63a96e2bf2b6fd5f0a4c0464c752f878a6974033",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
