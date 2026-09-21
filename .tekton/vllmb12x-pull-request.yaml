@@ -172,8 +172,12 @@ spec:
                 bazel test //scripts:all --disk_cache= --test_output=errors
                 export VLLMB12X_CACHE_ROOT=/ccache
                 bazel build //image:vllmb12x --config=remote-multiarch --disk_cache= --//platforms:vllmb12x_cache_root="$VLLMB12X_CACHE_ROOT"
-                bazel test //tests/image:vllmb12x_contract --config=remote-aarch64 --disk_cache= --//platforms:vllmb12x_cache_root="$VLLMB12X_CACHE_ROOT" --test_output=errors
-                bazel test //tests/image:vllmb12x_contract --config=remote-x86_64 --disk_cache= --//platforms:vllmb12x_cache_root="$VLLMB12X_CACHE_ROOT" --test_output=errors
+                # The rule defaults to --test-report $XML_OUTPUT_FILE --output junit, which
+                # sends every per-test line to a file that dies with the pod. Clearing the
+                # report and forcing text keeps container-structure-test's === RUN / --- FAIL
+                # detail in test.log, where --test_output=errors surfaces it in the TaskRun.
+                bazel test //tests/image:vllmb12x_contract --config=remote-aarch64 --disk_cache= --//platforms:vllmb12x_cache_root="$VLLMB12X_CACHE_ROOT" --test_output=errors --test_arg=--test-report= --test_arg=--output --test_arg=text
+                bazel test //tests/image:vllmb12x_contract --config=remote-x86_64 --disk_cache= --//platforms:vllmb12x_cache_root="$VLLMB12X_CACHE_ROOT" --test_output=errors --test_arg=--test-report= --test_arg=--output --test_arg=text
                 python3 scripts/publish-vllmb12x.py \
                   --repository "$IMAGE_REPOSITORY" \
                   --build-revision "$BUILD_REVISION" \
