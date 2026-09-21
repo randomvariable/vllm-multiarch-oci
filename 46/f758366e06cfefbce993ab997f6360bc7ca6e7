@@ -1,0 +1,24 @@
+MODULE.bazel.lock
+  h_15da545fc8cfbe 298,304-305,437
+README.md
+  h_15da545fc8cfbe 16-29
+profiles/vllmb12x/description.bzl
+  h_15da545fc8cfbe 5
+profiles/vllmb12x/profile.json
+  h_15da545fc8cfbe 6,8,69
+profiles/vllmb12x/version.bzl
+  h_15da545fc8cfbe 12,14
+recipes-site/src/content/docs/image-releases/included-changes.mdx
+  h_15da545fc8cfbe 15,49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "46f758366e06cfefbce993ab997f6360bc7ca6e7",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
