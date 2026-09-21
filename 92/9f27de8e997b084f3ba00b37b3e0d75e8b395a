@@ -1,0 +1,18 @@
+README.md
+  h_15da545fc8cfbe 16-29
+profiles/vllmb12x/description.bzl
+  h_15da545fc8cfbe 5
+recipes-site/src/content/docs/image-releases/included-changes.mdx
+  h_15da545fc8cfbe 15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "929f27de8e997b084f3ba00b37b3e0d75e8b395a",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
