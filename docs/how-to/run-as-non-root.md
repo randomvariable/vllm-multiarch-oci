@@ -19,17 +19,30 @@ spec:
     - name: server
       image: ghcr.io/randomvariable/vllm-b12x-multi@sha256:<digest>
       env:
-        - {name: HOME, value: /home/vllm}
-        - {name: FLASHINFER_WORKSPACE_BASE, value: /home/vllm/flashinfer}
+        - {name: HOME, value: /cache/vllm-home}
+        - {name: FLASHINFER_WORKSPACE_BASE, value: /cache/flashinfer}
+      volumeMounts:
+        - {name: cache, mountPath: /cache}
+  volumes:
+    - name: cache
+      hostPath: {path: /var/lib/vllm-cache, type: DirectoryOrCreate}
 ```
 
 Set `HOME` and `FLASHINFER_WORKSPACE_BASE` explicitly. Treat both as required for a pod that sets its own `runAsUser`, and do not rely on `~` being resolved for you.
 
-## Why Both Variables Are Required
+## Point HOME at Durable Storage
+
+Do not leave `HOME` pointing into the image, and do not treat the named account as a reason to drop the variable.
+
+The account makes the lookup resolve. `/home/vllm` is still a path inside the container filesystem, so anything a component derives from `~` is lost when the pod restarts, and every byte written there counts against the pod's ephemeral-storage limit. Triton, Inductor, FlashInfer, and Hugging Face caches all derive their workspace from `HOME`, so a home inside the image turns a durable cache into a per-pod one that can also evict the pod.
+
+Point `HOME` at a mounted volume, as in the example above.
+
+## What a Missing Account Breaks
 
 A uid without a passwd entry has no home directory. `expanduser("~")` then returns `/`, and the first import that creates a workspace below the home directory fails. FlashInfer JIT reports this as a failed `makedirs` while `vllm.compilation.backends` is imported, which aborts the engine before it starts.
 
-The named account fixes the lookup. The two variables fix the paths a library derives from it, and they keep the workspace on storage you control rather than in the image layer.
+The named account removes that failure. The two variables decide which paths a library derives from `~`, and keep those paths on storage you control.
 
 ## Numeric Ownership in Init Containers
 
