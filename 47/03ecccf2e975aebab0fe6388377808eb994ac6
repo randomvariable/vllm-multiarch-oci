@@ -1,0 +1,24 @@
+docs/how-to/use-kubernetes-helpers.md
+  h_15da545fc8cfbe 30-31,41
+image_tools/vllm_image.py
+  h_15da545fc8cfbe 19,199-209,227-230,232,263-265,282,297,300,331-340
+image_tools/vllm_image_test.py
+  h_15da545fc8cfbe 200,205-255
+recipes-site/src/render.js
+  h_15da545fc8cfbe 51-54,100-103
+recipes-site/tests/render.test.js
+  h_15da545fc8cfbe 123-135
+recipes/local-inference-lab/Qwen3.8-Flash-Next-NVFP4.yaml
+  h_15da545fc8cfbe 154-158
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "4703ecccf2e975aebab0fe6388377808eb994ac6",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
