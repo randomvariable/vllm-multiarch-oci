@@ -1,6 +1,13 @@
 try-import %workspace%/.bazelrc.user
 
 common --registry=https://bcr.bazel.build
+# Package indices and debs come from a snapshot origin that answers with
+# transient 5xx under load. Bazel's default of five attempts and no connector
+# retry window gives up inside a blip, and a module extension that cannot fetch
+# one index fails the whole build rather than that one URL. Keep this pair in
+# step with the same flags in the Justfile, which ignores rc files by design.
+common --experimental_repository_downloader_retries=20
+common --http_connector_retry_max_timeout=300s
 build --disk_cache=.bazel-cache
 build --incompatible_strict_action_env
 test --test_output=errors

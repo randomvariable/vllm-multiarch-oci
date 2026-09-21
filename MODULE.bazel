@@ -56,8 +56,14 @@ apt.sources_list(
     # Keep the snapshot as the authoritative index and checksum source. The
     # ports mirror supplies identical content-addressed debs when the snapshot
     # origin has a transient package-blob outage.
+    #
+    # The ports mirror carries arm64 only, so on its own it cannot cover the
+    # amd64 index: a snapshot outage strands that architecture with no working
+    # index and fails the whole build. The archive mirror carries amd64, and a
+    # mirror is consulted only after the snapshot origin fails.
     uris = [
         "https://snapshot.ubuntu.com/ubuntu/20260901T000000Z",
+        "mirror+https://archive.ubuntu.com/ubuntu",
         "mirror+https://ports.ubuntu.com/ubuntu-ports",
     ],
 )

@@ -3,6 +3,11 @@ set positional-arguments
 
 platform := "//platforms:blackwell_arm64_sm12x"
 cache_root := env_var_or_default("VLLMB12X_CACHE_ROOT", "")
+# Package indices come from a snapshot origin that answers with transient 5xx
+# under load, and a module extension that cannot fetch one index fails the whole
+# build. Kept in step with the same pair in .bazelrc, which these recipes
+# bypass by ignoring rc files.
+download_retries := "--experimental_repository_downloader_retries=20 --http_connector_retry_max_timeout=300s"
 
 # List available tasks.
 default:
@@ -22,19 +27,19 @@ toolchain-check:
 
 # Build one platform leaf locally; extra arguments are forwarded to Bazel.
 build *args:
-    bazel --ignore_all_rc_files build //image:vllmb12x_image --platforms={{platform}} --extra_execution_platforms=//platforms:local_x86_64,{{platform}} --spawn_strategy=local --disk_cache=.bazel-cache --incompatible_strict_action_env --//platforms:vllmb12x_cache_root={{cache_root}} "$@"
+    bazel --ignore_all_rc_files build //image:vllmb12x_image {{download_retries}} --platforms={{platform}} --extra_execution_platforms=//platforms:local_x86_64,{{platform}} --spawn_strategy=local --disk_cache=.bazel-cache --incompatible_strict_action_env --//platforms:vllmb12x_cache_root={{cache_root}} "$@"
 
 # Build the two-platform OCI index locally; extra arguments are forwarded to Bazel.
 build-multiarch *args:
-    bazel --ignore_all_rc_files build //image:vllmb12x --extra_execution_platforms=//platforms:local_x86_64,//platforms:blackwell_arm64_sm12x,//platforms:blackwell_x86_64_sm120 --extra_toolchains=//platforms:hermetic_linux_aarch64_cc_toolchain,//platforms:hermetic_linux_x86_64_cc_toolchain --spawn_strategy=local --disk_cache=.bazel-cache --incompatible_strict_action_env --//platforms:vllmb12x_cache_root={{cache_root}} "$@"
+    bazel --ignore_all_rc_files build //image:vllmb12x {{download_retries}} --extra_execution_platforms=//platforms:local_x86_64,//platforms:blackwell_arm64_sm12x,//platforms:blackwell_x86_64_sm120 --extra_toolchains=//platforms:hermetic_linux_aarch64_cc_toolchain,//platforms:hermetic_linux_x86_64_cc_toolchain --spawn_strategy=local --disk_cache=.bazel-cache --incompatible_strict_action_env --//platforms:vllmb12x_cache_root={{cache_root}} "$@"
 
 # Run the local Docker-backed image contract.
 test *args:
-    bazel --ignore_all_rc_files test //tests/image:vllmb12x_contract --platforms={{platform}} --extra_execution_platforms=//platforms:local_x86_64,{{platform}} --spawn_strategy=local --disk_cache=.bazel-cache --incompatible_strict_action_env --//platforms:vllmb12x_cache_root={{cache_root}} --test_output=errors "$@"
+    bazel --ignore_all_rc_files test //tests/image:vllmb12x_contract {{download_retries}} --platforms={{platform}} --extra_execution_platforms=//platforms:local_x86_64,{{platform}} --spawn_strategy=local --disk_cache=.bazel-cache --incompatible_strict_action_env --//platforms:vllmb12x_cache_root={{cache_root}} --test_output=errors "$@"
 
 # Load the image into the local container daemon without starting it.
 load *args:
-    bazel --ignore_all_rc_files run //image:vllmb12x_image_load --platforms={{platform}} --extra_execution_platforms=//platforms:local_x86_64,{{platform}} --spawn_strategy=local --disk_cache=.bazel-cache --incompatible_strict_action_env --//platforms:vllmb12x_cache_root={{cache_root}} "$@"
+    bazel --ignore_all_rc_files run //image:vllmb12x_image_load {{download_retries}} --platforms={{platform}} --extra_execution_platforms=//platforms:local_x86_64,{{platform}} --spawn_strategy=local --disk_cache=.bazel-cache --incompatible_strict_action_env --//platforms:vllmb12x_cache_root={{cache_root}} "$@"
 
 # Resolve the moving upstream branch into immutable source pins.
 refresh-vllmb12x:
