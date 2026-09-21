@@ -3,9 +3,9 @@
   "source_ref": "refs/heads/cycle/karmic-kraken",
   "sources": {
     "b12x": {
-      "commit": "0f3a8cbfd1c11d27f04e3ab37a802d522f4f1c68",
+      "commit": "ca8e62faa41b8b5e10e8de3565a9d2ad3fd3724f",
       "recursive_init_submodules": true,
-      "remote": "https://github.com/local-inference-lab/b12x.git"
+      "remote": "https://github.com/randomvariable/b12x.git"
     },
     "cutlass": {
       "commit": "e6233cbac5d7c7a865c19c91cd684ceece19513c",
@@ -66,7 +66,7 @@
     },
     "vllm": {
       "cargo_vendor": true,
-      "commit": "c1a8a38c49576d2d078958f4923420d52a2c4872",
+      "commit": "588bc2641de67036581db2fa222d478076810372",
       "recursive_init_submodules": true,
       "remote": "https://github.com/randomvariable/vllm.git"
     },
