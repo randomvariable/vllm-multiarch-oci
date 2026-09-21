@@ -189,6 +189,12 @@ commandTests:
   # expanduser("~") resolved to "/" and imports that create a workspace below
   # the home directory failed. Drop to the named account and prove the home
   # directory resolves and is writable.
+  #
+  # HOME is cleared deliberately: CST runs this container as the image's
+  # default user, where the runtime does export HOME=/root, and setpriv would
+  # inherit it. A pod that pins runAsUser is not given that variable, so
+  # leaving it set would test the runtime's root environment instead of the
+  # account, and fail on a correct image.
   - name: "Non-root account resolves and can write its home directory"
     command: "/usr/bin/setpriv"
     args:
@@ -197,6 +203,9 @@ commandTests:
       - "--regid"
       - "10001"
       - "--clear-groups"
+      - "/usr/bin/env"
+      - "-u"
+      - "HOME"
       - "/opt/venv/bin/python"
       - "-c"
       - "import os, pathlib; home = pathlib.Path(os.path.expanduser('~')); workspace = home / 'workspace'; workspace.mkdir(parents=True, exist_ok=True); (workspace / 'ok').write_text('ok'); print('uid', os.getuid(), 'home', home)"
