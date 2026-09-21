@@ -83,7 +83,10 @@ class RefreshVLLMB12XTest(unittest.TestCase):
             r'VLLM_BUILD_VERSION = "([^"]+)"', result["output"]
         ).group(1)
         expected = REFRESH.sources_digest(emitted["source_ref"], emitted["sources"])[:12]
-        self.assertEqual(build_version, f"0.29.0+karmic.kraken.{expected}")
+        self.assertEqual(
+            build_version,
+            f"0.29.0+karmic.kraken.{'c' * 12}.{'d' * 12}.{expected}",
+        )
 
     def test_refresh_refuses_to_move_a_source_without_the_flag(self):
         with self.assertRaisesRegex(RuntimeError, "tracked at .*pass --allow-source-change"):
@@ -137,15 +140,20 @@ class VersionCompositionTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "must look like"):
             REFRESH.base_version(None, "release-candidate")
 
-    def test_version_composes_base_cycle_and_digest_in_pep440_spelling(self):
+    def test_version_names_both_pins_and_the_source_digest(self):
+        version = REFRESH.build_version(
+            "0.29.0", "karmic-kraken", "b" * 40, "c" * 40, "a" * 64
+        )
+        self.assertEqual(version, "0.29.0+karmic.kraken." + "b" * 12 + "." + "c" * 12 + "." + "a" * 12)
         # Packaging rewrites "-" and "_" to "." in a local segment, so the
         # version is built from the spelling the wheel and metadata will carry.
-        version = REFRESH.build_version("0.29.0", "karmic-kraken", "a" * 64)
-        self.assertEqual(version, "0.29.0+karmic.kraken." + "a" * 12)
-        self.assertRegex(version, r"^[0-9]+\.[0-9]+\.[0-9]+\+[a-z0-9.]+\.[0-9a-f]{12}$")
         self.assertEqual(
-            REFRESH.build_version("0.29.0", "Cycle_Name", "a" * 64),
-            "0.29.0+cycle.name." + "a" * 12,
+            REFRESH.build_version("0.29.0", "Cycle_Name", "b" * 40, "c" * 40, "a" * 64),
+            "0.29.0+cycle.name." + "b" * 12 + "." + "c" * 12 + "." + "a" * 12,
+        )
+        self.assertRegex(
+            version,
+            r"^[0-9]+\.[0-9]+\.[0-9]+\+[a-z0-9.]+(\.[0-9a-f]{12}){3}$",
         )
 
     def test_sources_digest_tracks_every_pin_and_ignores_order(self):

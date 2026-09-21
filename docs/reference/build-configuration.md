@@ -105,15 +105,16 @@ Release tags are calendar, not semantic. This builder tracks moving upstream for
 The version baked into the wheel and advertised by the image composes three values:
 
 ```
-<upstream vLLM base>+<local-inference-lab cycle>.<source digest>
-0.29.0+karmic.kraken.<digest>
+<upstream vLLM base>+<local-inference-lab cycle>.<vLLM commit>.<B12X commit>.<source digest>
+0.29.0+karmic.kraken.<vLLM commit>.<B12X commit>.<source digest>
 ```
 
-The digest is per-lock, so the value above illustrates the shape rather than naming a build; the value for the current lock is in `profiles/vllmb12x/version.bzl`.
+The commits and the digest are per-lock, so the value above illustrates the shape rather than naming a build; the value for the current lock is in `profiles/vllmb12x/version.bzl`.
 
 - **Base** is the upstream release this cycle tracks. The cycle branch merges upstream pull requests selectively, so tag ancestry does not prove which release it descends from. The value is a reviewed claim: `vllm_base_version` in `profiles/vllmb12x/profile.json`, set with `scripts/refresh-vllmb12x.py --vllm-base-version`.
 - **Cycle** is the branch `source_ref` names, without its `cycle/` or `dev/` namespace, spelled as packaging spells a local version segment: `cycle/karmic-kraken` becomes `karmic.kraken`. Packaging rewrites `-` and `_` to `.` there, so building from the branch spelling would leave the wheel filename and distribution metadata disagreeing with the label.
-- **Digest** is the first twelve hexadecimal digits of the SHA-256 over `source_ref` and every locked `commit` and `remote`. It changes exactly when a pin changes, and any reader recomputes it from the committed manifest:
+- **Commits** are the vLLM and B12X revisions the manifest pins, each named by its first twelve hexadecimal digits, the same form the publication tag uses. Those two move independently, so naming both answers which B12X an image carries without unpacking the manifest.
+- **Digest** is the first twelve hexadecimal digits of the SHA-256 over `source_ref` and every locked `commit` and `remote`, so it also moves when a source neither named commit covers — torch, NCCL, a CMake download — changes. Any reader recomputes it from the committed manifest:
 
 ```bash
 python3 -c '

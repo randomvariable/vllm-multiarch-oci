@@ -143,8 +143,16 @@ def base_version(declared: str | None, requested: str | None) -> str:
     return value
 
 
-def build_version(base: str, cycle: str, digest: str) -> str:
+def build_version(
+    base: str, cycle: str, vllm_commit: str, b12x_commit: str, digest: str
+) -> str:
     """Compose the PEP 440 distribution version recorded in the image.
+
+    The image is built from two pins that move independently — the vLLM fork
+    and B12X — so both are named, in the same twelve-hexadecimal form the
+    publication tag uses for the vLLM revision. The digest follows them and
+    covers every remaining source, so a change in torch, NCCL or a CMake
+    download moves the version even though neither named pin did.
 
     Packaging normalises "-" and "_" to "." inside a local version segment, so
     a version built from the branch spelling would reach the wheel filename and
@@ -152,7 +160,10 @@ def build_version(base: str, cycle: str, digest: str) -> str:
     the normalised spelling keeps one string everywhere; the branch itself is
     still named by VLLM_SOURCE_REF.
     """
-    return f"{base}+{re.sub(r'[-_]+', '.', cycle).lower()}.{digest[:12]}"
+    return (
+        f"{base}+{re.sub(r'[-_]+', '.', cycle).lower()}"
+        f".{vllm_commit[:12]}.{b12x_commit[:12]}.{digest[:12]}"
+    )
 
 
 def canonical_source_ref(ref: str) -> str:
@@ -221,10 +232,11 @@ def version_module(version: str, source_ref: str, commit: str) -> str:
         '"""PEP 440 distribution version for the vLLM wheel this profile builds.',
         "",
         "Composed from the upstream vLLM base version declared in profile.json, the",
-        "local-inference-lab cycle that VLLM_SOURCE_REF names, and the first twelve",
-        "hexadecimal digits of the digest over the locked source set. The digest is a",
-        "pure function of the manifest, so identical inputs rebuild the same version;",
-        "recompute it with `scripts/refresh-vllmb12x.py --dry-run`.",
+        "local-inference-lab cycle that VLLM_SOURCE_REF names, the vLLM and B12X",
+        "commits the manifest pins, and the first twelve hexadecimal digits of the",
+        "digest over the locked source set. Every part is a pure function of the",
+        "manifest, so identical inputs rebuild the same version; recompute it with",
+        "`scripts/refresh-vllmb12x.py --dry-run`.",
         '"""',
         "",
         f'VLLM_BUILD_VERSION = "{version}"',
@@ -290,6 +302,8 @@ def main() -> None:
             build_version(
                 updated["vllm_base_version"],
                 cycle_name(source_ref),
+                vllm_commit,
+                b12x_commit,
                 sources_digest(source_ref, updated["sources"]),
             ),
             source_ref,
