@@ -33,6 +33,8 @@ Set `HOME`, `FLASHINFER_WORKSPACE_BASE` and `B12X_COMPILE_CACHE_DIR` explicitly.
 
 `B12X_COMPILE_CACHE_DIR` is the same class of defect as the other two. B12X resolves its generated-kernel cache as `B12X_COMPILE_CACHE_DIR`, then `$XDG_CACHE_HOME/b12x/compile`, then `~/.cache/b12x/compile`, and that last step is why the location can end up inherited from its environment instead of chosen. Measured by the Qwen deployment on this image: engine initialisation took 172 s cold against 61 s warm, so losing the cache costs about two minutes on every start, silently. The image cannot decide this for you, because the correct path is a mounted volume rather than anything inside the container.
 
+One variable decides more than the compiled kernels. The preparation selection cache takes its root from the same directory (`b12x/preparation/session.py:351` calls `_cute_compile_cache_dir()`), so moving this variable also discards the tuning selections and costs one full autotune at the next start. Its identity covers the device name, model, dtype, KV-cache dtype, the parallelism sizes, the speculative configuration and `B12X_TUNING_CACHE_VERSION` (`b12x/preparation/_cache.py:25`, namespace assembled in `vllm/model_executor/warmup/b12x_prepare.py:491`); the image version is not part of it, so a pin bump alone leaves it valid.
+
 ## Point HOME at Durable Storage
 
 Do not leave `HOME` pointing into the image, and do not treat the named account as a reason to drop the variable.
