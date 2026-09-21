@@ -1,0 +1,14 @@
+docs/how-to/run-as-non-root.md
+  h_15da545fc8cfbe 36-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "4e78209d1103dd0a7cfbe3784c98388155ee6060",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
