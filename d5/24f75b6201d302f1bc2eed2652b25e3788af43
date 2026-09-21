@@ -1,0 +1,16 @@
+recipes/deepseek-ai/DeepSeek-V4-Flash-Vision-Exp.yaml
+  h_15da545fc8cfbe 103-105
+recipes/local-inference-lab/Qwen3.8-Flash-Next-NVFP4.yaml
+  h_15da545fc8cfbe 97-99
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d524f75b6201d302f1bc2eed2652b25e3788af43",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
