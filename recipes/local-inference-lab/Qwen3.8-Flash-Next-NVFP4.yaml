@@ -94,7 +94,9 @@ runtime:
     CUDA_DEVICE_ORDER: PCI_BUS_ID
     VLLM_WORKER_MULTIPROC_METHOD: spawn
     SAFETENSORS_FAST_GPU: "1"
-    VLLM_PLUGINS: ""
+    # b12x registers its weight loader through a general plugin, so the
+    # allowlist names it; an empty value leaves --load-format b12x unavailable.
+    VLLM_PLUGINS: b12x_loader
     # nvidia-cutlass-dsl ships a .pth to put its dsl_packages directory on
     # sys.path. RoCEnante's support check imports cutlass from there, so both
     # entries are required: the venv's site-packages and the DSL packages.

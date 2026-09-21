@@ -100,7 +100,9 @@ runtime:
     PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
     VLLM_WORKER_MULTIPROC_METHOD: spawn
     SAFETENSORS_FAST_GPU: "1"
-    VLLM_PLUGINS: ""
+    # b12x registers its weight loader through a general plugin, so the
+    # allowlist names it; an empty value leaves --load-format b12x unavailable.
+    VLLM_PLUGINS: b12x_loader
     HF_HOME: /models
     HF_HUB_OFFLINE: "1"
     TRANSFORMERS_OFFLINE: "1"
