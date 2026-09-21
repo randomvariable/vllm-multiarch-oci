@@ -11,76 +11,114 @@ import unittest
 from pathlib import Path
 from unittest.mock import ANY, patch
 
-
 SPEC = importlib.util.spec_from_file_location("refresh_vllmb12x", Path(__file__).with_name("refresh-vllmb12x.py"))
 REFRESH = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(REFRESH)
 
 
+FORK_PAIR = {
+    "name": "vllmb12x",
+    "b12x_ref": "refs/heads/integration/karmic-kraken-beta",
+    "source_ref": "refs/heads/cycle/karmic-kraken",
+    "vllm_base_version": "0.29.0",
+    "sources": {
+        "b12x": {"commit": "a" * 40, "remote": "https://example.invalid/b12x.git"},
+        "vllm": {"commit": "b" * 40, "remote": "https://example.invalid/vllm.git"},
+    },
+}
+
+
+def run_refresh(initial, *flags, resolved=("c" * 40, "d" * 40, "d" * 40, "c" * 40)):
+    """Run the refresh in a temporary profile and return its emitted output."""
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        profile = root / "profile.json"
+        version = root / "version.bzl"
+        profile.write_text(json.dumps(initial))
+        version.write_text("unchanged\n")
+        output = io.StringIO()
+        written = {}
+        with (
+            patch.object(REFRESH, "PROFILE", profile),
+            patch.object(REFRESH, "VERSION", version),
+            patch.object(REFRESH, "CMAKE_SOURCES", {}),
+            patch.object(REFRESH, "resolve_ref", side_effect=list(resolved)),
+            patch.object(REFRESH, "checkout") as checkout,
+            patch.object(sys, "argv", ["refresh-vllmb12x.py", "--dry-run", *flags]),
+            contextlib.redirect_stdout(output),
+        ):
+            REFRESH.main()
+        written["output"] = output.getvalue()
+        written["profile"] = json.loads(profile.read_text())
+        written["version"] = version.read_text()
+        written["checkout"] = checkout
+        return written
+
+
 class RefreshVLLMB12XTest(unittest.TestCase):
-    def test_dry_run_selects_both_fork_sources_without_writing_lock(self):
-        initial = {
-            "name": "vllmb12x",
-            "source_ref": "refs/heads/dev/jovian-judgement",
-            "vllm_base_version": "0.29.0",
-            "sources": {
-                "b12x": {"commit": "a" * 40, "remote": "https://example.invalid/b12x.git"},
-                "vllm": {"commit": "b" * 40, "remote": "https://example.invalid/vllm.git"},
-            },
-        }
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            profile = root / "profile.json"
-            version = root / "version.bzl"
-            profile.write_text(json.dumps(initial))
-            version.write_text("unchanged\n")
-            output = io.StringIO()
-            args = [
-                "refresh-vllmb12x.py",
-                "--vllm-remote", "https://github.com/randomvariable/vllm.git",
-                "--vllm-ref", "refs/heads/dev/rv-jovian-judgement",
-                "--vllm-commit", "c" * 40,
-                "--b12x-remote", "https://github.com/randomvariable/b12x.git",
-                "--b12x-ref", "refs/heads/dev/rv-jovian-judgement",
-                "--b12x-commit", "d" * 40,
-                "--dry-run",
-            ]
-            resolved = ["c" * 40, "d" * 40, "c" * 40, "d" * 40]
-            with (
-                patch.object(REFRESH, "PROFILE", profile),
-                patch.object(REFRESH, "VERSION", version),
-                patch.object(REFRESH, "CMAKE_SOURCES", {}),
-                patch.object(REFRESH, "resolve_ref", side_effect=resolved),
-                patch.object(REFRESH, "checkout") as checkout,
-                patch.object(sys, "argv", args),
-                contextlib.redirect_stdout(output),
-            ):
-                REFRESH.main()
+    def test_bare_refresh_resolves_the_pair_the_manifest_records(self):
+        result = run_refresh(FORK_PAIR)
 
-            emitted = json.loads(output.getvalue().split("\n# SPDX", 1)[0])
-            self.assertEqual(emitted["source_ref"], "refs/heads/dev/rv-jovian-judgement")
-            self.assertEqual(emitted["vllm_base_version"], "0.29.0")
-            self.assertEqual(emitted["sources"]["vllm"], {
-                "commit": "c" * 40,
-                "remote": "https://github.com/randomvariable/vllm.git",
-            })
-            self.assertEqual(emitted["sources"]["b12x"], {
-                "commit": "d" * 40,
-                "remote": "https://github.com/randomvariable/b12x.git",
-            })
-            checkout.assert_called_once_with(
-                "https://github.com/randomvariable/vllm.git", "c" * 40, ANY
+        emitted = json.loads(result["output"].split("\n# SPDX", 1)[0])
+        self.assertEqual(emitted["source_ref"], "refs/heads/cycle/karmic-kraken")
+        self.assertEqual(emitted["b12x_ref"], "refs/heads/integration/karmic-kraken-beta")
+        self.assertEqual(emitted["sources"]["vllm"], {
+            "commit": "c" * 40,
+            "remote": "https://example.invalid/vllm.git",
+        })
+        self.assertEqual(emitted["sources"]["b12x"], {
+            "commit": "d" * 40,
+            "remote": "https://example.invalid/b12x.git",
+        })
+        result["checkout"].assert_called_once_with(
+            "https://example.invalid/vllm.git", "c" * 40, ANY
+        )
+        # A dry run leaves the lock and the generated version module alone.
+        self.assertEqual(result["profile"], FORK_PAIR)
+        self.assertEqual(result["version"], "unchanged\n")
+
+        # The version composes the declared base, the cycle the ref names, and a
+        # digest the reader can recompute from the emitted manifest.
+        build_version = re.search(
+            r'VLLM_BUILD_VERSION = "([^"]+)"', result["output"]
+        ).group(1)
+        expected = REFRESH.sources_digest(emitted["source_ref"], emitted["sources"])[:12]
+        self.assertEqual(build_version, f"0.29.0+karmic.kraken.{expected}")
+
+    def test_refresh_refuses_to_move_a_source_without_the_flag(self):
+        with self.assertRaisesRegex(RuntimeError, "tracked at .*pass --allow-source-change"):
+            run_refresh(
+                FORK_PAIR,
+                "--vllm-remote", "https://github.com/local-inference-lab/vllm.git",
+                "--vllm-ref", "refs/heads/dev/karmic-kraken",
             )
-            self.assertEqual(json.loads(profile.read_text()), initial)
-            self.assertEqual(version.read_text(), "unchanged\n")
+        with self.assertRaisesRegex(RuntimeError, "b12x is tracked at"):
+            run_refresh(
+                FORK_PAIR,
+                "--b12x-remote", "https://github.com/local-inference-lab/b12x.git",
+                "--b12x-ref", "refs/heads/master",
+            )
 
-            # The version composes the declared base, the cycle the ref names,
-            # and a digest the reader can recompute from the emitted manifest.
-            build_version = re.search(
-                r'VLLM_BUILD_VERSION = "([^"]+)"', output.getvalue()
-            ).group(1)
-            expected = REFRESH.sources_digest(emitted["source_ref"], emitted["sources"])[:12]
-            self.assertEqual(build_version, f"0.29.0+rv.jovian.judgement.{expected}")
+    def test_source_change_is_recorded_when_the_flag_asks_for_it(self):
+        result = run_refresh(
+            FORK_PAIR,
+            "--vllm-remote", "https://github.com/randomvariable/vllm.git",
+            "--vllm-ref", "refs/heads/cycle/karmic-kraken",
+            "--allow-source-change",
+        )
+
+        emitted = json.loads(result["output"].split("\n# SPDX", 1)[0])
+        self.assertEqual(
+            emitted["sources"]["vllm"]["remote"],
+            "https://github.com/randomvariable/vllm.git",
+        )
+        self.assertEqual(emitted["source_ref"], "refs/heads/cycle/karmic-kraken")
+
+    def test_missing_recorded_pair_is_named_rather_than_guessed(self):
+        without_ref = json.loads(json.dumps(FORK_PAIR))
+        del without_ref["b12x_ref"]
+        with self.assertRaisesRegex(RuntimeError, "does not record b12x_ref"):
+            run_refresh(without_ref)
 
 
 class VersionCompositionTest(unittest.TestCase):

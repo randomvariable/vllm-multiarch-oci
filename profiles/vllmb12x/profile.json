@@ -1,4 +1,5 @@
 {
+  "b12x_ref": "refs/heads/integration/karmic-kraken-beta",
   "name": "vllmb12x",
   "source_ref": "refs/heads/cycle/karmic-kraken",
   "sources": {

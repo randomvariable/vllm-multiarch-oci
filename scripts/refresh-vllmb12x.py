@@ -20,15 +20,11 @@ import re
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 ROOT: Final = Path(__file__).resolve().parents[1]
 PROFILE: Final = ROOT / "profiles/vllmb12x/profile.json"
 VERSION: Final = ROOT / "profiles/vllmb12x/version.bzl"
-DEFAULT_VLLM_REMOTE: Final = "https://github.com/local-inference-lab/vllm.git"
-DEFAULT_VLLM_REF: Final = "refs/heads/dev/karmic-kraken"
-DEFAULT_B12X_REMOTE: Final = "https://github.com/local-inference-lab/b12x.git"
-DEFAULT_B12X_REF: Final = "refs/heads/master"
 
 # These are every CMake download that the CUDA profile replaces through an
 # explicit *_SRC_DIR. A new CMake source declaration must be classified here
@@ -48,7 +44,7 @@ CMAKE_SOURCES: Final = {
 
 
 def run(*command: str, cwd: Path | None = None) -> str:
-    result = subprocess.run(command, cwd=cwd, text=True, capture_output=True)
+    result = subprocess.run(command, cwd=cwd, text=True, capture_output=True, check=False)
     if result.returncode:
         raise RuntimeError(
             f"{' '.join(command)} failed with {result.returncode}: {result.stderr.strip()}"
@@ -170,8 +166,52 @@ def canonical_source_ref(ref: str) -> str:
         return ref
     branch = ref.removeprefix("refs/heads/")
     if branch.startswith("refs/") or not re.fullmatch(r"[A-Za-z0-9._][A-Za-z0-9._/-]*", branch):
-        raise RuntimeError(f"vLLM source ref must name a branch or a commit: {ref!r}")
+        raise RuntimeError(f"source ref must name a branch or a commit: {ref!r}")
     return f"refs/heads/{branch}"
+
+
+def tracked_pair(manifest: dict[str, Any], name: str) -> tuple[str, str]:
+    """Return the remote and ref the manifest records for one source.
+
+    The manifest, not this script, decides which lineage a pin follows: the
+    remote is recorded per source, and the ref is recorded as `source_ref` for
+    vLLM and `b12x_ref` for B12X. Script defaults cannot hold these, because a
+    default that drifts from the profile resolves another lineage and rewrites
+    the pin silently.
+    """
+    key = "source_ref" if name == "vllm" else f"{name}_ref"
+    if key not in manifest or "remote" not in manifest["sources"][name]:
+        raise RuntimeError(
+            f"profile.json does not record {key} and the {name} remote; "
+            "pass the remote and ref explicitly"
+        )
+    return manifest["sources"][name]["remote"], canonical_source_ref(manifest[key])
+
+
+def select_pair(
+    name: str,
+    manifest: dict[str, Any],
+    remote: str | None,
+    ref: str | None,
+    allow_change: bool,
+) -> tuple[str, str]:
+    """Return the remote and ref to resolve, refusing an unrequested move.
+
+    Resolving a pair other than the recorded one rewrites the pin onto another
+    lineage, which is how a bare refresh would walk a pin backwards after the
+    fork pair changed. The move is therefore an explicit act.
+    """
+    recorded_remote, recorded_ref = tracked_pair(manifest, name)
+    if remote is None and ref is None:
+        return recorded_remote, recorded_ref
+    selected_remote = remote or recorded_remote
+    selected_ref = canonical_source_ref(ref or recorded_ref)
+    if (selected_remote, selected_ref) != (recorded_remote, recorded_ref) and not allow_change:
+        raise RuntimeError(
+            f"{name} is tracked at {recorded_remote} {recorded_ref}, but this run would "
+            f"resolve {selected_remote} {selected_ref}; pass --allow-source-change to move it"
+        )
+    return selected_remote, selected_ref
 
 
 def version_module(version: str, source_ref: str, commit: str) -> str:
@@ -196,32 +236,40 @@ def version_module(version: str, source_ref: str, commit: str) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--vllm-remote", default=DEFAULT_VLLM_REMOTE)
-    parser.add_argument("--vllm-ref", default=DEFAULT_VLLM_REF)
+    parser.add_argument("--vllm-remote")
+    parser.add_argument("--vllm-ref")
     parser.add_argument("--vllm-commit")
     parser.add_argument("--vllm-base-version")
-    parser.add_argument("--b12x-remote", default=DEFAULT_B12X_REMOTE)
-    parser.add_argument("--b12x-ref", default=DEFAULT_B12X_REF)
+    parser.add_argument("--b12x-remote")
+    parser.add_argument("--b12x-ref")
     parser.add_argument("--b12x-commit")
+    parser.add_argument("--allow-source-change", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     manifest = json.loads(PROFILE.read_text())
     with tempfile.TemporaryDirectory(prefix="refresh-vllmb12x-") as temporary:
         checkout_root = Path(temporary) / "vllm"
-        source_ref = canonical_source_ref(args.vllm_ref)
-        vllm_commit = resolve_ref(args.vllm_remote, args.vllm_commit or args.vllm_ref)
-        b12x_commit = resolve_ref(args.b12x_remote, args.b12x_commit or args.b12x_ref)
-        checkout(args.vllm_remote, vllm_commit, checkout_root)
+        vllm_remote, vllm_ref = select_pair(
+            "vllm", manifest, args.vllm_remote, args.vllm_ref, args.allow_source_change
+        )
+        b12x_remote, b12x_ref = select_pair(
+            "b12x", manifest, args.b12x_remote, args.b12x_ref, args.allow_source_change
+        )
+        source_ref = canonical_source_ref(vllm_ref)
+        vllm_commit = resolve_ref(vllm_remote, args.vllm_commit or vllm_ref)
+        b12x_commit = resolve_ref(b12x_remote, args.b12x_commit or b12x_ref)
+        checkout(vllm_remote, vllm_commit, checkout_root)
 
         updated = json.loads(json.dumps(manifest))
         updated["vllm_base_version"] = base_version(
             manifest.get("vllm_base_version"), args.vllm_base_version
         )
         updated["source_ref"] = source_ref
-        updated["sources"]["vllm"]["remote"] = args.vllm_remote
+        updated["b12x_ref"] = canonical_source_ref(b12x_ref)
+        updated["sources"]["vllm"]["remote"] = vllm_remote
         updated["sources"]["vllm"]["commit"] = vllm_commit
-        updated["sources"]["b12x"]["remote"] = args.b12x_remote
+        updated["sources"]["b12x"]["remote"] = b12x_remote
         updated["sources"]["b12x"]["commit"] = b12x_commit
         for name, (relative_path, remote, variable) in CMAKE_SOURCES.items():
             source = checkout_root / relative_path
