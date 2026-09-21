@@ -14,7 +14,6 @@ def _accounts_layer_impl(ctx):
 
     args = ctx.actions.args()
     args.add(ctx.file._driver.path)
-    args.add("--work-dir", output.path + ".work")
     args.add("--base", bases[0].path)
     args.add("--output", output.path)
     for account in ctx.attr.accounts:

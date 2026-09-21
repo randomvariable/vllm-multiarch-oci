@@ -156,7 +156,6 @@ def write_layer(
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--work-dir", required=True)
     parser.add_argument("--base", required=True, help="pulled base image layout")
     parser.add_argument("--account", action="append", default=[])
     parser.add_argument("--group", action="append", default=[])
