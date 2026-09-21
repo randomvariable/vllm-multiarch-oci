@@ -9,6 +9,7 @@ BUILDER_REPOSITORY = "https://github.com/randomvariable/vllm-multiarch-oci"
 def vllm_image(
         name,
         base,
+        accounts_layer,
         apt_layer,
         cuda_layer,
         env,
@@ -33,7 +34,11 @@ def vllm_image(
             apt_layer,
             cuda_layer,
             provenance_layer,
-        ] + venv_layers,
+        ] + venv_layers + [
+            # Last, so the account files this layer owns win over anything the
+            # base or an earlier layer put at the same path.
+            accounts_layer,
+        ],
         env = env,
         entrypoint = ["/opt/venv/bin/vllm"],
         labels = {

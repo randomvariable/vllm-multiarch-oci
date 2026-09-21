@@ -55,6 +55,7 @@ The public [deployment recipe site](https://randomvariable.github.io/vllm-multia
 | Build, test, and load | [Build and Test an Image](docs/how-to/build-and-test.md) |
 | Measure a native edit | [Measure Incremental Builds](docs/how-to/measure-incremental-builds.md) |
 | Use model, rendezvous, and health helpers | [Use the Kubernetes Image Helpers](docs/how-to/use-kubernetes-helpers.md) |
+| Run a pod as a pinned non-root uid | [Run the Image as a Non-Root User](docs/how-to/run-as-non-root.md) |
 | Look up targets and options | [Build Configuration](docs/reference/build-configuration.md) |
 | Configure the Mooncake runtime addition | [Mooncake Transfer Engine](docs/reference/mooncake-transfer-engine.md) |
 | Understand build boundaries | [Build and Cache Design](docs/explanation/build-and-cache-design.md) |

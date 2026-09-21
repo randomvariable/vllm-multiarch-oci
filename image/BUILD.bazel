@@ -5,6 +5,7 @@ load("@runtime_deps//:requirements.bzl", "all_whl_requirements_by_package")
 load("@runtime_deps_x86_64//:requirements.bzl", runtime_x86_requirements = "all_whl_requirements_by_package")
 load("@rules_oci//oci:defs.bzl", "oci_image_index", "oci_push")
 load("@bazel_skylib//rules:write_file.bzl", "write_file")
+load("//bazel:accounts_layer.bzl", "accounts_layer")
 load("//bazel:provenance_layer.bzl", "provenance_layer")
 load("//bazel:venv_layer.bzl", "venv_layer")
 load("//bazel:vllm_image.bzl", "vllm_image")
@@ -195,8 +196,21 @@ provenance_layer(
     output = "vllmb12x-sources-lock.tar",
 )
 
+# The base passwd file ends at the `ubuntu` account. A pod that pins its own
+# runAsUser gets an unnamed uid, so expanduser("~") resolves to "/" and imports
+# that create a workspace below the home directory fail. Name one account at a
+# fixed uid so deployments can pin it.
+accounts_layer(
+    name = "accounts",
+    accounts = ["vllm:10001:10001:vLLM runtime:/home/vllm:/bin/bash"],
+    base = _IMAGE_BASE,
+    groups = ["vllm:10001"],
+    output = "accounts.tar",
+)
+
 vllm_image(
     name = "vllmb12x_image",
+    accounts_layer = ":accounts",
     base = _IMAGE_BASE,
     apt_layer = ":runtime_apt",
     # PyTorch links against cuSPARSELt, which NVIDIA's CUDA devel image omits.

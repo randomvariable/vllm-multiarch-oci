@@ -21,6 +21,8 @@ exports_files([
     "cuda_wheel.bzl",
     "nccl_action.py",
     "provenance_layer.bzl",
+    "accounts_layer.bzl",
+    "accounts_layer_action.py",
 
     "provenance_layer_action.py",
     "vllm_wheel.bzl",

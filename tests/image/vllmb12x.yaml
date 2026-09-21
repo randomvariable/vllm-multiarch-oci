@@ -87,6 +87,20 @@ fileExistenceTests:
   - name: "RDMA verbs development headers"
     path: "/usr/include/infiniband/verbs.h"
     shouldExist: true
+  - name: "Named non-root account home"
+    path: "/home/vllm"
+    shouldExist: true
+    permissions: "drwxr-xr-x"
+
+# Ubuntu resolves accounts through these files, so the named account has to
+# appear in both.
+fileContentTests:
+  - name: "Named non-root account is in passwd"
+    path: "/etc/passwd"
+    expectedContents: ["vllm:x:10001:10001:[^:]*:/home/vllm:/bin/bash"]
+  - name: "Named non-root account is in group"
+    path: "/etc/group"
+    expectedContents: ["vllm:x:10001:"]
 
 commandTests:
   - name: "Generic image helper exposes stable commands"
@@ -171,3 +185,19 @@ commandTests:
       - "-c"
       - "from b12x.comm.roce import _proxy; print('roce proxy', _proxy._build().name)"
     expectedOutput: ["roce proxy roce_proxy-[0-9a-f]+\\.so"]
+  # A pod that pins its own runAsUser previously had no passwd entry, so
+  # expanduser("~") resolved to "/" and imports that create a workspace below
+  # the home directory failed. Drop to the named account and prove the home
+  # directory resolves and is writable.
+  - name: "Non-root account resolves and can write its home directory"
+    command: "/usr/bin/setpriv"
+    args:
+      - "--reuid"
+      - "10001"
+      - "--regid"
+      - "10001"
+      - "--clear-groups"
+      - "/opt/venv/bin/python"
+      - "-c"
+      - "import os, pathlib; home = pathlib.Path(os.path.expanduser('~')); workspace = home / 'workspace'; workspace.mkdir(parents=True, exist_ok=True); (workspace / 'ok').write_text('ok'); print('uid', os.getuid(), 'home', home)"
+    expectedOutput: ["uid 10001 home /home/vllm"]
