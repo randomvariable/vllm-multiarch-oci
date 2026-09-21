@@ -176,14 +176,12 @@ spec:
                 # sends every per-test line to a file that dies with the pod. Clearing the
                 # report and forcing text keeps container-structure-test's === RUN / --- FAIL
                 # detail in test.log, where --test_output=errors surfaces it in the TaskRun.
-                # The ARM64 workers run their own dockerd and expose its socket at
+                # Every worker runs its own dockerd and exposes its socket at
                 # /var/run/docker/docker.sock, not at the docker default. A remote
                 # action's environment is built by Bazel, not inherited from the
                 # worker's container, so the path has to be passed explicitly.
-                # The x86_64 worker still mounts server3's host socket, which is
-                # already at the default path.
                 bazel test //tests/image:vllmb12x_contract --config=remote-aarch64 --disk_cache= --//platforms:vllmb12x_cache_root="$VLLMB12X_CACHE_ROOT" --test_output=errors --test_arg=--test-report= --test_arg=--output --test_arg=text --test_env=DOCKER_HOST=unix:///var/run/docker/docker.sock
-                bazel test //tests/image:vllmb12x_contract --config=remote-x86_64 --disk_cache= --//platforms:vllmb12x_cache_root="$VLLMB12X_CACHE_ROOT" --test_output=errors --test_arg=--test-report= --test_arg=--output --test_arg=text
+                bazel test //tests/image:vllmb12x_contract --config=remote-x86_64 --disk_cache= --//platforms:vllmb12x_cache_root="$VLLMB12X_CACHE_ROOT" --test_output=errors --test_arg=--test-report= --test_arg=--output --test_arg=text --test_env=DOCKER_HOST=unix:///var/run/docker/docker.sock
                 python3 scripts/publish-vllmb12x.py \
                   --repository "$IMAGE_REPOSITORY" \
                   --build-revision "$BUILD_REVISION" \
