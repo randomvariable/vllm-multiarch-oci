@@ -13,8 +13,10 @@ metadataTest:
       # Upstream vLLM base version, the cycle the source ref names, the pinned
       # vLLM and B12X commits, and the digest over the locked source set. The
       # cycle carries its PEP 440 spelling, which is what the wheel filename
-      # and metadata carry too.
-      value: "[0-9]+\\.[0-9]+\\.[0-9]+\\+karmic\\.kraken(\\.[0-9a-f]{12}){3}"
+      # and metadata carry too. The cycle segment is the source ref with
+      # every non-alphanumeric run folded to a dot, so control branches such
+      # as control.stock.upstream.vllm satisfy the same grammar.
+      value: "[0-9]+\\.[0-9]+\\.[0-9]+\\+[a-z0-9]+(\\.[a-z0-9]+)*(\\.[0-9a-f]{12}){3}"
       isRegex: true
     - key: "uk.co.randomvariable.vllmb12x.vllm-source-ref"
       value: "(refs/heads/.+|[0-9a-f]{40})"
