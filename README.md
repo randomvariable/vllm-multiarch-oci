@@ -13,20 +13,20 @@ The image is built from pinned fork revisions rather than from upstream branches
 
 | Component | Change | Included as |
 | --- | --- | --- |
-| vLLM `88e9186daf39` | [local-inference-lab/vllm#777](https://github.com/local-inference-lab/vllm/pull/777) Qwen MTP positional overrides | Merged into the pinned revision (1 commits) |
-| vLLM `88e9186daf39` | [local-inference-lab/vllm#798](https://github.com/local-inference-lab/vllm/pull/798) GLM pooled-indexer workspace ownership | Merged into the pinned revision (6 commits) |
-| vLLM `88e9186daf39` | [local-inference-lab/vllm#800](https://github.com/local-inference-lab/vllm/pull/800) Bounded shared-memory broadcast waits | Merged into the pinned revision (1 commits) |
-| vLLM `88e9186daf39` | [local-inference-lab/vllm#801](https://github.com/local-inference-lab/vllm/pull/801) Sparse MLA preparation release | Merged into the pinned revision (6 commits) |
-| vLLM `88e9186daf39` | [local-inference-lab/vllm#802](https://github.com/local-inference-lab/vllm/pull/802) SM120 FlashKDA workspace copies | Merged into the pinned revision (1 commits) |
-| vLLM `88e9186daf39` | [local-inference-lab/vllm#803](https://github.com/local-inference-lab/vllm/pull/803) KDA preparation workspace reuse | Merged into the pinned revision (5 commits) |
-| vLLM `88e9186daf39` | [local-inference-lab/vllm#805](https://github.com/local-inference-lab/vllm/pull/805) NVFP4 Marlin scale-factor memory bounds | Merged into the pinned revision (6 commits) |
-| vLLM `88e9186daf39` | [local-inference-lab/vllm#806](https://github.com/local-inference-lab/vllm/pull/806) GLM DCP attention workspace reuse | Merged into the pinned revision (5 commits) |
-| vLLM `88e9186daf39` | [local-inference-lab/vllm#807](https://github.com/local-inference-lab/vllm/pull/807) KV cache profile ownership | Merged into the pinned revision (5 commits) |
-| vLLM `88e9186daf39` | [local-inference-lab/vllm#809](https://github.com/local-inference-lab/vllm/pull/809) Boundary checkpoint cache retention | Merged into the pinned revision (6 commits) |
-| vLLM `88e9186daf39` | [local-inference-lab/vllm#810](https://github.com/local-inference-lab/vllm/pull/810) B12X MoE input-scale ownership | Merged into the pinned revision (1 commits) |
-| vLLM `88e9186daf39` | [local-inference-lab/vllm#812](https://github.com/local-inference-lab/vllm/pull/812) DeepSeek WO plan ownership | Merged into the pinned revision (2 commits) |
-| vLLM `88e9186daf39` | [local-inference-lab/vllm#813](https://github.com/local-inference-lab/vllm/pull/813) B12X shared-expert tuning context | Merged into the pinned revision (5 commits) |
-| vLLM `88e9186daf39` | Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute (no upstream pull request) | Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch` |
+| vLLM `5dd5bd5dde76` | [local-inference-lab/vllm#777](https://github.com/local-inference-lab/vllm/pull/777) Qwen MTP positional overrides | Merged into the pinned revision (1 commits) |
+| vLLM `5dd5bd5dde76` | [local-inference-lab/vllm#798](https://github.com/local-inference-lab/vllm/pull/798) GLM pooled-indexer workspace ownership | Merged into the pinned revision (6 commits) |
+| vLLM `5dd5bd5dde76` | [local-inference-lab/vllm#800](https://github.com/local-inference-lab/vllm/pull/800) Bounded shared-memory broadcast waits | Merged into the pinned revision (1 commits) |
+| vLLM `5dd5bd5dde76` | [local-inference-lab/vllm#801](https://github.com/local-inference-lab/vllm/pull/801) Sparse MLA preparation release | Merged into the pinned revision (6 commits) |
+| vLLM `5dd5bd5dde76` | [local-inference-lab/vllm#802](https://github.com/local-inference-lab/vllm/pull/802) SM120 FlashKDA workspace copies | Merged into the pinned revision (1 commits) |
+| vLLM `5dd5bd5dde76` | [local-inference-lab/vllm#803](https://github.com/local-inference-lab/vllm/pull/803) KDA preparation workspace reuse | Merged into the pinned revision (5 commits) |
+| vLLM `5dd5bd5dde76` | [local-inference-lab/vllm#805](https://github.com/local-inference-lab/vllm/pull/805) NVFP4 Marlin scale-factor memory bounds | Merged into the pinned revision (6 commits) |
+| vLLM `5dd5bd5dde76` | [local-inference-lab/vllm#806](https://github.com/local-inference-lab/vllm/pull/806) GLM DCP attention workspace reuse | Merged into the pinned revision (5 commits) |
+| vLLM `5dd5bd5dde76` | [local-inference-lab/vllm#807](https://github.com/local-inference-lab/vllm/pull/807) KV cache profile ownership | Merged into the pinned revision (5 commits) |
+| vLLM `5dd5bd5dde76` | [local-inference-lab/vllm#809](https://github.com/local-inference-lab/vllm/pull/809) Boundary checkpoint cache retention | Merged into the pinned revision (6 commits) |
+| vLLM `5dd5bd5dde76` | [local-inference-lab/vllm#810](https://github.com/local-inference-lab/vllm/pull/810) B12X MoE input-scale ownership | Merged into the pinned revision (1 commits) |
+| vLLM `5dd5bd5dde76` | [local-inference-lab/vllm#812](https://github.com/local-inference-lab/vllm/pull/812) DeepSeek WO plan ownership | Merged into the pinned revision (2 commits) |
+| vLLM `5dd5bd5dde76` | [local-inference-lab/vllm#813](https://github.com/local-inference-lab/vllm/pull/813) B12X shared-expert tuning context | Merged into the pinned revision (5 commits) |
+| vLLM `5dd5bd5dde76` | Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute (no upstream pull request) | Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch` |
 <!-- included-changes:end -->
 
 ## Getting Started
