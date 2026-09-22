@@ -67,7 +67,7 @@
     },
     "vllm": {
       "cargo_vendor": true,
-      "commit": "588bc2641de67036581db2fa222d478076810372",
+      "commit": "95e97bd48009f7ef8d216fd8cf31744c74d763ae",
       "recursive_init_submodules": true,
       "remote": "https://github.com/randomvariable/vllm.git"
     },
