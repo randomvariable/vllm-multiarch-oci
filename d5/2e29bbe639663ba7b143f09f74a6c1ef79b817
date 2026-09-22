@@ -1,0 +1,20 @@
+docs/reference/vllmb12x-runtime-configuration.md
+  h_15da545fc8cfbe 7-9,22,24,30-32,36-37,41-42,81-84,86,88-89,122-125,128-132,134-143,150-151,156
+recipes-site/src/content/docs/recipes/qwen38-flash-next-tp2.mdx
+  h_15da545fc8cfbe 15-16,29,33-35,112
+recipes/local-inference-lab/Qwen3.8-Flash-Next-NVFP4.yaml
+  h_15da545fc8cfbe 4,41-51,69,84-89,105-107,133-137,170-173,204,332-341,344
+scripts/vllmb12x-runtime-config.py
+  h_15da545fc8cfbe 540-541
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d52e29bbe639663ba7b143f09f74a6c1ef79b817",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
