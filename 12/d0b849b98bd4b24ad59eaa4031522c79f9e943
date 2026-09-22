@@ -1,0 +1,20 @@
+profiles/vllmb12x/description.bzl
+  h_15da545fc8cfbe 5
+profiles/vllmb12x/profile.json
+  h_15da545fc8cfbe 7
+profiles/vllmb12x/version.bzl
+  h_15da545fc8cfbe 13
+recipes-site/src/content/docs/image-releases/included-changes.mdx
+  h_15da545fc8cfbe 49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "12d0b849b98bd4b24ad59eaa4031522c79f9e943",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
