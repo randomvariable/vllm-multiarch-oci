@@ -4,7 +4,7 @@
   "source_ref": "refs/heads/cycle/karmic-kraken",
   "sources": {
     "b12x": {
-      "commit": "4edabaf2ba920f7b2d067bba605c850193836ac8",
+      "commit": "9135f93ae533ac23db1c66aa8e1279ebb990c338",
       "recursive_init_submodules": true,
       "remote": "https://github.com/randomvariable/b12x.git"
     },
