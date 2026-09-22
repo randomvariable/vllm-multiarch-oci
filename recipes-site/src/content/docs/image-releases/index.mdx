@@ -1,6 +1,6 @@
 ---
 title: Latest image publication
-description: Immutable ARM64 images built from local-inference-lab/vLLM for NVIDIA DGX Spark.
+description: Immutable multiarchitecture images built from local-inference-lab/vLLM for NVIDIA DGX Spark and x86-64 Blackwell.
 ---
 
 import LatestImage from "../../../components/LatestImage.astro";
@@ -9,7 +9,7 @@ Every image on this page packages a pinned revision of [`local-inference-lab/vLL
 
 <p class="eyebrow">Release channel</p>
 
-The trusted Pages build resolves the public repository's `latest` tag to a Linux ARM64 digest, finds the matching immutable publication tag, and records the resolution time. The recipe generator consumes that static record and always emits a digest-qualified reference.
+The trusted Pages build resolves the public repository's `latest` tag to a multiarchitecture index digest, finds the matching immutable publication tag, and records the resolution time. Resolution fails unless the index carries exactly the `linux/arm64` and `linux/amd64` manifests. The recipe generator consumes that static record and always emits a digest-qualified reference.
 
 The selected recipe's validated digest remains the default. Choosing **Latest published image** displays an explicit warning because publication does not prove that the new image completed the recipe's two-node runtime acceptance.
 
@@ -38,3 +38,10 @@ A publication pins one vLLM revision and one b12x revision together. The pairing
 `sha256:42d5d72bd79a371c3b5a756fe2a1814f3c9393dd9a73d65bcefa01eb8f28d726`
 
 This is the image the DeepSeek recipe was accepted on. It remains the recipe's default; a newer publication is a different lineage, not an upgrade of this one.
+
+## Architecture support
+
+Every publication is one OCI index with a native `linux/arm64` and a native `linux/amd64` manifest. Both manifests are built and contract-tested on every publication pipeline run; the publisher rejects an index that is missing either architecture.
+
+- **ARM64 (GB10, DGX Spark)** is the production architecture. The two-node recipes and their runtime acceptance evidence all run here.
+- **x86-64 (RTX 5090, SM120)** is built from the same pins and passes the same image contract. A single-GPU serving smoke measured 46.5 tokens/s single-stream on an RTX 5090 under WSL2. Two x86-64 specifics from that smoke: invoke the entrypoint through the `vllm serve` subcommand, because a bare positional model path fails in this image, and set a small `--max-num-seqs` (8) on a 32 GiB card, because the default 256 exceeds the Mamba cache budget and leaves KV space for roughly 52K tokens at 0.90 utilization. Distributed topologies on x86-64 are untested.

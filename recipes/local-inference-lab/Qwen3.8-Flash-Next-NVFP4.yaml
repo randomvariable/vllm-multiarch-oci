@@ -1,7 +1,7 @@
 meta:
   title: Qwen3.8 Flash Next NVFP4, two-node TP=2
   slug: qwen38-flash-next-tp2
-  description: A fixed two-node, one-GB10-per-node Qwen3.8-Flash-Next-NVFP4 deployment with SSD-backed PLE tables and a 1,048,576-token context.
+  description: A fixed two-node, one-GB10-per-node Qwen3.8-Flash-Next-NVFP4 deployment with PLE tables in page-locked host memory and a 1,048,576-token context.
 model:
   model_id: local-inference-lab/Qwen3.8-Flash-Next-NVFP4
   revision: 629bc3218833a38b475b719f34aa571666f4a03e
@@ -38,6 +38,17 @@ runtime:
     - --enable-prefix-caching
     - --enable-prompt-tokens-details
     - --enable-chunked-prefill
+    # Decode-aware prefill scheduling: the scheduler admits prefills against
+    # decode pressure with an adaptive share and half-life. Live manifest flags
+    # as of the 2026-09-22 acceptance.
+    - --max-parallel-prefills
+    - auto
+    - --prefill-compute-share
+    - auto
+    - --prefill-compute-half-life
+    - responsive
+    - --prefill-policy
+    - decode-aware
     - --dtype
     - bfloat16
     - --kv-cache-dtype
@@ -55,7 +66,7 @@ runtime:
     - --max-num-batched-tokens
     - "8192"
     - --gpu-memory-utilization
-    - "0.77"
+    - "0.76"
     - --speculative-config
     - '{"method":"mtp","num_speculative_tokens":3}'
     - --compilation-config
@@ -70,7 +81,12 @@ runtime:
     - b12x
     - --no-enable-flashinfer-autotune
     - --additional-config
-    - '{"ple_table_memory":"disk"}'
+    - '{"ple_table_memory":"ram"}'
+    # ram copies the PLE n-gram tables into page-locked host memory at boot
+    # (13.41 GiB per rank) instead of reading them through the io_uring
+    # DiskTable on every forward pass. disk mode retired on 2026-09-22: the
+    # recurring async illegal-memory-access class surfaced through its
+    # synchronize point; ram is the mode accepted by live soak.
     # The checkpoint declares max_position_embeddings 262144 with rope_type
     # "default". A 4x YaRN override reaches 1,048,576 exactly. mrope_section and
     # mrope_interleaved must stay: get_rope() only preserves M-RoPE, which the
@@ -86,8 +102,9 @@ runtime:
     - /metrics,/v1/models
   base_env:
     CUTE_DSL_ARCH: sm_121a
-    # Only the V2 model runner's model state calls prepare_disk() for the
-    # io_uring PLE table. Without it the first forward pass raises.
+    # Only the V2 model runner's model state drives the PLE table prepare path
+    # that hands the table to the engine (boot copy in ram mode, io_uring
+    # bindings in disk mode). Without it the first forward pass raises.
     VLLM_USE_V2_MODEL_RUNNER: "1"
     # Hard requirement of this model's GDN path.
     VLLM_SSM_CONV_STATE_LAYOUT: DS
@@ -113,7 +130,11 @@ runtime:
     # a rank cannot take part, the backend is disabled on every rank at init.
     VLLM_ENABLE_ROCE_ALLREDUCE: "1"
     VLLM_ROCE_ALLREDUCE_MAX_SIZE: "41943040"
-    VLLM_QWEN3_8_PREFILL_COALESCE: "1"
+    # VLLM_QWEN3_8_PREFILL_COALESCE stays unset in the accepted configuration.
+    # It is opt-in and functional only from vLLM 5dd5bd5dde76, which wires the
+    # prefill checkpoint blocks into the NVIDIA GDN decoder. On earlier cuts
+    # that contain the coalesce feature (61f93c53ee onward), setting it aborts
+    # boot with "all mamba groups must share cache scheduling parameters".
     VLLM_B12X_DENSE_ACTIVATION_MODE: a16
     VLLM_SHM_BROADCAST_ADAPTIVE_MAX_GRACE_MS: "2"
     # The first-boot RoCE preparation race times out at sequence 1 with the
@@ -146,8 +167,10 @@ deployment:
   nodes: 2
   tensor_parallel_size: 2
   model_path: /models/qwen38-flash-next
-  # The checkpoint's tensor payload is about 99 GiB and the PLE tables are read
-  # from it for the life of the process, so the published root stays on disk.
+  # The checkpoint's tensor payload is about 99 GiB. In ram mode the PLE tables
+  # are copied from the published safetensors once at boot, so the published
+  # root must stay local and readable for load and restart rather than for
+  # every forward pass.
   storage_min_free_gib: 130
   download_workers: 8
   ignore_patterns: []
@@ -178,7 +201,7 @@ deployment:
       required: true
       default: /var/lib/models
       targets: [lws, docker]
-      description: Absolute persistent host path on each GPU node for the model cache and published snapshot. PLE rows are read from these files during every forward pass, so it must stay local and readable.
+      description: Absolute persistent host path on each GPU node for the model cache and published snapshot. The engine loads the PLE tables from these files at boot, so it must stay local and readable for every load and restart.
       help: {label: Storage layout, href: guides/deploy-tp2/#storage-paths}
     jit_storage_path:
       label: JIT cache path
@@ -306,9 +329,18 @@ validation:
   image: ghcr.io/randomvariable/vllm-b12x-multi@sha256:3db7f3d50d139a4e07acbda9e4caf8815a740d31981224d707466d150c331956
   lws: verified
   docker: unverified
-  evidence: Accepted live on 2026-09-18 in the author's two-node GB10 cluster on kubeadm with Cilium. The deployed image digest, engine arguments, and explicit runtime environment above are from the Ready LWS. An unprofiled, 30-second-per-cell decode sweep covered concurrency 1, 2, 4, and 8 with 0, 8K, 32K, 64K, and 128K prompt tokens. The run used A16 dense activation and a direct port-forward, so it has no hardware panel and is not directly comparable to the earlier max-seqs=4 baseline.
+  evidence: >-
+    Accepted live on 2026-09-22 in the author's two-node GB10 cluster on kubeadm with Cilium,
+    running the profile pair vLLM 5dd5bd5dde76 plus b12x 9135f93ae533
+    (image version 0.29.0+karmic.kraken.5dd5bd5dde76.9135f93ae533) with the ram PLE mode,
+    0.76 utilization, and VLLM_QWEN3_8_PREFILL_COALESCE unset recorded above. That pair is
+    published to this registry by the first nightly after the profile reaches main; the digest
+    above is the earlier 2026-09-18 acceptance cut, which ran disk mode at 0.77 and does not
+    carry the 2026-09-22 prefill-scheduling flags. The decode sweep table in the recipe keeps
+    its original provenance: unprofiled, 30-second-per-cell, concurrency 1 to 8, contexts 0 to
+    128K, A16 dense activation, direct port-forward, not comparable to the max-seqs=4 baseline.
 guide:
   hardware: Two arm64 GB10 nodes, one physical integrated GPU per node, with a working RoCE secondary network and at least 130 GiB free model storage per node for the 99 GiB checkpoint.
-  fixed_tuning: TP=2, MTP depth 3, 0.77 GPU memory utilization, 1,048,576-token maximum context from a 4x YaRN override, eight sequences, 8,192 batched tokens, FP8 KV cache, full and piecewise CUDA graphs, B12X GDN prefill and decode, and SSD-backed PLE tables.
+  fixed_tuning: TP=2, MTP depth 3, 0.76 GPU memory utilization, 1,048,576-token maximum context from a 4x YaRN override, eight sequences, 8,192 batched tokens, decode-aware prefill scheduling, FP8 KV cache, full and piecewise CUDA graphs, B12X GDN prefill and decode, and PLE tables in page-locked host memory. Never set CUDA_LAUNCH_BLOCKING, because b12x does not function with synchronous kernel launches.
   networking: Primary control traffic uses the operator-selected socket interfaces; tensor-parallel collectives use the selected RDMA HCAs. Kubernetes allocator units do not describe physical device counts.
   safety: Stop both ranks gracefully with a 120-second timeout. A long kernel is not grounds for force-killing a GB10 process.
