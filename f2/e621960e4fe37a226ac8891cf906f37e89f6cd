@@ -1,0 +1,16 @@
+README.md
+  h_15da545fc8cfbe 7
+recipes-site/src/content/docs/image-releases/index.mdx
+  h_15da545fc8cfbe 3,12,41-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f2e621960e4fe37a226ac8891cf906f37e89f6cd",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
