@@ -12,8 +12,8 @@ import RecipeBuilder from "../../../components/RecipeBuilder.astro";
 This is the public, parameterized form of the two-node NVIDIA DGX Spark deployment I run for Qwen3.8-Flash-Next-NVFP4. Its image contains the pinned [`local-inference-lab/vLLM`](https://github.com/local-inference-lab/vllm) fork rather than an arbitrary upstream vLLM release. The recipe fixes the model revision, engine flags, environment, topology, and validated image. You supply the details that belong to your cluster or Docker hosts.
 
 <div class="release-strip" aria-label="Recipe validation status">
-  <span>Validated image</span>
-  <code>ghcr.io/randomvariable/vllm-b12x-multi@sha256:3db7f3d50d139a4e07acbda9e4caf8815a740d31981224d707466d150c331956</code>
+  <span>Accepted image</span>
+  <code>0.29.0+karmic.kraken.5dd5bd5dde76.9135f93ae533</code>
   <a href="#recipe-builder-title">Configure</a>
 </div>
 
@@ -26,11 +26,13 @@ This is the public, parameterized form of the two-node NVIDIA DGX Spark deployme
 
 ## What is fixed
 
-The recipe preserves the live runtime command and tuning accepted on 2026-09-18: B12X GDN prefill and decode, linear and MoE backends, buffered InstantTensor loading, NVFP4 weights through `modelopt_mixed`, MTP speculation at depth 3, FP8 KV cache, full and piecewise CUDA graphs, GPU utilization `0.77`, eight sequences, and an 8,192-token batch budget. It also selects the tested A16 dense-activation path, one-shot RoCE all-reduce limits, adaptive shared-memory broadcast grace, and the image's AOT artifacts.
+The recipe preserves the live runtime command and tuning accepted on 2026-09-22: B12X GDN prefill and decode, linear and MoE backends, buffered InstantTensor loading, NVFP4 weights through `modelopt_mixed`, MTP speculation at depth 3, FP8 KV cache, full and piecewise CUDA graphs, GPU utilization `0.76`, eight sequences, an 8,192-token batch budget, and decode-aware prefill scheduling. It also selects the tested A16 dense-activation path, one-shot RoCE all-reduce limits, adaptive shared-memory broadcast grace, and the image's AOT artifacts. The accepted build is the profile pair vLLM `5dd5bd5dde76` with b12x `9135f93ae533`; the recipe site's [latest image](/vllm-multiarch-oci/image-releases/) resolver points at its GHCR publication once the profile reaches `main`.
 
 Two settings deserve attention because they are not interchangeable with defaults.
 
-The PLE tables live on disk. `--additional-config '{"ple_table_memory":"disk"}'` sends the roughly 26.8 GiB of n-gram tables to the B12X io_uring `DiskTable`, which reads rows straight out of the checkpoint's safetensors by byte offset. Those tables never occupy VRAM or host DRAM, which is what makes the model fit on a unified-memory node. The consequence is that the published model directory must stay readable on local storage for the entire life of the process, not just during load, and the loader must be `instanttensor`.
+The PLE tables live in page-locked host memory. `--additional-config '{"ple_table_memory":"ram"}'` copies the roughly 26.8 GiB of n-gram tables (13.41 GiB per rank at TP=2) from the checkpoint's safetensors once at boot. Disk mode — the io_uring `DiskTable` reading rows by byte offset on every forward pass — was retired on 2026-09-22 after the recurring asynchronous `cudaErrorIllegalAddress` class surfaced through its synchronize point on prefix-cache-resumed requests; that fault spans both PLE modes and both image cuts tested, so it is tracked as an open engine issue rather than a mode defect. The loader must still be `instanttensor`, and the published model directory must stay local and readable for every load and restart.
+
+Two environment controls need care. Never set `CUDA_LAUNCH_BLOCKING`: b12x does not function with synchronous kernel launches. `VLLM_QWEN3_8_PREFILL_COALESCE` is opt-in and functional only from vLLM `5dd5bd5dde76`, which wires the prefill checkpoint blocks into the NVIDIA GDN decoder; on earlier cuts that already carry the coalesce feature, setting it aborts boot with "all mamba groups must share cache scheduling parameters".
 
 The context comes from a YaRN override. The checkpoint declares `max_position_embeddings` 262,144 with `rope_type` `default`, so the 1,048,576-token window is a 4x override applied through `--hf-overrides`. The override keeps `mrope_section` and `mrope_interleaved` because `get_rope()` only preserves M-RoPE, which the vision position ids need, when `mrope_section` is present. Serving this at 1M tokens also requires vLLM `5a70cefff7e0` or later: earlier revisions did not pass the override into the MTP draft model, so the draft stayed at 262,144 and rejected a full-length prefill.
 
@@ -107,7 +109,7 @@ Requests enter at rank zero and collectives cross the secondary network; the sha
 
 ## Before applying output
 
-- Each GPU node needs at least 130 GiB free on the model path. The checkpoint's tensor payload is about 99 GiB and it stays on disk for the life of the process.
+- Each GPU node needs at least 130 GiB free on the model path. The checkpoint's tensor payload is about 99 GiB; ram mode reads it once at boot, so the published root must stay local and readable for every load and restart.
 - For Kubernetes, complete the <a href={`${import.meta.env.BASE_URL}guides/cluster-prerequisites/`}>cluster prerequisite checklist</a> and confirm the NVIDIA runtime, LWS controller, CNI, Multus, and RDMA allocator are ready.
 - For Docker, synchronize the model on both hosts before starting either serving container. Start rank zero first, then let the worker's rendezvous check succeed before its headless server starts.
 - Stop a GB10 serving container gracefully with a 120-second timeout. Long kernel execution is not grounds for force-killing a GPU process.
