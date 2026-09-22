@@ -4,7 +4,7 @@ This repository is the Bazel builder and deployment recipe site for [local-infer
 
 The local build path targets DGX Spark. Bazel compiles PyTorch and CUDA extensions from source, then assembles their wheels into layered Python runtimes.
 
-The implemented image targets Linux ARM64, CUDA 13.4.1, and Python 3.12. The x86-64 platform declaration is not a verified second image build.
+The implemented image is a multiarchitecture index targeting Linux ARM64 and Linux x86-64, CUDA 13.4.1, and Python 3.12. CI builds both architectures and runs the image contract for each. The ARM64 manifest carries the production two-node deployment evidence; the x86-64 manifest is verified by its CI contract plus a single-GPU serving smoke on an RTX 5090 (see [Latest image publication](https://randomvariable.github.io/vllm-multiarch-oci/image-releases/)). Publication requires exactly the two manifests together: the publisher and the recipe resolver reject an index missing either architecture.
 
 ## Included Upstream Changes
 
