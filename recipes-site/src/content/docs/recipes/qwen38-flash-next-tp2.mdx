@@ -13,7 +13,7 @@ This is the public, parameterized form of the two-node NVIDIA DGX Spark deployme
 
 <div class="release-strip" aria-label="Recipe validation status">
   <span>Accepted image</span>
-  <code>0.29.0+karmic.kraken.5dd5bd5dde76.9135f93ae533</code>
+  <code>0.29.0+karmic.kraken.d9e52bdf4663.9135f93ae533</code>
   <a href="#recipe-builder-title">Configure</a>
 </div>
 
@@ -26,13 +26,13 @@ This is the public, parameterized form of the two-node NVIDIA DGX Spark deployme
 
 ## What is fixed
 
-The recipe preserves the live runtime command and tuning accepted on 2026-09-22: B12X GDN prefill and decode, linear and MoE backends, buffered InstantTensor loading, NVFP4 weights through `modelopt_mixed`, MTP speculation at depth 3, FP8 KV cache, full and piecewise CUDA graphs, GPU utilization `0.76`, eight sequences, an 8,192-token batch budget, and decode-aware prefill scheduling. It also selects the tested A16 dense-activation path, one-shot RoCE all-reduce limits, adaptive shared-memory broadcast grace, and the image's AOT artifacts. The accepted build is the profile pair vLLM `5dd5bd5dde76` with b12x `9135f93ae533`; the recipe site's [latest image](/vllm-multiarch-oci/image-releases/) resolver points at its GHCR publication once the profile reaches `main`.
+The recipe preserves the live runtime command and tuning accepted on 2026-09-23/24: B12X GDN prefill and decode, linear and MoE backends, buffered InstantTensor loading, NVFP4 weights through `modelopt_mixed`, MTP speculation at depth 3, FP8 KV cache, full and piecewise CUDA graphs capped at a 32-token capture size, GPU utilization `0.76`, eight sequences, an 8,192-token batch budget, and decode-aware prefill scheduling. It also selects the tested A16 dense-activation path with quantized B12X MXFP8 activations, one-shot RoCE all-reduce limits, adaptive shared-memory broadcast grace, and the image's AOT artifacts. The live ranks run image `ec8bbb3e` (vLLM `88e9186daf39` with b12x `9135f93ae533`), a Harbor build not mirrored to this registry, so the recipe's cited `validation.image` is the nearest public karmic build - the next cycle cut, vLLM `d9e52bdf4663` with the same b12x `9135f93ae533`. This PR re-pins the profile to vLLM `fe8b327bcd9f` with b12x `e8130f89752b` (master-based), and the recipe site's [latest image](/vllm-multiarch-oci/image-releases/) resolver points at that publication once the profile reaches `main`.
 
 Two settings deserve attention because they are not interchangeable with defaults.
 
 The PLE tables live in page-locked host memory. `--additional-config '{"ple_table_memory":"ram"}'` copies the roughly 26.8 GiB of n-gram tables (13.41 GiB per rank at TP=2) from the checkpoint's safetensors once at boot. Disk mode — the io_uring `DiskTable` reading rows by byte offset on every forward pass — was retired on 2026-09-22 after the recurring asynchronous `cudaErrorIllegalAddress` class surfaced through its synchronize point on prefix-cache-resumed requests; that fault spans both PLE modes and both image cuts tested, so it is tracked as an open engine issue rather than a mode defect. The loader must still be `instanttensor`, and the published model directory must stay local and readable for every load and restart.
 
-Two environment controls need care. Never set `CUDA_LAUNCH_BLOCKING`: b12x does not function with synchronous kernel launches. `VLLM_QWEN3_8_PREFILL_COALESCE` is opt-in and functional only from vLLM `5dd5bd5dde76`, which wires the prefill checkpoint blocks into the NVIDIA GDN decoder; on earlier cuts that already carry the coalesce feature, setting it aborts boot with "all mamba groups must share cache scheduling parameters".
+Two environment controls need care. Never set `CUDA_LAUNCH_BLOCKING`: b12x does not function with synchronous kernel launches. `VLLM_QWEN3_8_PREFILL_COALESCE` is opt-in and functional only from the current cycle pin, which wires the prefill checkpoint blocks into the NVIDIA GDN decoder; on earlier cuts that already carry the coalesce feature, setting it aborts boot with "all mamba groups must share cache scheduling parameters".
 
 The context comes from a YaRN override. The checkpoint declares `max_position_embeddings` 262,144 with `rope_type` `default`, so the 1,048,576-token window is a 4x override applied through `--hf-overrides`. The override keeps `mrope_section` and `mrope_interleaved` because `get_rope()` only preserves M-RoPE, which the vision position ids need, when `mrope_section` is present. Serving this at 1M tokens also requires vLLM `5a70cefff7e0` or later: earlier revisions did not pass the override into the MTP draft model, so the draft stayed at 262,144 and rejected a full-length prefill.
 

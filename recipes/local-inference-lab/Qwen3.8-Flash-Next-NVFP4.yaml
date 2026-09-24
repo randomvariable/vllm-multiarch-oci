@@ -65,6 +65,8 @@ runtime:
     - "8"
     - --max-num-batched-tokens
     - "8192"
+    - --max-cudagraph-capture-size
+    - "32"
     - --gpu-memory-utilization
     - "0.76"
     - --speculative-config
@@ -92,7 +94,7 @@ runtime:
     # mrope_interleaved must stay: get_rope() only preserves M-RoPE, which the
     # vision position ids need, when mrope_section is present.
     - --hf-overrides
-    - '{"text_config":{"rope_parameters":{"rope_type":"yarn","factor":4.0,"original_max_position_embeddings":262144,"mrope_interleaved":true,"mrope_section":[11,11,10],"partial_rotary_factor":0.25,"rope_theta":10000000}}}'
+    - '{"text_config":{"max_position_embeddings":1048576,"rope_parameters":{"rope_type":"yarn","factor":4.0,"original_max_position_embeddings":262144,"mrope_interleaved":true,"mrope_section":[11,11,10],"partial_rotary_factor":0.25,"rope_theta":10000000}}}'
     - --reasoning-parser
     - qwen3
     - --tool-call-parser
@@ -111,9 +113,10 @@ runtime:
     CUDA_DEVICE_ORDER: PCI_BUS_ID
     VLLM_WORKER_MULTIPROC_METHOD: spawn
     SAFETENSORS_FAST_GPU: "1"
-    # b12x registers its weight loader through a general plugin, so the
-    # allowlist names it; an empty value leaves --load-format b12x unavailable.
-    VLLM_PLUGINS: b12x_loader
+    # instanttensor is a stock vLLM loader, so this recipe needs no b12x
+    # plugin; the live deployment leaves the allowlist empty. Set it to
+    # b12x_loader only if you switch --load-format to b12x.
+    VLLM_PLUGINS: ""
     # nvidia-cutlass-dsl ships a .pth to put its dsl_packages directory on
     # sys.path. RoCEnante's support check imports cutlass from there, so both
     # entries are required: the venv's site-packages and the DSL packages.
@@ -131,11 +134,14 @@ runtime:
     VLLM_ENABLE_ROCE_ALLREDUCE: "1"
     VLLM_ROCE_ALLREDUCE_MAX_SIZE: "41943040"
     # VLLM_QWEN3_8_PREFILL_COALESCE stays unset in the accepted configuration.
-    # It is opt-in and functional only from vLLM 5dd5bd5dde76, which wires the
-    # prefill checkpoint blocks into the NVIDIA GDN decoder. On earlier cuts
-    # that contain the coalesce feature (61f93c53ee onward), setting it aborts
-    # boot with "all mamba groups must share cache scheduling parameters".
+    # It is opt-in and functional only from the current cycle pin, which wires
+    # the prefill checkpoint blocks into the NVIDIA GDN decoder. On earlier
+    # cuts that contain the coalesce feature (61f93c53ee onward), setting it
+    # aborts boot with "all mamba groups must share cache scheduling parameters".
     VLLM_B12X_DENSE_ACTIVATION_MODE: a16
+    # The live deployment quantizes the B12X MXFP8 activations; a16 dense
+    # plus quantized MXFP8 is the accepted pair for this checkpoint.
+    VLLM_B12X_MXFP8_ACTIVATION_MODE: quantized
     VLLM_SHM_BROADCAST_ADAPTIVE_MAX_GRACE_MS: "2"
     # The first-boot RoCE preparation race times out at sequence 1 with the
     # default spin budget on this topology.
@@ -326,21 +332,26 @@ deployment:
       description: Routing-only accepted Envoy GatewayClass supplied by the cluster operator.
       help: {label: Install or inspect GatewayClass, href: guides/cluster-prerequisites/#install-envoy-gateway-183}
 validation:
-  image: ghcr.io/randomvariable/vllm-b12x-multi@sha256:3db7f3d50d139a4e07acbda9e4caf8815a740d31981224d707466d150c331956
+  image: ghcr.io/randomvariable/vllm-b12x-multi@sha256:429efe0798f8c91b1f21d978b4130ec0660ecb738fcbe05e083a7d504c4889c8
   lws: verified
   docker: unverified
   evidence: >-
-    Accepted live on 2026-09-22 in the author's two-node GB10 cluster on kubeadm with Cilium,
-    running the profile pair vLLM 5dd5bd5dde76 plus b12x 9135f93ae533
-    (image version 0.29.0+karmic.kraken.5dd5bd5dde76.9135f93ae533) with the ram PLE mode,
-    0.76 utilization, and VLLM_QWEN3_8_PREFILL_COALESCE unset recorded above. That pair is
-    published to this registry by the first nightly after the profile reaches main; the digest
-    above is the earlier 2026-09-18 acceptance cut, which ran disk mode at 0.77 and does not
-    carry the 2026-09-22 prefill-scheduling flags. The decode sweep table in the recipe keeps
-    its original provenance: unprofiled, 30-second-per-cell, concurrency 1 to 8, contexts 0 to
-    128K, A16 dense activation, direct port-forward, not comparable to the max-seqs=4 baseline.
+    Accepted live on 2026-09-23/24 in the author's two-node GB10 cluster on kubeadm with Cilium,
+    running the ram PLE mode, 0.76 utilization, a 32-token CUDA graph capture cap,
+    VLLM_B12X_MXFP8_ACTIVATION_MODE=quantized, VLLM_PLUGINS empty, the 1,048,576-token
+    max_position_embeddings override, and VLLM_QWEN3_8_PREFILL_COALESCE unset (the eager-mode
+    IMA discriminator is permanently parked). The two live ranks run image
+    sha256:ec8bbb3e (vLLM 88e9186daf39 plus b12x 9135f93ae533), a Harbor-published build
+    that is not mirrored to this registry; the recipe args and environment above are synced
+    to that live deployment. The nearest public karmic build in this registry - the digest
+    cited as validation.image - is the next cycle cut, vLLM d9e52bdf4663 with the same b12x
+    9135f93ae533. This PR re-pins the profile to vLLM fe8b327bcd9f plus b12x e8130f89752b
+    (master-based), published to this registry by the first nightly after it reaches main.
+    The decode sweep table keeps its original provenance: unprofiled, 30-second-per-cell,
+    concurrency 1 to 8, contexts 0 to 128K, A16 dense activation, direct port-forward, not
+    comparable to the max-seqs=4 baseline.
 guide:
   hardware: Two arm64 GB10 nodes, one physical integrated GPU per node, with a working RoCE secondary network and at least 130 GiB free model storage per node for the 99 GiB checkpoint.
-  fixed_tuning: TP=2, MTP depth 3, 0.76 GPU memory utilization, 1,048,576-token maximum context from a 4x YaRN override, eight sequences, 8,192 batched tokens, decode-aware prefill scheduling, FP8 KV cache, full and piecewise CUDA graphs, B12X GDN prefill and decode, and PLE tables in page-locked host memory. Never set CUDA_LAUNCH_BLOCKING, because b12x does not function with synchronous kernel launches.
+  fixed_tuning: TP=2, MTP depth 3, 0.76 GPU memory utilization, 1,048,576-token maximum context from a 4x YaRN override, eight sequences, 8,192 batched tokens, decode-aware prefill scheduling, FP8 KV cache, full and piecewise CUDA graphs capped at a 32-token capture size, B12X GDN prefill and decode, quantized B12X MXFP8 activations, and PLE tables in page-locked host memory. Never set CUDA_LAUNCH_BLOCKING, because b12x does not function with synchronous kernel launches.
   networking: Primary control traffic uses the operator-selected socket interfaces; tensor-parallel collectives use the selected RDMA HCAs. Kubernetes allocator units do not describe physical device counts.
   safety: Stop both ranks gracefully with a 120-second timeout. A long kernel is not grounds for force-killing a GB10 process.
