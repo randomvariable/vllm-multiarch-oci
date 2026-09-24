@@ -31,6 +31,9 @@ MARKERS: Final = {
     SITE: ("{/* included-changes:start */}", "{/* included-changes:end */}"),
 }
 
+# Each ledger component claims the branch whose ref the lock selects for it.
+BRANCH_CLAIMS: Final = {"vllm": "source_ref", "b12x": "b12x_ref"}
+
 
 def pull_request_url(reference: str) -> str:
     repository, number = reference.split("#", 1)
@@ -39,7 +42,11 @@ def pull_request_url(reference: str) -> str:
 
 def load_lock() -> dict[str, Any]:
     profile = json.loads(PROFILE.read_text())
-    return {"source_ref": profile["source_ref"], "sources": profile["sources"]}
+    return {
+        "source_ref": profile["source_ref"],
+        "b12x_ref": profile["b12x_ref"],
+        "sources": profile["sources"],
+    }
 
 
 def module_patches() -> set[str]:
@@ -59,11 +66,14 @@ def validate(manifest: dict[str, Any], lock: dict[str, Any]) -> None:
         name = component["name"]
         if name not in lock["sources"]:
             raise RuntimeError(f"{MANIFEST} names component {name!r}, which the lock does not pin")
-        # The lock records the selected ref for vLLM only, so that is the one
-        # branch claim this ledger can contradict.
-        if name == "vllm" and component["branch"] != lock["source_ref"]:
+        # The lock records a selected ref per source, so each branch claim in
+        # this ledger is checkable. A claim the lock contradicts means the
+        # published ledger describes a lineage the build no longer uses.
+        key = BRANCH_CLAIMS.get(name)
+        if key is not None and component["branch"] != lock[key]:
             raise RuntimeError(
-                f"{MANIFEST} records vLLM branch {component['branch']!r}, but the lock selects {lock['source_ref']!r}"
+                f"{MANIFEST} records {name} branch {component['branch']!r}, "
+                f"but the lock selects {lock[key]!r}"
             )
         for change in component["changes"]:
             if change["inclusion"] != "patch":
