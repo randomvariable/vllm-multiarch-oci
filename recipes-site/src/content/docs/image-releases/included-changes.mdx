@@ -12,41 +12,17 @@ A change reaches the build in one of two ways. It is either already merged into 
 {/* included-changes:start */}
 ## vLLM
 
-Pinned at [`d9e52bdf4663`](https://github.com/randomvariable/vllm/commit/d9e52bdf466308d98bfdcd8af302c2b2b6d4864d), branched from [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm) `dev/karmic-kraken`.
+Pinned at [`fe8b327bcd9f`](https://github.com/randomvariable/vllm/commit/fe8b327bcd9f9c664f10260b4468a8004dc0461e), branched from [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm) `integration/karmic-kraken-beta`.
 
-- **[local-inference-lab/vllm#777](https://github.com/local-inference-lab/vllm/pull/777)** — Qwen MTP positional overrides
-  - Merged into the pinned revision (1 commits).
-- **[local-inference-lab/vllm#798](https://github.com/local-inference-lab/vllm/pull/798)** — GLM pooled-indexer workspace ownership
-  - Merged into the pinned revision (6 commits).
 - **[local-inference-lab/vllm#800](https://github.com/local-inference-lab/vllm/pull/800)** — Bounded shared-memory broadcast waits
   - Merged into the pinned revision (1 commits).
-- **[local-inference-lab/vllm#801](https://github.com/local-inference-lab/vllm/pull/801)** — Sparse MLA preparation release
-  - Merged into the pinned revision (6 commits).
-- **[local-inference-lab/vllm#802](https://github.com/local-inference-lab/vllm/pull/802)** — SM120 FlashKDA workspace copies
-  - Merged into the pinned revision (1 commits).
-- **[local-inference-lab/vllm#803](https://github.com/local-inference-lab/vllm/pull/803)** — KDA preparation workspace reuse
-  - Merged into the pinned revision (5 commits).
-- **[local-inference-lab/vllm#805](https://github.com/local-inference-lab/vllm/pull/805)** — NVFP4 Marlin scale-factor memory bounds
-  - Merged into the pinned revision (6 commits).
-- **[local-inference-lab/vllm#806](https://github.com/local-inference-lab/vllm/pull/806)** — GLM DCP attention workspace reuse
-  - Merged into the pinned revision (5 commits).
-- **[local-inference-lab/vllm#807](https://github.com/local-inference-lab/vllm/pull/807)** — KV cache profile ownership
-  - Merged into the pinned revision (5 commits).
-- **[local-inference-lab/vllm#809](https://github.com/local-inference-lab/vllm/pull/809)** — Boundary checkpoint cache retention
-  - Merged into the pinned revision (6 commits).
-- **[local-inference-lab/vllm#810](https://github.com/local-inference-lab/vllm/pull/810)** — B12X MoE input-scale ownership
-  - Merged into the pinned revision (1 commits).
-- **[local-inference-lab/vllm#812](https://github.com/local-inference-lab/vllm/pull/812)** — DeepSeek WO plan ownership
-  - Merged into the pinned revision (2 commits).
-- **[local-inference-lab/vllm#813](https://github.com/local-inference-lab/vllm/pull/813)** — B12X shared-expert tuning context
-  - Merged into the pinned revision (5 commits).
 - **Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute** — no upstream pull request
   - Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch`.
   - Packaging repair for this builder's symlink install path, which skips the import rewrite the upstream CMake copy performs. It carries no upstream change.
 
 ## B12X
 
-Pinned at [`9135f93ae533`](https://github.com/randomvariable/b12x/commit/9135f93ae533ac23db1c66aa8e1279ebb990c338), branched from [`local-inference-lab/b12x`](https://github.com/local-inference-lab/b12x) `master`.
+Pinned at [`e8130f89752b`](https://github.com/randomvariable/b12x/commit/e8130f89752b5e3e6f83dfe38878b00065eb4cfb), branched from [`local-inference-lab/b12x`](https://github.com/local-inference-lab/b12x) `master`.
 {/* included-changes:end */}
 
 ## Keeping this list honest

@@ -5,86 +5,13 @@
       "title": "vLLM",
       "branch": "refs/heads/cycle/karmic-kraken",
       "upstream": "local-inference-lab/vllm",
-      "upstream_base": "refs/heads/dev/karmic-kraken",
+      "upstream_base": "refs/heads/integration/karmic-kraken-beta",
       "changes": [
-
-        {
-          "pull_request": "local-inference-lab/vllm#777",
-          "title": "Qwen MTP positional overrides",
-          "inclusion": "branch",
-          "commits": 1
-        },
-        {
-          "pull_request": "local-inference-lab/vllm#798",
-          "title": "GLM pooled-indexer workspace ownership",
-          "inclusion": "branch",
-          "commits": 6
-        },
         {
           "pull_request": "local-inference-lab/vllm#800",
           "title": "Bounded shared-memory broadcast waits",
           "inclusion": "branch",
           "commits": 1
-        },
-        {
-          "pull_request": "local-inference-lab/vllm#801",
-          "title": "Sparse MLA preparation release",
-          "inclusion": "branch",
-          "commits": 6
-        },
-        {
-          "pull_request": "local-inference-lab/vllm#802",
-          "title": "SM120 FlashKDA workspace copies",
-          "inclusion": "branch",
-          "commits": 1
-        },
-        {
-          "pull_request": "local-inference-lab/vllm#803",
-          "title": "KDA preparation workspace reuse",
-          "inclusion": "branch",
-          "commits": 5
-        },
-        {
-          "pull_request": "local-inference-lab/vllm#805",
-          "title": "NVFP4 Marlin scale-factor memory bounds",
-          "inclusion": "branch",
-          "commits": 6
-        },
-        {
-          "pull_request": "local-inference-lab/vllm#806",
-          "title": "GLM DCP attention workspace reuse",
-          "inclusion": "branch",
-          "commits": 5
-        },
-        {
-          "pull_request": "local-inference-lab/vllm#807",
-          "title": "KV cache profile ownership",
-          "inclusion": "branch",
-          "commits": 5
-        },
-        {
-          "pull_request": "local-inference-lab/vllm#809",
-          "title": "Boundary checkpoint cache retention",
-          "inclusion": "branch",
-          "commits": 6
-        },
-        {
-          "pull_request": "local-inference-lab/vllm#810",
-          "title": "B12X MoE input-scale ownership",
-          "inclusion": "branch",
-          "commits": 1
-        },
-        {
-          "pull_request": "local-inference-lab/vllm#812",
-          "title": "DeepSeek WO plan ownership",
-          "inclusion": "branch",
-          "commits": 2
-        },
-        {
-          "pull_request": "local-inference-lab/vllm#813",
-          "title": "B12X shared-expert tuning context",
-          "inclusion": "branch",
-          "commits": 5
         },
         {
           "pull_request": null,
@@ -98,7 +25,7 @@
     {
       "name": "b12x",
       "title": "B12X",
-      "branch": "refs/heads/master",
+      "branch": "refs/heads/integration/karmic-kraken-beta",
       "upstream": "local-inference-lab/b12x",
       "upstream_base": "refs/heads/master",
       "changes": []
