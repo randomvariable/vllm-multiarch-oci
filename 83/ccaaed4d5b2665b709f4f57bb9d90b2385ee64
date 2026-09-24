@@ -1,0 +1,16 @@
+recipes-site/src/content/docs/recipes/qwen38-flash-next-tp2.mdx
+  h_15da545fc8cfbe 16,29,35
+recipes/local-inference-lab/Qwen3.8-Flash-Next-NVFP4.yaml
+  h_15da545fc8cfbe 68-69,97,116-119,137-140,142-144,335,339-349,352
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "83ccaaed4d5b2665b709f4f57bb9d90b2385ee64",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
