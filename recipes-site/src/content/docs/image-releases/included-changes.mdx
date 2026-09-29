@@ -12,8 +12,11 @@ A change reaches the build in one of two ways. It is either already merged into 
 {/* included-changes:start */}
 ## vLLM
 
-Pinned at [`fe8b327bcd9f`](https://github.com/randomvariable/vllm/commit/fe8b327bcd9f9c664f10260b4468a8004dc0461e), branched from [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm) `integration/karmic-kraken-beta`.
+Pinned at [`a307c6ffaf96`](https://github.com/randomvariable/vllm/commit/a307c6ffaf9637ccfa63ece73768d4c20218b7df), branched from [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm) `integration/karmic-kraken-beta`.
 
+- **Partial port of vLLM PR 779: Qwen HC ownership and checkpoint coalescing** — no upstream pull request
+  - Merged into the pinned revision (9 commits).
+  - Carries the HC/coalescing runtime port to Qwen4Exp, not the complete upstream PR or an upstream beta merge. HC and coalescing remain opt-in. GPU serving was not exercised in this rebase.
 - **[local-inference-lab/vllm#800](https://github.com/local-inference-lab/vllm/pull/800)** — Bounded shared-memory broadcast waits
   - Merged into the pinned revision (1 commits).
 - **Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute** — no upstream pull request
@@ -22,7 +25,11 @@ Pinned at [`fe8b327bcd9f`](https://github.com/randomvariable/vllm/commit/fe8b327
 
 ## B12X
 
-Pinned at [`e8130f89752b`](https://github.com/randomvariable/b12x/commit/e8130f89752b5e3e6f83dfe38878b00065eb4cfb), branched from [`local-inference-lab/b12x`](https://github.com/local-inference-lab/b12x) `master`.
+Pinned at [`b7f8879a4ded`](https://github.com/randomvariable/b12x/commit/b7f8879a4ded85d5271f1f4ddd8f5ef322274c33), branched from [`local-inference-lab/b12x`](https://github.com/local-inference-lab/b12x) `integration/karmic-kraken-beta`.
+
+- **PLE checkpoint exports, prepared launcher closures and collective entry barriers** — no upstream pull request
+  - Merged into the pinned revision (11 commits).
+  - Fork-only changes remain outside upstream beta, including the PLE export_checkpoint API from B12X PR 386 required by Qwen coalescing.
 {/* included-changes:end */}
 
 ## Keeping this list honest

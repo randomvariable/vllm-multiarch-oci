@@ -4,7 +4,7 @@
   "source_ref": "refs/heads/cycle/karmic-kraken",
   "sources": {
     "b12x": {
-      "commit": "e8130f89752b5e3e6f83dfe38878b00065eb4cfb",
+      "commit": "b7f8879a4ded85d5271f1f4ddd8f5ef322274c33",
       "recursive_init_submodules": true,
       "remote": "https://github.com/randomvariable/b12x.git"
     },
@@ -67,7 +67,7 @@
     },
     "vllm": {
       "cargo_vendor": true,
-      "commit": "fe8b327bcd9f9c664f10260b4468a8004dc0461e",
+      "commit": "a307c6ffaf9637ccfa63ece73768d4c20218b7df",
       "recursive_init_submodules": true,
       "remote": "https://github.com/randomvariable/vllm.git"
     },

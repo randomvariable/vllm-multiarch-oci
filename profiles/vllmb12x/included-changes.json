@@ -8,6 +8,13 @@
       "upstream_base": "refs/heads/integration/karmic-kraken-beta",
       "changes": [
         {
+          "pull_request": null,
+          "title": "Partial port of vLLM PR 779: Qwen HC ownership and checkpoint coalescing",
+          "inclusion": "branch",
+          "commits": 9,
+          "note": "Carries the HC/coalescing runtime port to Qwen4Exp, not the complete upstream PR or an upstream beta merge. HC and coalescing remain opt-in. GPU serving was not exercised in this rebase."
+        },
+        {
           "pull_request": "local-inference-lab/vllm#800",
           "title": "Bounded shared-memory broadcast waits",
           "inclusion": "branch",
@@ -27,8 +34,16 @@
       "title": "B12X",
       "branch": "refs/heads/integration/karmic-kraken-beta",
       "upstream": "local-inference-lab/b12x",
-      "upstream_base": "refs/heads/master",
-      "changes": []
+      "upstream_base": "refs/heads/integration/karmic-kraken-beta",
+      "changes": [
+        {
+          "pull_request": null,
+          "title": "PLE checkpoint exports, prepared launcher closures and collective entry barriers",
+          "inclusion": "branch",
+          "commits": 11,
+          "note": "Fork-only changes remain outside upstream beta, including the PLE export_checkpoint API from B12X PR 386 required by Qwen coalescing."
+        }
+      ]
     }
   ]
 }

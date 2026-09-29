@@ -13,8 +13,10 @@ The image is built from pinned fork revisions rather than from upstream branches
 
 | Component | Change | Included as |
 | --- | --- | --- |
-| vLLM `fe8b327bcd9f` | [local-inference-lab/vllm#800](https://github.com/local-inference-lab/vllm/pull/800) Bounded shared-memory broadcast waits | Merged into the pinned revision (1 commits) |
-| vLLM `fe8b327bcd9f` | Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute (no upstream pull request) | Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch` |
+| vLLM `a307c6ffaf96` | Partial port of vLLM PR 779: Qwen HC ownership and checkpoint coalescing (no upstream pull request) | Merged into the pinned revision (9 commits) |
+| vLLM `a307c6ffaf96` | [local-inference-lab/vllm#800](https://github.com/local-inference-lab/vllm/pull/800) Bounded shared-memory broadcast waits | Merged into the pinned revision (1 commits) |
+| vLLM `a307c6ffaf96` | Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute (no upstream pull request) | Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch` |
+| B12X `b7f8879a4ded` | PLE checkpoint exports, prepared launcher closures and collective entry barriers (no upstream pull request) | Merged into the pinned revision (11 commits) |
 <!-- included-changes:end -->
 
 ## Getting Started
