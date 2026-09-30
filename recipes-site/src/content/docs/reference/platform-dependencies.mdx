@@ -29,9 +29,9 @@ The image and TP=2 LWS are accepted on a non-k3s kubeadm/Cilium cluster. The com
 | Network Operator | `26.7.0` | RDMA allocator only | NFD + host mlx5 + Multus | policy ready; `rdma.com/roce` allocatable | source-observed family; combination untested |
 | cert-manager | `v1.21.2` | cluster operator | DNS/network | all deployments Available | source-observed pin |
 | LeaderWorkerSet | `v0.10.0` | LWS controller | cert-manager | controller/webhook Available | tested deployment API; k3s untested |
-| Inference Extension | `v1.5.0` | CRDs + per-model EPP | Gateway API | InferencePool CRD; EPP healthy | tested routing config |
-| Envoy Gateway | `1.8.3` | Envoy Gateway | cert-manager, Gateway API | controller Available; class Accepted | tested routing config |
-| Envoy AI Gateway | `v1.1.0` | AI Gateway controller | Envoy Gateway, cert-manager | CRDs/controller Available | tested routing config |
+| Inference Extension | `v1.5.0` | CRDs + per-model EPP | Gateway API | InferencePool CRD; EPP healthy | tested routing config; live pool CRD carries `inference.networking.k8s.io/bundle-version: v1.5.0` and serves `v1` only |
+| Envoy Gateway | `1.8.3` | Envoy Gateway | cert-manager, Gateway API | controller Available; class Accepted | tested routing config; live controller image `gateway:v1.8.3`, data plane `envoy:distroless-v1.38.3`, installed with the AI Gateway extension-manager hook |
+| Envoy AI Gateway | `v1.1.0` | AI Gateway controller | Envoy Gateway, cert-manager | CRDs/controller Available | charts pinned `v1.1.0`; the author's controller runs a private `v1.1.0` build carrying one upstream pull request, which changes ext_proc wiring to one filter per pool instead of one per route |
 | Model snapshot | `6821d6ad…0a380` | `vllm-image model-sync` | token, 200 GiB storage | config and indexed shards validated | tested recipe |
 | Model/JIT storage | operator-supplied absolute host paths; 200 GiB model minimum | host and cluster operator | model snapshot, topology | both directories exist and free-space gate passes | tested storage shape; paths site-specific |
 

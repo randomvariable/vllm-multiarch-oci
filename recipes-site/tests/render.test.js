@@ -10,6 +10,7 @@ import { renderRecipe } from "../src/render.js";
 const siteRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const recipe = parseAllDocuments(readFileSync(resolve(siteRoot, "../recipes/deepseek-ai/DeepSeek-V4-Flash-Vision-Exp.yaml"), "utf8"))[0].toJS();
 const image = recipe.validation.image;
+const qwen = parseAllDocuments(readFileSync(resolve(siteRoot, "../recipes/local-inference-lab/Qwen3.8-Flash-Next-NVFP4.yaml"), "utf8"))[0].toJS();
 assert.equal(recipe.deployment.parameters.model_storage_path.default, "/var/lib/models");
 assert.equal(recipe.deployment.parameters.jit_storage_path.default, "/var/cache/vllm/deepseek-v4-flash-vision");
 const parameters = {
@@ -39,6 +40,10 @@ function documents(text) {
 
 function findDocument(values, kind) {
   return values.find((value) => value.kind === kind);
+}
+
+function findDocuments(values, kind) {
+  return values.filter((value) => value.kind === kind);
 }
 
 function modelContainers(lws) {
@@ -121,7 +126,6 @@ test("LWS renders explicit rank templates from one fixed runtime definition", ()
 });
 
 test("a recipe that declares required files passes them to the model-sync helper", () => {
-  const qwen = parseAllDocuments(readFileSync(resolve(siteRoot, "../recipes/local-inference-lab/Qwen3.8-Flash-Next-NVFP4.yaml"), "utf8"))[0].toJS();
   const result = renderRecipe(qwen, parameters, qwen.validation.image, "lws");
   const lws = findDocument(documents(result.files[`${parameters.name}-lws.yaml`]), "LeaderWorkerSet");
   const init = lws.spec.leaderWorkerTemplate.leaderTemplate.spec.initContainers[0];
@@ -193,15 +197,20 @@ test("llm-d routing selects only rank zero and fails closed through EPP", () => 
   assert.equal(gateway.spec.listeners[0].port, 10080);
   assert.equal(route.spec.rules[0].matches[0].headers[0].value, recipe.model.served_name);
   assert.deepEqual(route.spec.rules[0].backendRefs[0], { group: "inference.networking.k8s.io", kind: "InferencePool", name: "deepseek-vision-pool" });
-  assert.equal(route.spec.rules[0].timeouts.request, "1800s");
+  assert.equal(route.spec.rules[0].timeouts.request, "3600s");
   assert.equal(policy.spec.connection.bufferLimit, "50Mi");
   assert.equal(epp.spec.template.spec.containers[0].image, "registry.k8s.io/gateway-api-inference-extension/epp:v1.5.0");
   assert(epp.spec.template.spec.containers[0].args.includes("--metrics-endpoint-auth=false"));
+  assert(epp.spec.template.spec.containers[0].args.includes("-v=4"));
   assert.deepEqual(config.schedulingProfiles[0].plugins, [
     { pluginRef: "queue-scorer", weight: 2 },
     { pluginRef: "kv-cache-utilization-scorer", weight: 2 },
     { pluginRef: "prefix-cache-scorer", weight: 3 },
   ]);
+  const [routeTimeouts] = findDocuments(docs, "BackendTrafficPolicy");
+  assert.deepEqual(routeTimeouts.spec.targetRefs, [{ group: "gateway.networking.k8s.io", kind: "HTTPRoute", name: "deepseek-vision-route" }]);
+  assert.deepEqual(routeTimeouts.spec.timeout.http, { requestTimeout: "3600s" });
+  assert.equal(findDocument(docs, "HTTPRoute"), undefined, "no Messages route for a recipe that does not declare the endpoint");
   assert(!JSON.stringify(docs).includes("internal.randomvariable"));
 });
 
@@ -222,4 +231,32 @@ test("GB10 HCA preset remains an editable recipe value", () => {
   const manifests = documents(rendered.files["deepseek-vision-lws.yaml"]);
   const server = findDocument(manifests, "LeaderWorkerSet").spec.leaderWorkerTemplate.leaderTemplate.spec.containers[0];
   assert.equal(Object.fromEntries(server.env.map((entry) => [entry.name, entry.value])).NCCL_IB_HCA, definition.default);
+});
+
+test("the Qwen recipe publishes KV events from rank zero only", () => {
+  const values = { ...parameters, namespace: "models", name: "qwen38-flash-next", jit_storage_path: "/srv/cache/qwen" };
+  const docs = documents(renderRecipe(qwen, values, qwen.validation.image, "lws").files["qwen38-flash-next-lws.yaml"]);
+  const [leader, worker] = modelContainers(findDocument(docs, "LeaderWorkerSet"));
+  const scaleOutAt = leader.args.indexOf("--enable-scale-out");
+
+  assert.ok(scaleOutAt > leader.args.indexOf("--moe-backend"), "the publishing flags follow the fixed engine arguments");
+  assert.deepEqual(leader.args.slice(scaleOutAt), qwen.runtime.leader_args);
+  assert.ok(!worker.args.includes("--enable-scale-out") && !worker.args.includes("--kv-events-config"), "a second publisher indexes the same blocks under a source no lookup can reach");
+  assert.ok(worker.args.includes("--headless"));
+  const sourced = Object.fromEntries([...leader.env, ...worker.env].filter((entry) => !Object.hasOwn(entry, "value")).map((entry) => [entry.name, entry.valueFrom.fieldRef.fieldPath]));
+  assert.deepEqual(sourced, { VLLM_HOST_IP: "status.podIP", POD_IP: "status.podIP" });
+  assert.deepEqual(leader.ports.slice(2), qwen.runtime.leader_ports);
+  assert.deepEqual(worker.ports.slice(2), qwen.runtime.leader_ports);
+  assert.equal(leader.args[leader.args.indexOf("--gpu-memory-utilization") + 1], "0.74");
+
+  const leaderScript = renderRecipe(qwen, values, qwen.validation.image, "docker").files["qwen38-flash-next-leader.sh"];
+  assert(leaderScript.includes(`kv@${parameters.leader_ip}:8888@qwen38-flash-next`), "the Docker topic names the address rank zero is reachable at");
+  assert(!leaderScript.includes("$(POD_IP)"), "no Kubernetes-only placeholder leaks into the Docker script");
+
+  const routing = documents(renderRecipe(qwen, values, qwen.validation.image, "llm-d-routing").files["qwen38-flash-next-llm-d-routing.yaml"]);
+  const messages = findDocument(routing, "HTTPRoute");
+  const [, messagesTimeouts] = findDocuments(routing, "BackendTrafficPolicy");
+  assert.deepEqual(messages.spec.parentRefs, [{ name: "qwen38-flash-next-gateway", sectionName: "http" }]);
+  assert.deepEqual(messages.spec.rules[0].backendRefs, [{ group: "inference.networking.k8s.io", kind: "InferencePool", name: "qwen38-flash-next-pool", port: 8888 }]);
+  assert.deepEqual(messagesTimeouts.spec.timeout.http, { requestTimeout: "3600s", streamIdleTimeout: "3600s" });
 });

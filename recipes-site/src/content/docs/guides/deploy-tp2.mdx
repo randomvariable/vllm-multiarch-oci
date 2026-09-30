@@ -97,7 +97,7 @@ Stop if ranks land on the same topology value, image digests differ, rank one be
 The generated rank-zero Service is debugging access. Port-forward it from the workstation:
 
 ```bash
-kubectl -n "$RECIPE_NAMESPACE" port-forward service/"$RECIPE_NAME" 8888:8888
+kubectl -n "$RECIPE_NAMESPACE" port-forward service/"$RECIPE_NAME-serve" 8888:8888
 ```
 
 In another terminal, first verify the served name:
@@ -106,7 +106,7 @@ In another terminal, first verify the served name:
 curl --fail --silent http://127.0.0.1:8888/v1/models
 ```
 
-Then make three real requests against `deepseek-ai/DeepSeek-V4-Flash-Vision-Exp`: a text completion, a tool-call request with an explicit tool schema, and a vision request whose message includes one valid image. Require valid OpenAI-compatible JSON and the expected content/tool result for each.
+Then make three real requests against the recipe's served model name (`deepseek-v4-flash-vision` for that recipe), which is what `--served-model-name` publishes and what `/v1/models` returns: a text completion, a tool-call request with an explicit tool schema, and a vision request whose message includes one valid image. Require valid OpenAI-compatible JSON and the expected content/tool result for each.
 
 This direct Service checks the rank-zero API and both-rank engine group. It bypasses EPP selection. Continue with [request routing](/vllm-multiarch-oci/guides/llm-d-routing/) to configure the Gateway path.
 

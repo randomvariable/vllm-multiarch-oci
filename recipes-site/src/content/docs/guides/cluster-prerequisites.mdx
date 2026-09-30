@@ -50,7 +50,7 @@ Stop if the CRD is absent or the webhook/controller is unavailable. Source: [LWS
 
 ## Install Inference Extension v1.5.0
 
-The Gateway API Inference Extension defines `InferencePool` and the Endpoint Picker Protocol. The recipe later creates one EPP per model.
+The Gateway API Inference Extension defines `InferencePool` and the Endpoint Picker Protocol. The recipe later creates one endpoint picker per model. The picker image is a separate choice from these CRDs: the generated bundle installs the upstream Gateway API Inference Extension picker, and the author's cluster substitutes the llm-d router build, which additionally needs `llm-d.ai` `InferenceObjective` and `InferenceModelRewrite` CRDs. Nothing in this guide or the generated bundle requires those two, so they are not installed here.
 
 ```bash
 kubectl apply --server-side -f \
@@ -67,11 +67,39 @@ The final URL is the v1.5.0-tagged CRD source, not `main`. Review the [v1.5.0 in
 ## Install Envoy Gateway 1.8.3
 
 ```bash
+cat > eg-values.yaml <<'EOF'
+config:
+  envoyGateway:
+    gateway:
+      controllerName: gateway.envoyproxy.io/gatewayclass-controller
+    extensionApis:
+      enableEnvoyPatchPolicy: true
+      enableBackend: true
+    extensionManager:
+      hooks:
+        xdsTranslator:
+          translation:
+            listener: {includeAll: true}
+            route: {includeAll: true}
+            cluster: {includeAll: true}
+            secret: {includeAll: true}
+          post: [Translation, Cluster, Route]
+      service:
+        fqdn:
+          hostname: ai-gateway-controller.envoy-ai-gateway-system.svc.cluster.local
+          port: 1063
+      backendResources:
+        - group: inference.networking.k8s.io
+          kind: InferencePool
+          version: v1
+EOF
 helm upgrade --install eg oci://docker.io/envoyproxy/gateway-helm \
   --namespace envoy-gateway-system --create-namespace \
-  --version 1.8.3
+  --version 1.8.3 -f eg-values.yaml
 kubectl -n envoy-gateway-system wait --for=condition=Available deployment --all --timeout=10m
 ```
+
+Those values are what make an `InferencePool` backend reachable at all. `backendResources` lets a route name that kind as a backend; `extensionManager` hands xDS translation to the Envoy AI Gateway controller on port 1063, which is where the external processor gets attached to the generated route. A plain `helm install` of the chart without them produces a Gateway that accepts and programs but cannot resolve an `InferencePool` reference. Install Envoy AI Gateway below before applying any routing bundle, or that hostname does not resolve when the first Gateway is translated.
 
 Create the fresh-cluster `GatewayClass` with Envoy Gateway's official controller name:
 
@@ -82,7 +110,7 @@ kind: GatewayClass
 metadata:
   name: vllm-envoy
 spec:
-  controllerName: gateway.envoyproxy.io/gatewayclass
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
 EOF
 kubectl wait gatewayclass/vllm-envoy --for=condition=Accepted --timeout=5m
 ```
@@ -111,7 +139,7 @@ Stop if either chart/reference is unavailable in the v1.1.0 release or the insta
 ## Final controller gate
 
 ```bash
-kubectl api-resources | grep -E 'LeaderWorkerSet|InferencePool|AIGatewayRoute|ClientTrafficPolicy'
+kubectl api-resources | grep -E 'LeaderWorkerSet|InferencePool|AIGatewayRoute|ClientTrafficPolicy|BackendTrafficPolicy'
 kubectl get gatewayclass vllm-envoy -o jsonpath='{range .status.conditions[*]}{.type}={.status}{" "}{end}{"\n"}'
 ```
 

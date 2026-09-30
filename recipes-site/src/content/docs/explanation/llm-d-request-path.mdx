@@ -3,7 +3,7 @@ title: How inference request routing works
 description: Separate endpoint selection, inference payload flow and two-rank GPU collectives.
 ---
 
-The setup combines Gateway API Inference Extension with Envoy AI Gateway. Four components have separate responsibilities.
+The setup combines the Gateway API Inference Extension's `InferencePool` contract with Envoy AI Gateway. Four components have separate responsibilities. The picker that satisfies the contract is a pluggable implementation: the generated bundle installs the upstream Gateway API Inference Extension endpoint picker, while the author's cluster runs the llm-d router build of the same protocol, which scores with a predicted-latency model and an exact prefix index instead of approximate scoring. Both speak ext-proc on 9002 to the same Envoy data plane; [the routing guide](/vllm-multiarch-oci/guides/llm-d-routing/#the-live-cluster-runs-the-llm-d-router) records what only the router build does.
 
 ## Why add these components
 
@@ -13,7 +13,7 @@ Envoy AI Gateway provides the client-facing routing layer. It understands model-
 
 EPP provides the endpoint-selection layer. Kubernetes load balancing normally treats ready endpoints as interchangeable. LLM replicas are not interchangeable under load: one may have a shorter queue, enough KV-cache capacity, or a useful prefix already cached. EPP receives metadata about the eligible endpoints, scores those signals, and returns a rank-zero endpoint to Envoy. Envoy still carries the request body directly to vLLM; EPP is not a proxy in the data path.
 
-This recipe currently has one TP=2 group, hence one eligible rank-zero endpoint. EPP cannot improve placement until another independent TP group exists. It still establishes the same routing contract that supports additional replicas later. If the deployment will remain a single group and needs no model-aware gateway policy, use the rank-zero Service and omit this routing stack.
+How much of this is useful depends on how many serving groups exist. A recipe applied once has one TP=2 group and therefore one eligible rank-zero endpoint, so EPP cannot improve placement; it still establishes the routing contract that supports additional replicas later. The author's cluster runs the Qwen recipe with `replicas: 2`, which puts two independent rank-zero endpoints in one pool and makes the selection real. If the deployment will remain a single group and needs no model-aware gateway policy, use the rank-zero Service and omit this routing stack.
 
 <iframe
   class="doc-figure"
@@ -26,8 +26,8 @@ This recipe currently has one TP=2 group, hence one eligible rank-zero endpoint.
 
 ## Request path
 
-1. A client sends an OpenAI-compatible request with `x-ai-eg-model: deepseek-ai/DeepSeek-V4-Flash-Vision-Exp` to Gateway port 10080.
-2. The AI route matches that exact model header and refers to the `InferencePool`.
+1. A client sends an OpenAI-compatible request with `x-ai-eg-model: deepseek-v4-flash-vision` to Gateway port 10080. The header value is the engine's `--served-model-name`, which is what the generator writes into both the engine flag and the route match.
+2. The AI route matches that exact model header and refers to the `InferencePool`. A deployment that also serves other models carries a second, unmatched rule as the default route, and a native Anthropic `/v1/messages` request needs its own `HTTPRoute`, because it is not an OpenAI request and never matches the header rule.
 3. Envoy sends request metadata to EPP over gRPC port 9002. EPP evaluates only endpoints admitted by the pool.
 4. EPP returns its endpoint choice. `FailClose` makes selection fail if EPP cannot decide; it does not silently bypass policy.
 5. Envoy sends the original inference payload directly to the chosen rank-zero API on port 8888. The payload is not proxied through EPP.
@@ -47,7 +47,7 @@ The rank-zero Service gives operators a stable way to port-forward directly to `
 
 ## What changes with replicas
 
-This seed recipe has one TP group and therefore one eligible API endpoint. EPP still enforces the protocol and failure behavior, but queue/KV/prefix-cache scoring has no alternative replica to choose. If future recipes add independent TP groups, those signals can differentiate their rank-zero endpoints. The preserved `2/2/3` weights describe the accepted configuration, not a universal optimum.
+With one TP group there is one eligible API endpoint, so EPP still enforces the protocol and failure behavior while queue/KV/prefix-cache scoring has no alternative replica to choose. Add an independent TP group and those signals start to differentiate endpoints. The `2/2/3` weights the generator ships describe a configuration validated locally, not a universal optimum, and the llm-d router in the author's cluster does not use numeric weights at all: it filters on an exact prefix-cache affinity threshold, scores a predicted time-to-first-token, and picks randomly among the survivors.
 
 ## Security boundary
 

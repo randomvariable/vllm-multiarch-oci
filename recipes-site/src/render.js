@@ -45,6 +45,8 @@ function validateRecipe(recipe) {
   if (!Array.isArray(recipe.runtime.base_args) || !recipe.runtime.base_args.every((value) => typeof value === "string")) fail("runtime.base_args must be a string array");
   if (!recipe.runtime.base_env || typeof recipe.runtime.base_env !== "object" || Array.isArray(recipe.runtime.base_env)) fail("runtime.base_env must be a mapping");
   if (!Object.values(recipe.runtime.base_env).every((value) => typeof value === "string")) fail("runtime.base_env values must be strings");
+  if (recipe.runtime.leader_args !== undefined && (!Array.isArray(recipe.runtime.leader_args) || !recipe.runtime.leader_args.every((value) => typeof value === "string"))) fail("runtime.leader_args must be a string array");
+  if (recipe.runtime.leader_ports !== undefined && (!Array.isArray(recipe.runtime.leader_ports) || !recipe.runtime.leader_ports.every((entry) => typeof entry?.name === "string" && entry.name.length <= 15 && Number.isSafeInteger(entry.containerPort)))) fail("runtime.leader_ports entries need a short name and an integer containerPort");
   if (recipe.deployment.nodes !== 2 || recipe.deployment.tensor_parallel_size !== 2) fail("this renderer requires the fixed two-node TP=2 topology");
   if (!/^[0-9a-f]{40}$/.test(recipe.model.revision)) fail("model.revision must be a full lowercase commit OID");
   if (!DIGEST_REFERENCE.test(recipe.validation.image)) fail("validation.image must be digest-qualified");
@@ -115,6 +117,10 @@ function commonRuntimeEnv(recipe, parameters, controlInterface) {
   };
 }
 
+function publishesKvEvents(recipe) {
+  return Array.isArray(recipe.runtime.leader_args) && recipe.runtime.leader_args.length > 0;
+}
+
 function servingArgs(recipe, rank, masterAddress) {
   return [
     recipe.deployment.model_path,
@@ -124,7 +130,15 @@ function servingArgs(recipe, rank, masterAddress) {
     "--master-addr", masterAddress,
     "--tensor-parallel-size", String(recipe.deployment.tensor_parallel_size),
     ...(rank === 1 ? ["--headless"] : []),
+    ...(rank === 0 && publishesKvEvents(recipe) ? recipe.runtime.leader_args : []),
   ];
+}
+
+// Kubernetes expands $(POD_IP) into the leader's --kv-events-config topic at
+// container start. A Docker rank on the host network has no pod IP, so the
+// topic names the host address the endpoint would be reachable at instead.
+function dockerServingArgs(recipe, rank, masterAddress, hostIp) {
+  return servingArgs(recipe, rank, masterAddress).map((value) => String(value).replaceAll("$(POD_IP)", hostIp));
 }
 
 function envList(environment) {
@@ -179,6 +193,7 @@ function podTemplate(recipe, parameters, imageReference, rank) {
     "llm-d.ai/model": parameters.name,
     "llm-d.ai/engine-type": "vllm",
   };
+  const kvEvents = publishesKvEvents(recipe);
   const environment = commonRuntimeEnv(recipe, parameters, "eth0");
   environment.VLLM_HOST_IP = undefined;
   const modelserver = {
@@ -191,10 +206,16 @@ function podTemplate(recipe, parameters, imageReference, rank) {
     env: [
       ...envList(Object.fromEntries(Object.entries(environment).filter(([, value]) => value !== undefined))),
       { name: "VLLM_HOST_IP", valueFrom: { fieldRef: { fieldPath: "status.podIP" } } },
+      // Names the pod half of the KV-event topic. Deliberately separate from
+      // VLLM_HOST_IP, which is engine-internal and may be retargeted; this one
+      // must stay the pod-network address the InferencePool advertises, because
+      // kubelet expands $(POD_IP) into the leader's --kv-events-config topic.
+      ...(kvEvents ? [{ name: "POD_IP", valueFrom: { fieldRef: { fieldPath: "status.podIP" } } }] : []),
     ],
     ports: [
       { name: "modelserver", containerPort: 8888, protocol: "TCP" },
       { name: "rdzv", containerPort: 25000, protocol: "TCP" },
+      ...(recipe.runtime.leader_ports ?? []),
     ],
     resources: {
       requests: { cpu: "8", memory: "96Gi", "ephemeral-storage": "128Gi", "nvidia.com/gpu": "1", [parameters.rdma_resource]: String(parameters.rdma_units) },
@@ -297,7 +318,7 @@ function dockerServe(recipe, parameters, imageReference, rank, hostIp, masterAdd
     "-v", `${parameters.model_storage_path}:/models:ro`, "-v", `${parameters.jit_storage_path}:/cache`,
   ];
   for (const [key, value] of Object.entries(dockerEnvironment(recipe, parameters, hostIp))) args.push("-e", `${key}=${value}`);
-  args.push("--entrypoint", recipe.runtime.command[0], imageReference, ...recipe.runtime.command.slice(1), ...servingArgs(recipe, rank, masterAddress));
+  args.push("--entrypoint", recipe.runtime.command[0], imageReference, ...recipe.runtime.command.slice(1), ...dockerServingArgs(recipe, rank, masterAddress, hostIp));
   return args;
 }
 
@@ -337,6 +358,11 @@ function routingResources(recipe, parameters) {
   const eppName = `${name}-epp`;
   const gatewayName = `${name}-gateway`;
   const routeName = `${name}-route`;
+  // Upstream Gateway API Inference Extension configuration. The author's cluster
+  // runs the llm-d router Endpoint Picker instead, whose plugin chain (precise
+  // KV-event prefix indexing, predicted-latency placement, concurrency
+  // admission, flow control) has no public image to name; the routing guide
+  // records that difference.
   const config = {
     apiVersion: "inference.networking.x-k8s.io/v1alpha1",
     kind: "EndpointPickerConfig",
@@ -377,7 +403,7 @@ function routingResources(recipe, parameters) {
         name: "epp", image: "registry.k8s.io/gateway-api-inference-extension/epp:v1.5.0",
         securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: ["ALL"] }, readOnlyRootFilesystem: true, runAsNonRoot: true, runAsUser: 65532 },
         resources: { requests: { cpu: "4", memory: "8Gi" }, limits: { memory: "16Gi" } },
-        args: [`--pool-name=${poolName}`, `--pool-namespace=${namespace}`, "--pool-group=inference.networking.k8s.io", "--metrics-endpoint-auth=false", "--config-file=/config/config.yaml", "-v=3"],
+        args: [`--pool-name=${poolName}`, `--pool-namespace=${namespace}`, "--pool-group=inference.networking.k8s.io", "--metrics-endpoint-auth=false", "--config-file=/config/config.yaml", "-v=4"],
         ports: [{ name: "grpc", containerPort: 9002, protocol: "TCP" }, { name: "metrics", containerPort: 9090, protocol: "TCP" }, { name: "health", containerPort: 9003, protocol: "TCP" }],
         env: [{ name: "NAMESPACE", valueFrom: { fieldRef: { fieldPath: "metadata.namespace" } } }, { name: "POD_NAME", valueFrom: { fieldRef: { fieldPath: "metadata.name" } } }],
         volumeMounts: [{ name: "epp-config", mountPath: "/config", readOnly: true }],
@@ -390,9 +416,28 @@ function routingResources(recipe, parameters) {
   const service = { apiVersion: "v1", kind: "Service", metadata: { name: eppName, namespace, labels: { app: eppName } }, spec: { selector: { app: eppName }, ports: [{ name: "grpc", port: 9002, targetPort: "grpc", protocol: "TCP" }, { name: "metrics", port: 9090, targetPort: "metrics", protocol: "TCP" }] } };
   const pool = { apiVersion: "inference.networking.k8s.io/v1", kind: "InferencePool", metadata: { name: poolName, namespace }, spec: { appProtocol: "http", selector: { matchLabels: { app: name, "leaderworkerset.sigs.k8s.io/worker-index": "0" } }, targetPorts: [{ number: 8888 }], endpointPickerRef: { name: eppName, port: { number: 9002 }, failureMode: "FailClose" } } };
   const gateway = { apiVersion: "gateway.networking.k8s.io/v1", kind: "Gateway", metadata: { name: gatewayName, namespace }, spec: { gatewayClassName: parameters.gateway_class, listeners: [{ name: "http", protocol: "HTTP", port: 10080 }] } };
-  const route = { apiVersion: "aigateway.envoyproxy.io/v1beta1", kind: "AIGatewayRoute", metadata: { name: routeName, namespace }, spec: { parentRefs: [{ name: gatewayName, namespace }], rules: [{ matches: [{ headers: [{ type: "Exact", name: "x-ai-eg-model", value: recipe.model.served_name }] }], backendRefs: [{ group: "inference.networking.k8s.io", kind: "InferencePool", name: poolName }], timeouts: { request: "1800s" } }] } };
+  const route = { apiVersion: "aigateway.envoyproxy.io/v1beta1", kind: "AIGatewayRoute", metadata: { name: routeName, namespace }, spec: { parentRefs: [{ name: gatewayName, namespace }], rules: [{ matches: [{ headers: [{ type: "Exact", name: "x-ai-eg-model", value: recipe.model.served_name }] }], backendRefs: [{ group: "inference.networking.k8s.io", kind: "InferencePool", name: poolName }], timeouts: { request: "3600s" } }] } };
+  // Envoy Gateway's generated route inherits a 15-second upstream response
+  // timeout. BackendTrafficPolicy raises that ceiling for the whole route; the
+  // AIGatewayRoute rule sets its own, lower per-rule value, and the rule-level
+  // timeout is what bounds a request. A full-window prefill on a
+  // 1,048,576-token model takes far longer than either default.
+  const backendTimeouts = { apiVersion: "gateway.envoyproxy.io/v1alpha1", kind: "BackendTrafficPolicy", metadata: { name: `${name}-backend-timeouts`, namespace }, spec: { targetRefs: [{ group: "gateway.networking.k8s.io", kind: "HTTPRoute", name: routeName }], timeout: { http: { requestTimeout: "3600s" } } } };
+  // Native Anthropic Messages requests bypass AIGatewayRoute model translation,
+  // so a recipe that serves them gets its own HTTPRoute to reach the pool and its
+  // fail-closed picker. The port is explicit because a plain backendRef to an
+  // InferencePool has no model-header match to infer it from.
+  const nativeMessages = recipe.model.serves_native_messages
+    ? { apiVersion: "gateway.networking.k8s.io/v1", kind: "HTTPRoute", metadata: { name: `${name}-native-messages`, namespace }, spec: { parentRefs: [{ name: gatewayName, sectionName: "http" }], rules: [{ matches: [{ path: { type: "PathPrefix", value: "/v1/messages" } }], backendRefs: [{ group: "inference.networking.k8s.io", kind: "InferencePool", name: poolName, port: 8888 }], timeouts: { request: "3600s" } }] } }
+    : null;
+  const nativeMessagesTimeouts = nativeMessages
+    ? { apiVersion: "gateway.envoyproxy.io/v1alpha1", kind: "BackendTrafficPolicy", metadata: { name: `${name}-native-messages-timeouts`, namespace }, spec: { targetRefs: [{ group: "gateway.networking.k8s.io", kind: "HTTPRoute", name: `${name}-native-messages` }], timeout: { http: { requestTimeout: "3600s", streamIdleTimeout: "3600s" } } } }
+    : null;
+  // ext_proc reads the request body in BUFFERED mode, and its ceiling is the
+  // listener's per_connection_buffer_limit_bytes. The ~32 KiB default returns
+  // 413 for a vision payload carrying a base64 image, so the limit is raised.
   const policy = { apiVersion: "gateway.envoyproxy.io/v1alpha1", kind: "ClientTrafficPolicy", metadata: { name: `${name}-buffer-limit`, namespace }, spec: { targetRefs: [{ group: "gateway.networking.k8s.io", kind: "Gateway", name: gatewayName }], connection: { bufferLimit: "50Mi" } } };
-  return [serviceAccount, clusterRole, clusterRoleBinding, configMap, deployment, service, pool, gateway, route, policy];
+  return [serviceAccount, clusterRole, clusterRoleBinding, configMap, deployment, service, pool, gateway, route, nativeMessages, backendTimeouts, nativeMessagesTimeouts, policy].filter(Boolean);
 }
 
 function renderRouting(recipe, parameters) {

@@ -16,7 +16,7 @@ I run the image and two-node LeaderWorkerSet on a kubeadm/Cilium cluster. This t
 3. GPU Operator discovers the host-owned driver and advertises one GPU per GB10.
 4. Multus adds a separate macvlan network; Whereabouts allocates addresses; Network Operator advertises RDMA units.
 5. LeaderWorkerSet starts one vLLM rank on each host.
-6. Gateway API Inference Extension's Endpoint Picker (EPP) selects the rank-zero API for Envoy AI Gateway.
+6. An Endpoint Picker (EPP) from the Gateway API Inference Extension selects the rank-zero API for Envoy AI Gateway.
 
 A **node** is a machine in the Kubernetes cluster. A **pod** is Kubernetes' unit for running containers. A **controller** continuously reconciles declared resources. A **CRD** adds a new Kubernetes API type. A **CNI** connects pods to networks. The [glossary](/vllm-multiarch-oci/reference/glossary/) defines the remaining terms.
 
@@ -88,7 +88,7 @@ Follow [deploy the TP=2 group](/vllm-multiarch-oci/guides/deploy-tp2/) for Secre
 
 Render the routing bundle and follow [request routing with EPP and Envoy AI Gateway](/vllm-multiarch-oci/guides/llm-d-routing/).
 
-**Gate:** EPP is Available, Gateway conditions are `Accepted=True` and `Programmed=True`, and a request through Gateway port 10080 with `x-ai-eg-model: deepseek-ai/DeepSeek-V4-Flash-Vision-Exp` succeeds for text, tool and vision inputs. A direct debug-Service `/v1/models` request is not routing proof.
+**Gate:** EPP is Available, Gateway conditions are `Accepted=True` and `Programmed=True`, and a request through Gateway port 10080 with `x-ai-eg-model: deepseek-v4-flash-vision` succeeds for text, tool and vision inputs. A direct debug-Service `/v1/models` request is not routing proof.
 
 ## Where to stop
 

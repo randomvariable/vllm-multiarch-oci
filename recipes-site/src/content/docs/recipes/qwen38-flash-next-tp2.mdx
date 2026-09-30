@@ -9,24 +9,32 @@ import RecipeBuilder from "../../../components/RecipeBuilder.astro";
 
 <p class="eyebrow">Runtime recipe · Qwen3.8 Flash Next</p>
 
-This is the public, parameterized form of the two-node NVIDIA DGX Spark deployment I run for Qwen3.8-Flash-Next-NVFP4. Its image contains the pinned [`local-inference-lab/vLLM`](https://github.com/local-inference-lab/vllm) fork rather than an arbitrary upstream vLLM release. The recipe fixes the model revision, engine flags, environment, topology, and validated image. You supply the details that belong to your cluster or Docker hosts.
+This is the public, parameterized form of the two-node NVIDIA DGX Spark deployment I run for Qwen3.8-Flash-Next-NVFP4. Its image contains the pinned [`local-inference-lab/vLLM`](https://github.com/local-inference-lab/vllm) fork rather than an arbitrary upstream vLLM release. The recipe fixes the model revision, engine flags, environment, topology, and the image the configuration was accepted on. You supply the details that belong to your cluster or Docker hosts.
 
 <div class="release-strip" aria-label="Recipe validation status">
-  <span>Accepted image</span>
-  <code>0.29.0+karmic.kraken.d9e52bdf4663.9135f93ae533</code>
+  <span>Accepted runtime</span>
+  <code>0.29.0+rv.mxfp8.mtp.0a6739845a32.965e748f74fe.c6f1c3f3e582</code>
   <a href="#recipe-builder-title">Configure</a>
 </div>
 
 <dl class="fact-grid">
   <div><dt>Model</dt><dd>local-inference-lab/Qwen3.8-Flash-Next-NVFP4</dd></div>
-  <div><dt>Model revision</dt><dd>629bc3218833a38b475b719f34aa571666f4a03e</dd></div>
-  <div><dt>Topology</dt><dd>2 nodes · TP=2 · one DGX Spark per node</dd></div>
+  <div><dt>Model revision</dt><dd>60215d26cf5e42c2db6128774032d57fc62678da</dd></div>
+  <div><dt>Topology</dt><dd>2 nodes · TP=2 · one DGX Spark per rank</dd></div>
   <div><dt>Context</dt><dd>1,048,576 tokens</dd></div>
 </dl>
 
 ## What is fixed
 
-The recipe preserves the live runtime command and tuning accepted on 2026-09-23/24: B12X GDN prefill and decode, linear and MoE backends, buffered InstantTensor loading, NVFP4 weights through `modelopt_mixed`, MTP speculation at depth 3, FP8 KV cache, full and piecewise CUDA graphs capped at a 32-token capture size, GPU utilization `0.76`, eight sequences, an 8,192-token batch budget, and decode-aware prefill scheduling. It also selects the tested A16 dense-activation path with quantized B12X MXFP8 activations, one-shot RoCE all-reduce limits, adaptive shared-memory broadcast grace, and the image's AOT artifacts. The live ranks run image `ec8bbb3e` (vLLM `88e9186daf39` with b12x `9135f93ae533`), a Harbor build not mirrored to this registry, so the recipe's cited `validation.image` is the nearest public karmic build - the next cycle cut, vLLM `d9e52bdf4663` with the same b12x `9135f93ae533`. This PR re-pins the profile to vLLM `fe8b327bcd9f` with b12x `e8130f89752b` (master-based), and the recipe site's [latest image](/vllm-multiarch-oci/image-releases/) resolver points at that publication once the profile reaches `main`.
+The recipe preserves the live runtime command and tuning accepted on 2026-09-30: B12X GDN prefill and decode, the B12X linear and MoE backends, buffered InstantTensor loading, NVFP4 weights through `modelopt_mixed`, MTP speculation at depth 3, FP8 KV cache, full and piecewise CUDA graphs capped at a 32-token capture size, GPU utilization `0.74`, eight sequences, an 8,192-token batch budget, decode-aware prefill scheduling, and KV-event publishing from rank zero. It also selects the tested A16 dense-activation path with quantized B12X MXFP8 activations, one-shot RoCE all-reduce limits, the experimental adaptive shared-memory broadcast spin (`VLLM_EXPERIMENTAL_SHM_BROADCAST_ADAPTIVE_SPIN=1`, maximum grace 50 ms), and the image's AOT artifacts. The first boot with a 900 ms maximum grace deadlocked one group in B12X preparation; 50 ms booted both groups. One failure does not isolate the spin setting as the cause.
+
+Two things changed at this cut, and both trace back to the checkpoint.
+
+**The weights moved.** The accepted revision is `60215d26cf5e`: QAD step 5500 with PLE step 1000 (branch `qad-step5500-ple1000`), pinned by commit so a branch move cannot silently change what is served. Its MTP draft experts are MXFP8 - E4M3 weights with UE8M0 scale factors - while the target experts stay NVFP4. That requires native B12X MXFP8 MoE; without it `--moe-backend b12x` rejects the draft at kernel selection. The live rank-0 log shows what was chosen: `Using 'B12X' NvFp4 MoE backend`, `Using 'B12X_MXFP8' MxFp8 MoE backend (user-requested)`, and nothing on Marlin. At TP=2 the 640-wide MTP experts shard to 320 per rank, and B12X runs them at 320: UE8M0 scales cover 32-wide K blocks, and 32-aligned intermediate sizes use separate up and gate descriptors, so no padding is prepared.
+
+**The memory budget moved with them.** Step 5500 loads 42.77 GiB per rank against 40.32 GiB at step 4000, and at `0.76` the startup profile pass froze two GB10 hosts with no kernel log. `0.74` hands back 2.48 GiB of the node's 123.79 GiB and restores the absolute headroom step 4000 had. Measured on the live ranks after the change: one group reports 24.78 GiB of KV cache memory, 3,414,080 tokens, 3.26x concurrency for a full-window request; the other reports 25.29 GiB, 3,483,537 tokens, 3.32x. That spread is node memory state at boot, not a configuration difference.
+
+The image those ranks run is built by this repository's CI from vLLM `0a6739845a32` on `dev/rv-mxfp8-mtp` and B12X `965e748f74fe` on `feat/mxfp8-moe`. The digest the generator offers as validated is the newest public build that predates that source pair, `0.29.0+karmic.kraken.fe8b327bcd9f.e8130f89752b`; it cannot load this checkpoint's draft. The first public build of the pair replaces it as the validated image.
 
 Two settings deserve attention because they are not interchangeable with defaults.
 
@@ -34,7 +42,9 @@ The PLE tables live in page-locked host memory. `--additional-config '{"ple_tabl
 
 Two environment controls need care. Never set `CUDA_LAUNCH_BLOCKING`: b12x does not function with synchronous kernel launches. `VLLM_QWEN3_8_PREFILL_COALESCE` is opt-in and functional only from the current cycle pin, which wires the prefill checkpoint blocks into the NVIDIA GDN decoder; on earlier cuts that already carry the coalesce feature, setting it aborts boot with "all mamba groups must share cache scheduling parameters".
 
-The context comes from a YaRN override. The checkpoint declares `max_position_embeddings` 262,144 with `rope_type` `default`, so the 1,048,576-token window is a 4x override applied through `--hf-overrides`. The override keeps `mrope_section` and `mrope_interleaved` because `get_rope()` only preserves M-RoPE, which the vision position ids need, when `mrope_section` is present. Serving this at 1M tokens also requires vLLM `5a70cefff7e0` or later: earlier revisions did not pass the override into the MTP draft model, so the draft stayed at 262,144 and rejected a full-length prefill.
+The context comes from a YaRN override. The checkpoint declares `max_position_embeddings` 262,144 with `rope_type` `default`, so the 1,048,576-token window is a 4x override applied through `--hf-overrides`. The override must repeat the scaled length in `max_position_embeddings` as well as carrying the rope parameters: `_get_and_verify_max_len` multiplies the derived length by the rope factor only for rope types outside a list that includes `yarn`, because Transformers' own `_compute_yarn_parameters` treats `max_position_embeddings` as already scaled. Omit that key and the engine stops at ModelConfig with "User-specified max_model_len (1048576) is greater than the derived max_model_len". `VLLM_ALLOW_LONG_MAX_MODEL_LEN` is deliberately unset: it would downgrade that error to a warning instead of declaring the length the rope code assumes. The override also keeps `mrope_section` and `mrope_interleaved`, because `get_rope()` only preserves M-RoPE, which the vision position ids need, when `mrope_section` is present. Serving this at 1M tokens also requires vLLM `5a70cefff7e0` or later: earlier revisions did not pass the override into the MTP draft model, so the draft stayed at 262,144 and rejected a full-length prefill.
+
+This is the shape I run twice. The live LeaderWorkerSet carries `replicas: 2`, so two independent TP=2 groups share one InferencePool and the endpoint picker chooses between two rank-zero APIs. The generated manifest stays at one group - that is the smallest deployment this recipe can claim to have validated end to end - but it emits the flags prefix-aware routing needs regardless: `--enable-scale-out` and `--kv-events-config` on rank zero only, and the `kv-events` 5556 / `kv-replay` 5559 container ports on both. [How inference request routing works](/vllm-multiarch-oci/explanation/llm-d-request-path/) covers what the router does with those events and why publishing from the headless rank would silently break prefix accounting.
 
 This is the LWS configuration I run. The Docker target uses the same engine definition, but I have not run it on two separate hosts.
 
@@ -45,58 +55,86 @@ The [deployment benchmark guide](/vllm-multiarch-oci/guides/benchmark-deployment
 <div class="benchmark-panel">
   <div class="benchmark-context">
     <span>Decode capacity sweep</span>
-    <span>Benchmark v0.4.29</span>
+    <span>llm-inference-bench 0.7.5</span>
     <span>30 seconds per cell</span>
-    <span>Concurrency 1, 2, 4, 8</span>
-    <span>Contexts 0 to 128K</span>
+    <span>One sample per cell</span>
+    <span>Concurrency 1, 4, 8</span>
+    <span>Contexts 0 and 16K</span>
+    <span>Prefill scouts 8K to 128K</span>
   </div>
-  <div class="benchmark-table" role="table" aria-label="Qwen3.8 Flash Next deployment benchmark results">
+  <div class="benchmark-table" role="table" aria-label="Qwen3.8 Flash Next sustained decode results">
     <div class="benchmark-row benchmark-header" role="row">
-      <span role="columnheader">Prompt context</span>
-      <span role="columnheader">C=8 aggregate decode</span>
-      <span role="columnheader">C=8 per-user decode</span>
-      <span role="columnheader">Integrated prefill</span>
-      <span role="columnheader">Scheduler state</span>
+      <span role="columnheader">Concurrency</span>
+      <span role="columnheader">Aggregate decode, empty context</span>
+      <span role="columnheader">Aggregate decode, 16K context</span>
+      <span role="columnheader">Engine steps/s, empty context</span>
+      <span role="columnheader">Engine steps/s, 16K context</span>
     </div>
     <div class="benchmark-row" role="row">
-      <strong role="cell">0</strong>
-      <span role="cell" class="benchmark-primary"><b>182.1</b> tok/s</span>
-      <span role="cell"><b>22.8</b> tok/s</span>
-      <span role="cell">Not measured</span>
-      <span role="cell">8 / 8 running</span>
+      <strong role="cell">C=1</strong>
+      <span role="cell" class="benchmark-primary"><b>52.5</b> tok/s</span>
+      <span role="cell"><b>51.0</b> tok/s</span>
+      <span role="cell"><b>23.4</b>/s<small>accept length 2.24</small></span>
+      <span role="cell"><b>23.6</b>/s<small>accept length 2.16</small></span>
+    </div>
+    <div class="benchmark-row" role="row">
+      <strong role="cell">C=4</strong>
+      <span role="cell" class="benchmark-primary"><b>126.7</b> tok/s</span>
+      <span role="cell"><b>129.4</b> tok/s</span>
+      <span role="cell"><b>59.3</b>/s<small>accept length 2.14</small></span>
+      <span role="cell"><b>61.1</b>/s<small>accept length 2.12</small></span>
+    </div>
+    <div class="benchmark-row" role="row">
+      <strong role="cell">C=8</strong>
+      <span role="cell" class="benchmark-primary"><b>181.8</b> tok/s</span>
+      <span role="cell"><b>175.2</b> tok/s</span>
+      <span role="cell"><b>86.8</b>/s<small>accept length 2.09</small></span>
+      <span role="cell"><b>84.4</b>/s<small>accept length 2.08</small></span>
+    </div>
+  </div>
+  <div class="benchmark-table" role="table" aria-label="Qwen3.8 Flash Next prefill results">
+    <div class="benchmark-row benchmark-header" role="row">
+      <span role="columnheader">Prompt length</span>
+      <span role="columnheader">Prefill</span>
+      <span role="columnheader">Time to first token</span>
+      <span role="columnheader">Padded-draft image</span>
+      <span role="columnheader">Padded-draft TTFT</span>
     </div>
     <div class="benchmark-row" role="row">
       <strong role="cell">8K</strong>
-      <span role="cell" class="benchmark-primary"><b>178.7</b> tok/s</span>
-      <span role="cell"><b>22.3</b> tok/s</span>
-      <span role="cell"><b>2,524</b> tok/s</span>
-      <span role="cell">8 / 8 running</span>
+      <span role="cell" class="benchmark-primary"><b>2,857</b> tok/s</span>
+      <span role="cell"><b>2.87</b> s</span>
+      <span role="cell">2,857 tok/s</span>
+      <span role="cell">2.87 s</span>
     </div>
     <div class="benchmark-row" role="row">
-      <strong role="cell">32K</strong>
-      <span role="cell" class="benchmark-primary"><b>175.7</b> tok/s</span>
-      <span role="cell"><b>22.0</b> tok/s</span>
-      <span role="cell"><b>2,401</b> tok/s</span>
-      <span role="cell">8 / 8 running</span>
+      <strong role="cell">16K</strong>
+      <span role="cell" class="benchmark-primary"><b>2,882</b> tok/s</span>
+      <span role="cell"><b>5.61</b> s</span>
+      <span role="cell">2,898 tok/s</span>
+      <span role="cell">5.65 s</span>
     </div>
     <div class="benchmark-row" role="row">
       <strong role="cell">64K</strong>
-      <span role="cell" class="benchmark-primary"><b>171.0</b> tok/s</span>
-      <span role="cell"><b>21.4</b> tok/s</span>
-      <span role="cell"><b>2,311</b> tok/s</span>
-      <span role="cell">8 / 8 running</span>
+      <span role="cell" class="benchmark-primary"><b>2,664</b> tok/s</span>
+      <span role="cell"><b>24.07</b> s</span>
+      <span role="cell">2,663 tok/s</span>
+      <span role="cell">24.61 s</span>
     </div>
     <div class="benchmark-row" role="row">
       <strong role="cell">128K</strong>
-      <span role="cell" class="benchmark-primary"><b>181.0</b> tok/s</span>
-      <span role="cell"><b>22.6</b> tok/s</span>
-      <span role="cell"><b>2,147</b> tok/s</span>
-      <span role="cell">8 / 8 running</span>
+      <span role="cell" class="benchmark-primary"><b>2,416</b> tok/s</span>
+      <span role="cell"><b>52.98</b> s</span>
+      <span role="cell">1,873 tok/s</span>
+      <span role="cell">69.98 s</span>
     </div>
   </div>
-  <p class="benchmark-note"><strong>Method:</strong> this unprofiled sustained-decode run used a direct port-forward from the benchmark client, max output length 8,192, integrated prefill scouts, and one 30-second cell for each concurrency and context combination. vLLM metrics were available. No hardware panel was collected because the client did not have <code>nvidia-smi</code>.</p>
-  <p class="benchmark-note"><strong>Capacity:</strong> each C=8 cell reached eight running requests with no queue. The recipe sets <code>--max-num-seqs 8</code>, so C=8 fills the scheduler's sequence slots. The reported aggregate is duration-weighted per-request decode, not total server throughput, because concurrent generation intervals overlap.</p>
-  <p class="benchmark-note"><strong>Provenance:</strong> the deployment used GitOps revision <code>0527ce13c</code>, the live LWS reached 2/2 ready, and the runtime selected <code>VLLM_B12X_DENSE_ACTIVATION_MODE=a16</code>. Do not compare this result directly with the older max-seqs=4 baseline because that baseline used a different dense-activation configuration.</p>
+  <p class="benchmark-note"><strong>Method:</strong> <code>llm_decode_bench.py</code> from <code>local-inference-lab/llm-inference-bench</code> 0.7.5, against the group's rank-zero endpoint on the model port directly, not through the Gateway. Thirty-second duration-mode cells, one sample per cell, temperature 1, maximum 8,192 output tokens, integrated prefill scouts, loop detection on. The measurement ran from a separate x86-64 workstation, so no hardware panel was collected, and burst/end-to-end cells were not requested.</p>
+  <p class="benchmark-note"><strong>Conditions:</strong> the run was taken on one TP=2 group confirmed idle before and after (zero running, zero waiting); the other group was left serving. Configuration: GitOps revision <code>818be2ad4</code>, image version above. The padded-draft columns are the same benchmark on the other group, running the previous image (vLLM <code>b607be360037</code>, B12X <code>b600bf26c8e4</code>, MTP experts padded 320 to 384) without adaptive spin; both images and both node pairs differ between the columns.</p>
+  <p class="benchmark-note"><strong>Capacity:</strong> every cell held its concurrency with nothing queued - the C=8 cells report eight running requests and zero waiting. The recipe sets <code>--max-num-seqs 8</code>, so C=8 exactly fills the scheduler's sequence slots. Aggregate figures are duration-weighted per-request decode, not total server throughput, because concurrent generation intervals overlap.</p>
+  <p class="benchmark-note"><strong>Speculative normalisation:</strong> steps per second is decode throughput divided by the accept length the engine measured for that cell (accepted draft tokens plus the bonus token, against a nominal four tokens per step). It removes acceptance-rate variation, which moves between runs at temperature 1: aggregate decode at C=1 with empty context read 45.1 tok/s at accept length 1.93 on the padded-draft run and 52.5 at 2.24 here, while steps per second read 23.4 on both.</p>
+  <p class="benchmark-note"><strong>Run-to-run spread:</strong> engine steps per second agree with the padded-draft run within three percent in every decode cell, and prefill agrees within one percent up to 64K. That matches the kernel measurement: unpadded MTP experts save nothing at the one to four tokens the draft processes per step. The 128K prefill cell varies between runs - 2,416, 1,873 and 2,369 tok/s across three single samples - so read it as a range, not a quotable number.</p>
+  <p class="benchmark-note"><strong>Not measured:</strong> prefix-cache reuse through the router, gateway-path overhead, mixed workloads, and any figure for a cluster other than the one described above. These are observations of this stack on GB10, not hardware guarantees.</p>
 </div>
 
 :::caution[Allocator units are not physical devices]

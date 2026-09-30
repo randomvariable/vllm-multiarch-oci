@@ -3,7 +3,7 @@ title: Route requests with EPP and Envoy AI Gateway
 description: Install a per-model Endpoint Picker and route only to the TP group's rank-zero API.
 ---
 
-This setup uses LeaderWorkerSet for the two-rank serving group, the Gateway API Inference Extension's Endpoint Picker (EPP) to select a ready API endpoint, and Envoy AI Gateway to forward the OpenAI request. It installs these components directly rather than through an llm-d chart.
+This setup uses LeaderWorkerSet for the two-rank serving group, an Endpoint Picker (EPP) to select a ready API endpoint, and Envoy AI Gateway to forward the OpenAI request. It installs these components directly rather than through an llm-d chart. The generated bundle names the upstream Gateway API Inference Extension picker image; the author's cluster runs the llm-d router build of the same protocol, and [that difference is recorded below](#the-live-cluster-runs-the-llm-d-router).
 
 Use this stack when clients need one model-aware endpoint, operators need shared Gateway policy, or the deployment has multiple independent TP groups and should select between their rank-zero APIs using queue, KV-cache and prefix-cache state. For one TP group with no Gateway policy requirement, the generated rank-zero Service is sufficient and has fewer moving parts. [Why Envoy AI Gateway and EPP exist](/vllm-multiarch-oci/explanation/llm-d-request-path/#why-add-these-components) explains that trade-off before the installation steps.
 
@@ -16,22 +16,30 @@ Use this stack when clients need one model-aware endpoint, operators need shared
 
 <a href={`${import.meta.env.BASE_URL}figures/llm-d-request-path.html`}>Open the routing figure by itself</a>.
 
-The request payload does **not** traverse EPP. Envoy asks EPP which endpoint to use, then sends the request directly to rank zero on port 8888. Rank one participates only through collectives. With one TP group there is one eligible endpoint, so prefix-aware selection has no multi-replica choice yet.
+The request payload does **not** traverse EPP. Envoy asks EPP which endpoint to use, then sends the request directly to rank zero on port 8888. Rank one participates only through collectives. With one TP group there is one eligible endpoint, so endpoint selection has no choice to make yet; with the two groups the author runs, it does.
 
 ## Render the routing bundle
 
-In the [recipe builder](/vllm-multiarch-oci/recipes/deepseek-v4-flash-vision-tp2/), select the routing target and provide the same namespace/name plus an Accepted `gateway_class` (the fresh guide creates `vllm-envoy`). Download the generated manifest.
+In the [recipe builder](/vllm-multiarch-oci/recipes/deepseek-v4-flash-vision-tp2/), select the routing target and provide the same namespace/name plus an Accepted `gateway_class` (the fresh guide creates `vllm-envoy`; the author's cluster uses a `llm-gateway` class installed with Envoy AI Gateway). Download the generated manifest, named `<name>-llm-d-routing.yaml`.
 
 The generated bundle contains:
 
 - a dedicated ServiceAccount and least-scope RBAC for endpoint discovery;
-- the EPP ConfigMap, Deployment and Services;
+- the EPP ConfigMap, Deployment and one Service exposing gRPC 9002 and metrics 9090; the health port 9003 is a gRPC probe target on the container, not a published Service port;
 - an `InferencePool` selecting **only LWS worker index 0**;
-- Gateway, AIGatewayRoute and ClientTrafficPolicy resources.
+- a `Gateway` on HTTP 10080, an `AIGatewayRoute` matching the exact model header, and a `ClientTrafficPolicy` raising the per-connection buffer;
+- a `BackendTrafficPolicy` targeting the HTTPRoute that Envoy AI Gateway generates from the `AIGatewayRoute`;
+- for a recipe that declares the native Anthropic Messages API, a path-matched `HTTPRoute` for `/v1/messages` and its own `BackendTrafficPolicy`.
 
-Its working EPP configuration preserves queue/KV/prefix-cache scorer weights `2/2/3`, metrics producers, gRPC 9002, health 9003, model HTTP 8888 and `failureMode: FailClose`. These weights reproduce the accepted configuration; they are not a generally optimal tuning recommendation.
+Ports and limits as generated: model HTTP 8888, endpoint-picker gRPC 9002, EPP metrics 9090, EPP health 9003, Gateway listener 10080, `failureMode: FailClose`, a 50 MiB per-connection buffer, and 3600-second request timeouts.
 
-The route listens internally on HTTP 10080, matches the exact `x-ai-eg-model: deepseek-ai/DeepSeek-V4-Flash-Vision-Exp` header, targets the InferencePool, allows a 1800-second route timeout and a 50 MiB connection buffer for image payloads.
+Three of those settings exist because of how this stack is wired, and each one has a failure mode behind it.
+
+- **Timeouts.** A route that Envoy Gateway generates inherits a 15-second upstream response timeout. `BackendTrafficPolicy.spec.timeout.http.requestTimeout` raises the ceiling for the whole route, and the `AIGatewayRoute` rule's own `timeouts.request` is the value that bounds a request; leave either at a default and Envoy cancels a long prefill mid-flight, so the client sees a gateway timeout rather than an answer. The Messages route also sets `streamIdleTimeout`, because a streamed response can go quiet between chunks while the engine is still working.
+- **Buffer.** The external processor reads the request body in BUFFERED mode, and its ceiling is the listener's `per_connection_buffer_limit_bytes`. The roughly 32 KiB default rejects a vision request carrying a base64 image with `413 Payload Too Large`, which is why `ClientTrafficPolicy.spec.connection.bufferLimit` is 50 Mi.
+- **Native Messages.** A request to `/v1/messages` is not an OpenAI request, so it never matches the model-header rule. It needs its own `HTTPRoute` to reach the pool and its fail-closed picker; without that route the path either 404s at the Gateway or bypasses endpoint selection entirely.
+
+The upstream picker in this bundle scores queue depth, KV-cache utilization and an approximate prefix cache with weights `2/2/3`. Those weights are what the generator ships after local validation; they are not an optimum, and they are not the signals the live router uses.
 
 ## Isolate the control path
 
@@ -39,28 +47,28 @@ EPP gRPC is plaintext. Keep the EPP and Gateway in an isolated namespace/network
 
 ## Apply and check reconciliation
 
-**Run on:** workstation.  
-**Expected:** EPP Available; InferencePool accepted; Gateway Accepted and Programmed.  
+**Run on:** workstation.
+**Expected:** EPP Available; InferencePool accepted; Gateway Accepted and Programmed.
 **Stop:** if the pool includes rank one, EPP is unreachable, or any `ResolvedRefs` condition is false.
 
 ```bash
 read -r -p 'Recipe namespace: ' RECIPE_NAMESPACE
 read -r -p 'Recipe workload name: ' RECIPE_NAME
-kubectl apply --dry-run=client -f deepseek-v4-flash-vision-routing.yaml
-kubectl apply -f deepseek-v4-flash-vision-routing.yaml
+kubectl apply --dry-run=client -f "${RECIPE_NAME}-llm-d-routing.yaml"
+kubectl apply -f "${RECIPE_NAME}-llm-d-routing.yaml"
 kubectl -n "$RECIPE_NAMESPACE" rollout status deployment/"$RECIPE_NAME-epp" --timeout=5m
-kubectl -n "$RECIPE_NAMESPACE" get inferencepool "$RECIPE_NAME" -o yaml
-kubectl -n "$RECIPE_NAMESPACE" get gateway "$RECIPE_NAME" -o jsonpath='{range .status.conditions[*]}{.type}={.status}{" "}{.reason}{"\n"}{end}'
-kubectl -n "$RECIPE_NAMESPACE" get aigatewayroute,clienttrafficpolicy
+kubectl -n "$RECIPE_NAMESPACE" get inferencepool "$RECIPE_NAME-pool" -o yaml
+kubectl -n "$RECIPE_NAMESPACE" get gateway "$RECIPE_NAME-gateway" -o jsonpath='{range .status.conditions[*]}{.type}={.status}{" "}{.reason}{"\n"}{end}'
+kubectl -n "$RECIPE_NAMESPACE" get aigatewayroute,httproute,backendtrafficpolicy,clienttrafficpolicy
 ```
 
-Inspect the pool's effective endpoint set:
+Inspect the pool's effective endpoint set. An `InferencePool` has no Service of its own; Envoy AI Gateway resolves model endpoints straight from the selector onto pod addresses, so the pods that match are the endpoints:
 
 ```bash
-kubectl -n "$RECIPE_NAMESPACE" get endpointslice \
-  -l inference.networking.k8s.io/pool-name="$RECIPE_NAME" -o wide
+kubectl -n "$RECIPE_NAMESPACE" get inferencepool "$RECIPE_NAME-pool" \
+  -o jsonpath='{.spec.selector.matchLabels}{"  "}{.spec.targetPorts}{"\n"}'
 kubectl -n "$RECIPE_NAMESPACE" get pods \
-  -l leaderworkerset.sigs.k8s.io/worker-index=0 -o wide
+  -l app="$RECIPE_NAME",leaderworkerset.sigs.k8s.io/worker-index=0 -o wide
 ```
 
 Every pool endpoint must correspond to worker index `0`. If the installed LWS label spelling differs from the pinned schema, stop and regenerate against the released API rather than broadening the selector.
@@ -69,26 +77,36 @@ EPP diagnostics:
 
 ```bash
 kubectl -n "$RECIPE_NAMESPACE" logs deployment/"$RECIPE_NAME-epp"
-kubectl -n "$RECIPE_NAMESPACE" port-forward service/"$RECIPE_NAME-epp-health" 9003:9003
-curl --fail http://127.0.0.1:9003/healthz
+kubectl -n "$RECIPE_NAMESPACE" port-forward deployment/"$RECIPE_NAME-epp" 9090:9090
+curl --fail http://127.0.0.1:9090/metrics
 ```
 
-`FailClose` intentionally rejects selection when EPP is unhealthy instead of bypassing its policy.
+The EPP's health port 9003 speaks gRPC, which is what the Deployment's readiness and liveness probes use; there is no HTTP health path to curl. Use the ready condition instead:
+
+```bash
+kubectl -n "$RECIPE_NAMESPACE" wait deployment/"$RECIPE_NAME-epp" --for=condition=Available --timeout=5m
+```
+
+`FailClose` intentionally rejects selection when EPP is unhealthy instead of bypassing its policy. That is the point: the older wiring, where the route and the external processor were two independent objects, could come back with routes and no processor after a controller restart, and traffic silently fell through to Service round-robin.
 
 ## Accept the routed path
 
 For initial acceptance, keep the Gateway internal and port-forward it:
 
 ```bash
-kubectl -n "$RECIPE_NAMESPACE" port-forward gateway/"$RECIPE_NAME" 10080:10080
+kubectl -n "$RECIPE_NAMESPACE" port-forward service/"$RECIPE_NAME-gateway" 10080:10080
 ```
+
+If the Gateway's implementation Service is not in your namespace, read `status.addresses` on the Gateway and forward the Envoy Gateway generated Service named in it.
 
 Send all requests to `http://127.0.0.1:10080/v1/chat/completions` with both headers:
 
 ```text
 Content-Type: application/json
-x-ai-eg-model: deepseek-ai/DeepSeek-V4-Flash-Vision-Exp
+x-ai-eg-model: deepseek-v4-flash-vision
 ```
+
+The header value is the engine's `--served-model-name`, not the Hugging Face repository id. The recipe data's `model.served_name` is what the generator writes into both the engine flag and this match.
 
 Require three successful requests:
 
@@ -105,9 +123,21 @@ Watch EPP and Gateway logs during each request, then verify both LWS ranks remai
 - **EPP:** scores eligible endpoints and returns a selection to Gateway.
 - **Envoy Gateway:** programs the Gateway data plane.
 - **Envoy AI Gateway:** interprets AI routes/model headers and applies AI-specific policy.
+- **HTTPRoute (generated, or the Messages route):** the object Envoy actually serves; the target that `BackendTrafficPolicy` attaches to.
 - **rank-zero Service:** debugging access that bypasses EPP scheduling.
 
 Read [the request-path explanation](/vllm-multiarch-oci/explanation/llm-d-request-path/) for the separation between request routing and collectives.
+
+## The live cluster runs the llm-d router
+
+The author's `openai` namespace routes Qwen3.8-Flash-Next through a router build of the llm-d endpoint picker plus the llm-d router CRDs, not the upstream `epp` image this bundle installs. The two speak the same ext-proc protocol and use the same `InferencePool` shape, so the pool, Gateway, route and policy objects above are identical in kind. What differs is the picker's configuration and its sidecars, and none of it is reproducible from a public image: there is no published llm-d router EPP artifact. Recorded here because it changes which signals decide placement.
+
+- The picker config is `apiVersion: llm-d.ai/v1alpha1`, `kind: EndpointPickerConfig`, with `featureGates: [flowControl]`. Its scheduling profile lists filters and scorers in order - a concurrency detector, a predicted-latency producer, a prefix-cache affinity filter, a latency scorer, a weighted random picker - and carries **no numeric weights at all**, unlike the `2/2/3` profile this bundle generates.
+- Prefix affinity is `affinityThreshold: 0.80` with `explorationProbability: 0`, `ttftSource: latencyPredictor`, `maxTTFTPenaltyMs: 18000`: a request goes to the endpoint that already holds 80% of its prefix unless the predictor says that endpoint's time-to-first-token would be more than 18 seconds worse.
+- Prefix indexing is exact rather than approximate. A `precise-prefix-cache-producer` subscribes to the engine's own KV events (block size 16, matching `--block-size 16`, topic filter `kv@`, publisher port 5556 and replay port 5559, discovered per pod). This is why the recipe emits `--enable-scale-out` and `--kv-events-config` on rank zero: the topic names the endpoint as `<podIP>:<served port>@<served model>`, and if that string does not equal the address the pool advertises, the index is keyed by something no lookup can produce and every prefix match silently reads zero. A headless rank must not publish, or the same blocks appear under a second, unroutable source.
+- Tokenization for that index comes from the engine, not the router's own tokenizer copy: a `token-producer` calls `/v1/messages/render` on the rank-zero Service, which is one of the things `--enable-scale-out` turns on.
+- Placement is predicted-latency based. Two sidecar containers (`ghcr.io/llm-d/llm-d-latency-predictor-training-server` and `...-prediction-server`, XGBoost TTFT and TPOT models on a 5 Gi node-local PVC) train online from every routed request. The inputs were calibrated per group before the switch, measuring 2.6541 s and 2.6775 s median time-to-first-token and 3086 and 3059 tokens/s peak prefill directly against each leader. The predictor requires a homogeneous pool, which holds here because both groups share hardware, weights and flags.
+- Admission is explicit: a concurrency detector with `maxConcurrency: 8` (the engine's own `--max-num-seqs 8`) and `headroom: 1.0` gates the pool, and a flow-control block caps it at 96 in-flight requests and 2 GiB with a 180-second default request TTL, split across three priority bands of 32. The bands come from `InferenceObjective` objects - `interactive` at priority 100, `standard` at 0, `background` at -10 - and the LiteLLM front end selects one per request through the `x-llm-d-inference-objective` and `x-llm-d-inference-fairness-id` headers. Past eight requests in flight on an endpoint, work queues by band instead of unordered in vLLM's waiting queue; a filter rejection is a 503, not a requeue.
 
 ## Optional LiteLLM front end
 
@@ -117,10 +147,12 @@ An existing LiteLLM deployment can point one OpenAI-compatible backend at the in
 model_list:
   - model_name: deepseek-v4-flash-vision
     litellm_params:
-      model: openai/deepseek-ai/DeepSeek-V4-Flash-Vision-Exp
-      api_base: http://vllm-gateway.vllm.svc:10080/v1
+      model: openai/deepseek-v4-flash-vision
+      api_base: http://<gateway-implementation-service>.<namespace>.svc:10080/v1
       extra_headers:
-        x-ai-eg-model: deepseek-ai/DeepSeek-V4-Flash-Vision-Exp
+        x-ai-eg-model: deepseek-v4-flash-vision
 ```
+
+Read the service name and namespace from the Gateway's `status.addresses`; Envoy Gateway generates that name from the Gateway and its namespace, so it is not stable across renames. A long-context model needs LiteLLM's own request timeout raised to match the route, or the proxy cancels a request the Gateway would still be carrying.
 
 This does not require the private ModelConfig/controller, ingress, databases or secret layout. LiteLLM authentication and edge exposure remain its operator's responsibility.
