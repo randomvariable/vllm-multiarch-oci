@@ -76,8 +76,14 @@ spec:
       # Frees earlier finished runs' 256Gi staging claims before this run's
       # claim is scheduled; the Task and its RBAC live with the ci manifests.
       - name: release-staging
+        # PAC inlines named taskRefs from the repo or hub; a resolver
+        # reference is left for Tekton to fetch from the ci namespace.
         taskRef:
-          name: vllmb12x-release-staging
+          resolver: cluster
+          params:
+            - {name: kind, value: task}
+            - {name: name, value: vllmb12x-release-staging}
+            - {name: namespace, value: ci}
         params:
           - {name: current, value: $(context.pipelineRun.name)}
       - name: clone
