@@ -1,0 +1,18 @@
+.tekton/vllmb12x-nightly.yaml
+  h_15da545fc8cfbe 63,86,113,116-117,130,168
+.tekton/vllmb12x-pull-request.yaml
+  h_15da545fc8cfbe 61,84,108,111-112,125,163
+docs/reference/build-configuration.md
+  h_15da545fc8cfbe 68-75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6b8b64e1673d1d9e37f4ec910986b9a476cbd874",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
