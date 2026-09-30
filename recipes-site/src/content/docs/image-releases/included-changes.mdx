@@ -12,8 +12,11 @@ A change reaches the build in one of two ways. It is either already merged into 
 {/* included-changes:start */}
 ## vLLM
 
-Pinned at [`a307c6ffaf96`](https://github.com/randomvariable/vllm/commit/a307c6ffaf9637ccfa63ece73768d4c20218b7df), branched from [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm) `integration/karmic-kraken-beta`.
+Pinned at [`da61df22f2b9`](https://github.com/randomvariable/vllm/commit/da61df22f2b99d5fce191c90fda808fbb3855c91), branched from [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm) `integration/karmic-kraken-beta`.
 
+- **Native MXFP8 MTP through the ModelOpt B12X backend** — no upstream pull request
+  - Merged into the pinned revision (1 commits).
+  - User-directed feature-branch pin. Preserves E4M3 weights and UE8M0 scales through the paired B12X W8A8 recipe. Bounded SM120 numerical, ModelOpt lifecycle and graph tests pass. Full step5500 serving and SM121 execution remain unmeasured. No upstream PR is open.
 - **Partial port of vLLM PR 779: Qwen HC ownership and checkpoint coalescing** — no upstream pull request
   - Merged into the pinned revision (9 commits).
   - Carries the HC/coalescing runtime port to Qwen4Exp, not the complete upstream PR or an upstream beta merge. HC and coalescing remain opt-in. GPU serving was not exercised in this rebase.
@@ -25,8 +28,11 @@ Pinned at [`a307c6ffaf96`](https://github.com/randomvariable/vllm/commit/a307c6f
 
 ## B12X
 
-Pinned at [`b7f8879a4ded`](https://github.com/randomvariable/b12x/commit/b7f8879a4ded85d5271f1f4ddd8f5ef322274c33), branched from [`local-inference-lab/b12x`](https://github.com/local-inference-lab/b12x) `integration/karmic-kraken-beta`.
+Pinned at [`b600bf26c8e4`](https://github.com/randomvariable/b12x/commit/b600bf26c8e4775488faa079933ddb20303b8e66), branched from [`local-inference-lab/b12x`](https://github.com/local-inference-lab/b12x) `integration/karmic-kraken-beta`.
 
+- **Native block-scaled MXFP8 W8A8 MoE execution** — no upstream pull request
+  - Merged into the pinned revision (2 commits).
+  - User-directed feature-branch pin. Implements lossless E4M3/UE8M0 K32 preparation and grouped expert execution. Numerical, CUDA graph replay and bounded memcheck pass on SM120 with sm_120f artifacts. No SM121 runtime or serving-performance claim. No upstream PR is open.
 - **PLE checkpoint exports, prepared launcher closures and collective entry barriers** — no upstream pull request
   - Merged into the pinned revision (11 commits).
   - Fork-only changes remain outside upstream beta, including the PLE export_checkpoint API from B12X PR 386 required by Qwen coalescing.
