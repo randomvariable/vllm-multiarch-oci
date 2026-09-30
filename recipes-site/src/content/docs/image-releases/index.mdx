@@ -32,6 +32,7 @@ A publication pins one vLLM revision and one b12x revision together. The pairing
 - Restores the per-rank provider census and the symmetric-preparation guard, so a rank that fails to publish its providers raises a structured error instead of stalling the group.
 - Builder side: console scripts are now materialized into `/opt/venv/bin`, which is what makes `ninja` present for runtime C++ extension builds; the image contract and publisher accept a pinned commit rather than a branch name.
 - Pull requests: [vllm-multiarch-oci#25](https://github.com/randomvariable/vllm-multiarch-oci/pull/25) for the builder and recipe, [local-inference-lab/vllm#777](https://github.com/local-inference-lab/vllm/pull/777) for the MTP override fix upstream.
+- Current state: the Qwen recipe cites this repository's newest public nightly, `sha256:c91826b2742928d22de651277e408d5c5b2c63828815a1b51744a18ef1171bb2` (28 September 2026, vLLM `fe8b327bcd9f` with b12x `e8130f89752b`). The recipe's accepted runtime is no longer any public digest: the checkpoint it now serves has MXFP8 MTP draft experts, which need native B12X MXFP8 MoE, and that support arrives with [vllm-multiarch-oci#36](https://github.com/randomvariable/vllm-multiarch-oci/pull/36), whose build is published only to the private registry until the branch reaches `main`.
 
 ### DeepSeek V4 Flash Vision lineage
 

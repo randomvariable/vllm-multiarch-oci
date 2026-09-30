@@ -13,8 +13,12 @@ The image is built from pinned fork revisions rather than from upstream branches
 
 | Component | Change | Included as |
 | --- | --- | --- |
-| vLLM `fe8b327bcd9f` | [local-inference-lab/vllm#800](https://github.com/local-inference-lab/vllm/pull/800) Bounded shared-memory broadcast waits | Merged into the pinned revision (1 commits) |
-| vLLM `fe8b327bcd9f` | Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute (no upstream pull request) | Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch` |
+| vLLM `0a6739845a32` | Native MXFP8 MTP through the ModelOpt B12X backend (no upstream pull request) | Merged into the pinned revision (4 commits) |
+| vLLM `0a6739845a32` | Partial port of vLLM PR 779: Qwen HC ownership and checkpoint coalescing (no upstream pull request) | Merged into the pinned revision (9 commits) |
+| vLLM `0a6739845a32` | [local-inference-lab/vllm#800](https://github.com/local-inference-lab/vllm/pull/800) Bounded shared-memory broadcast waits | Merged into the pinned revision (1 commits) |
+| vLLM `0a6739845a32` | Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute (no upstream pull request) | Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch` |
+| B12X `965e748f74fe` | Native block-scaled MXFP8 W8A8 MoE execution (no upstream pull request) | Merged into the pinned revision (3 commits) |
+| B12X `965e748f74fe` | PLE checkpoint exports, prepared launcher closures and collective entry barriers (no upstream pull request) | Merged into the pinned revision (11 commits) |
 <!-- included-changes:end -->
 
 ## Getting Started

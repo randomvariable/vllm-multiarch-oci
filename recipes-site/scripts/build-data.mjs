@@ -11,6 +11,7 @@ const RUNTIME_CONFIGURATION_SOURCE = join(REPOSITORY_ROOT, "docs/reference/vllmb
 const RUNTIME_CONFIGURATION_PAGE = join(SITE_ROOT, "src/content/docs/reference/vllmb12x-runtime-configuration.md");
 const COMMIT = /^[0-9a-f]{40}$/;
 const DIGEST_REFERENCE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*(?::[0-9]+)?(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)+@sha256:[0-9a-f]{64}$/;
+const DNS_LABEL = /^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$/;
 const IMMUTABLE_TAG = /^vllmb12x-[a-z0-9][a-z0-9-]*-[0-9a-f]{12}-[0-9a-f]{12}-[0-9]{8}-n[1-9][0-9]*$/;
 const TOP_LEVEL_KEYS = ["meta", "model", "runtime", "deployment", "validation", "guide"];
 const PARAMETER_TYPES = new Set(["string", "integer", "stringMap"]);
@@ -35,10 +36,25 @@ function validateRecipe(recipe, source) {
   assert(JSON.stringify(Object.keys(recipe)) === JSON.stringify(TOP_LEVEL_KEYS), `${source}: top-level keys must be exactly ${TOP_LEVEL_KEYS.join(", ")}`);
   assert(typeof recipe.meta.title === "string" && typeof recipe.meta.slug === "string" && typeof recipe.meta.description === "string", `${source}: meta fields are required`);
   assert(typeof recipe.model.model_id === "string" && COMMIT.test(recipe.model.revision) && typeof recipe.model.served_name === "string", `${source}: model id, full commit OID and served name are required`);
+  assert(recipe.model.serves_native_messages === undefined || typeof recipe.model.serves_native_messages === "boolean", `${source}: model.serves_native_messages must be a boolean`);
   assert(Array.isArray(recipe.runtime.command) && recipe.runtime.command.every((value) => typeof value === "string"), `${source}: runtime.command must be a string array`);
   assert(Array.isArray(recipe.runtime.base_args) && recipe.runtime.base_args.every((value) => typeof value === "string"), `${source}: runtime.base_args must be a string array`);
   assert(recipe.runtime.base_env && typeof recipe.runtime.base_env === "object" && !Array.isArray(recipe.runtime.base_env), `${source}: runtime.base_env must be a mapping`);
   assert(Object.values(recipe.runtime.base_env).every((value) => typeof value === "string"), `${source}: runtime.base_env values must be strings`);
+  assert(recipe.runtime.leader_args === undefined || (Array.isArray(recipe.runtime.leader_args) && recipe.runtime.leader_args.every((value) => typeof value === "string")), `${source}: runtime.leader_args must be a string array`);
+  const leaderPorts = recipe.runtime.leader_ports ?? [];
+  assert(Array.isArray(leaderPorts) && leaderPorts.every((entry) => typeof entry?.name === "string" && DNS_LABEL.test(entry.name) && entry.name.length <= 15 && Number.isSafeInteger(entry.containerPort) && entry.containerPort > 0 && entry.containerPort <= 65535), `${source}: runtime.leader_ports entries need a DNS-label name of at most 15 characters (IANA_SVC_NAME) and a valid containerPort`);
+  if (recipe.runtime.leader_args) {
+    // The KV-event topic is the only pod identity the router indexes blocks
+    // under, so its address:port and model must be the ones the engine actually
+    // serves. A mismatch is silent: every prefix match reads zero.
+    const portIndex = recipe.runtime.base_args.indexOf("--port");
+    const nameIndex = recipe.runtime.base_args.indexOf("--served-model-name");
+    assert(portIndex >= 0 && nameIndex >= 0, `${source}: a publishing recipe must declare --port and --served-model-name`);
+    const topic = `:${recipe.runtime.base_args[portIndex + 1]}@${recipe.runtime.base_args[nameIndex + 1]}`;
+    assert(recipe.runtime.leader_args.some((value) => value.includes('"enable_kv_cache_events":true') && value.includes(topic)), `${source}: the KV-event topic must carry the serving port and the served model name (${topic})`);
+    assert(leaderPorts.some((entry) => entry.name === "kv-events"), `${source}: a publishing recipe must declare the kv-events container port`);
+  }
   assert(recipe.deployment.nodes === 2 && recipe.deployment.tensor_parallel_size === 2, `${source}: seed topology must remain two-node TP=2`);
   assert(typeof recipe.deployment.model_path === "string" && recipe.deployment.model_path.startsWith("/"), `${source}: deployment.model_path must be absolute`);
   assert(Number.isSafeInteger(recipe.deployment.storage_min_free_gib) && recipe.deployment.storage_min_free_gib > 0, `${source}: storage minimum must be a positive integer`);

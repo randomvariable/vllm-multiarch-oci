@@ -9,7 +9,7 @@ Every recipe on this site uses the same two-node shape, so this topology is desc
 
 The rank-zero pod owns the HTTP API on port `8888`. The rank-one pod runs headless: it has no API listener and exists to take part in tensor-parallel collectives. A request therefore always enters at rank zero, and both ranks do the forward pass.
 
-Two networks carry different traffic. The primary pod network carries the API, kubelet probes, and the rendezvous socket the worker uses to find the leader. The Multus attachment carries tensor-parallel collectives over RDMA. Keeping them separate is what stops collective traffic from competing with control traffic, and it is why the RDMA device and GID values are deployment inputs rather than recipe constants.
+Two networks carry different traffic. The primary pod network carries the API, kubelet probes, and the rendezvous socket the worker uses to find the leader. When routing is installed it also carries two rank-zero-only flows: the KV-event publisher's ZeroMQ sockets (5556 and 5559), which the endpoint picker dials directly on the pod address, and the engine's `/v1/messages/render` endpoint that the picker calls through the rank-zero Service to tokenize a request. The Multus attachment carries tensor-parallel collectives over RDMA. Keeping them separate is what stops collective traffic from competing with control traffic, and it is why the RDMA device and GID values are deployment inputs rather than recipe constants.
 
 LeaderWorkerSet owns group lifecycle and leader-first startup. It does not schedule inference requests. Request-level decisions belong to the [inference routing path](/vllm-multiarch-oci/explanation/llm-d-request-path/), which is a separate layer you can add or leave out.
 

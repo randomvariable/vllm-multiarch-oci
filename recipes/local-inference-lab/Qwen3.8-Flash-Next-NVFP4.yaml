@@ -4,8 +4,11 @@ meta:
   description: A fixed two-node, one-GB10-per-node Qwen3.8-Flash-Next-NVFP4 deployment with PLE tables in page-locked host memory and a 1,048,576-token context.
 model:
   model_id: local-inference-lab/Qwen3.8-Flash-Next-NVFP4
-  revision: 629bc3218833a38b475b719f34aa571666f4a03e
+  revision: 60215d26cf5e42c2db6128774032d57fc62678da
   served_name: qwen38-flash-next
+  # The engine answers the native Anthropic Messages API as well as the OpenAI
+  # one, so the routing bundle adds a path-matched route for it.
+  serves_native_messages: true
 runtime:
   command:
     - /opt/venv/bin/python
@@ -40,7 +43,7 @@ runtime:
     - --enable-chunked-prefill
     # Decode-aware prefill scheduling: the scheduler admits prefills against
     # decode pressure with an adaptive share and half-life. Live manifest flags
-    # as of the 2026-09-22 acceptance.
+    # as of the 2026-09-30 step-5500 acceptance.
     - --max-parallel-prefills
     - auto
     - --prefill-compute-share
@@ -67,8 +70,12 @@ runtime:
     - "8192"
     - --max-cudagraph-capture-size
     - "32"
+    # 0.74, not 0.76: the step-5500 checkpoint loads 42.77 GiB per rank against
+    # 40.32 GiB at step 4000 (MXFP8 MTP experts),
+    # and at 0.76 the startup profile pass froze two GB10 hosts with no kernel
+    # log. 0.74 gives back 2.48 GiB of the 123.79 GiB budget.
     - --gpu-memory-utilization
-    - "0.76"
+    - "0.74"
     - --speculative-config
     - '{"method":"mtp","num_speculative_tokens":3}'
     - --compilation-config
@@ -102,6 +109,32 @@ runtime:
     - --enable-auto-tool-choice
     - --disable-access-log-for-endpoints
     - /metrics,/v1/models
+  # Rank zero only. The leader owns the API server and the EngineCore scheduler,
+  # so it is the only rank that can serve /v1/messages/render or publish KV
+  # events; rank one runs --headless, and publishing from it would add a second,
+  # unroutable source for the same blocks. The KV-event topic is the only pod
+  # identity the router sees: it parses "kv@<pod-id>@<model>" and indexes blocks
+  # under <pod-id>, while its per-request lookup asks for the InferencePool's
+  # "<podIP>:<targetPort>", so <pod-id> must be exactly that address:port and
+  # <model> must equal the request's target model - otherwise the index is keyed
+  # by a string no lookup can produce and every prefix match silently reads zero.
+  # Publisher ports are offset by data-parallel rank (DP=1 here, so 5556/5559 are
+  # literal), chosen off vLLM's 5557 default. $(POD_IP) is expanded by kubelet
+  # from the POD_IP fieldRef the generator adds alongside these arguments.
+  leader_args:
+    - --enable-scale-out
+    - --kv-events-config
+    - '{"enable_kv_cache_events":true,"publisher":"zmq","endpoint":"tcp://*:5556","replay_endpoint":"tcp://*:5559","topic":"kv@$(POD_IP):8888@qwen38-flash-next"}'
+  # Declared on both rank templates, as the live manifest does; only the leader
+  # binds them. Names stay within 15 characters: IANA_SVC_NAME rejects longer
+  # ones and the LWS controller then loops on the leader StatefulSet update.
+  leader_ports:
+    - name: kv-events
+      containerPort: 5556
+      protocol: TCP
+    - name: kv-replay
+      containerPort: 5559
+      protocol: TCP
   base_env:
     CUTE_DSL_ARCH: sm_121a
     # Only the V2 model runner's model state drives the PLE table prepare path
@@ -142,11 +175,20 @@ runtime:
     # The live deployment quantizes the B12X MXFP8 activations; a16 dense
     # plus quantized MXFP8 is the accepted pair for this checkpoint.
     VLLM_B12X_MXFP8_ACTIVATION_MODE: quantized
-    VLLM_SHM_BROADCAST_ADAPTIVE_MAX_GRACE_MS: "2"
+    # Experimental adaptive shm_broadcast waits. A 900 ms maximum grace
+    # deadlocked one group in B12X preparation on first boot; 50 ms booted both.
+    VLLM_EXPERIMENTAL_SHM_BROADCAST_ADAPTIVE_SPIN: "1"
+    VLLM_SHM_BROADCAST_ADAPTIVE_MAX_GRACE_MS: "50"
     # The first-boot RoCE preparation race times out at sequence 1 with the
     # default spin budget on this topology.
     B12X_ROCE_SPIN_LIMIT: "600000000"
     PYTHONFAULTHANDLER: "1"
+    # Capture the faulting GPU context without attaching a debugger to a live TP
+    # worker: the QSA illegal-memory-access class is open, and /cache is
+    # node-local persistent NVMe.
+    CUDA_ENABLE_COREDUMP_ON_EXCEPTION: "1"
+    CUDA_COREDUMP_FILE: /cache/ima-debug/core.%h.%p.%t.nvcudmp
+    CUDA_COREDUMP_GENERATION_FLAGS: faulted_contexts_only,gzip_compress
     # NCCL still carries collectives outside RoCEnante's size limits.
     NCCL_NET: IB
     NCCL_IB_DISABLE: "0"
@@ -332,26 +374,32 @@ deployment:
       description: Routing-only accepted Envoy GatewayClass supplied by the cluster operator.
       help: {label: Install or inspect GatewayClass, href: guides/cluster-prerequisites/#install-envoy-gateway-183}
 validation:
-  image: ghcr.io/randomvariable/vllm-b12x-multi@sha256:429efe0798f8c91b1f21d978b4130ec0660ecb738fcbe05e083a7d504c4889c8
+  image: ghcr.io/randomvariable/vllm-b12x-multi@sha256:c91826b2742928d22de651277e408d5c5b2c63828815a1b51744a18ef1171bb2
   lws: verified
   docker: unverified
   evidence: >-
-    Accepted live on 2026-09-23/24 in the author's two-node GB10 cluster on kubeadm with Cilium,
-    running the ram PLE mode, 0.76 utilization, a 32-token CUDA graph capture cap,
-    VLLM_B12X_MXFP8_ACTIVATION_MODE=quantized, VLLM_PLUGINS empty, the 1,048,576-token
-    max_position_embeddings override, and VLLM_QWEN3_8_PREFILL_COALESCE unset (the eager-mode
-    IMA discriminator is permanently parked). The two live ranks run image
-    sha256:ec8bbb3e (vLLM 88e9186daf39 plus b12x 9135f93ae533), a Harbor-published build
-    that is not mirrored to this registry; the recipe args and environment above are synced
-    to that live deployment. The nearest public karmic build in this registry - the digest
-    cited as validation.image - is the next cycle cut, vLLM d9e52bdf4663 with the same b12x
-    9135f93ae533. This PR re-pins the profile to vLLM fe8b327bcd9f plus b12x e8130f89752b
-    (master-based), published to this registry by the first nightly after it reaches main.
-    The decode sweep table keeps its original provenance: unprofiled, 30-second-per-cell,
-    concurrency 1 to 8, contexts 0 to 128K, A16 dense activation, direct port-forward, not
-    comparable to the max-seqs=4 baseline.
+    Accepted live on 2026-09-30 in the author's GB10 cluster (two independent TP=2
+    groups on four nodes, GitOps revision 818be2ad4) running the ram PLE mode, 0.74
+    utilization, a 32-token CUDA graph capture cap,
+    VLLM_B12X_MXFP8_ACTIVATION_MODE=quantized, adaptive shm_broadcast spin with a 50 ms
+    maximum grace, VLLM_PLUGINS empty, the 1,048,576-token max_position_embeddings
+    override, VLLM_QWEN3_8_PREFILL_COALESCE unset (the eager-mode IMA discriminator is
+    permanently parked), and rank-zero KV-event publishing (--enable-scale-out plus
+    --kv-events-config). The four live ranks run version
+    0.29.0+rv.mxfp8.mtp.0a6739845a32.965e748f74fe.c6f1c3f3e582: vLLM 0a6739845a32 on
+    dev/rv-mxfp8-mtp with B12X 965e748f74fe on feat/mxfp8-moe, built by this
+    repository's pull-request CI. The step-5500 checkpoint ships its MTP draft experts
+    as MXFP8 (E4M3 weights, UE8M0 scales) and the target experts as NVFP4, so without
+    native B12X MXFP8 MoE --moe-backend b12x rejects the draft at kernel selection: the
+    public digest cited as validation.image - vLLM fe8b327bcd9f with B12X e8130f89752b -
+    predates that support and is replaced by the first public build of the pair.
+    Kernel selection in the rank-0 log: B12X for the NVFP4 target experts, B12X_MXFP8
+    for the MTP draft experts at their unpadded 320-wide TP=2 intermediate, and
+    nothing on Marlin. The benchmark panel is a separate run: llm-inference-bench 0.7.5
+    against one idle group's rank-zero endpoint, 30 seconds per cell, one sample per
+    cell, concurrency 1/4/8 at contexts 0 and 16K, prefill scouts at 8K/16K/64K/128K.
 guide:
   hardware: Two arm64 GB10 nodes, one physical integrated GPU per node, with a working RoCE secondary network and at least 130 GiB free model storage per node for the 99 GiB checkpoint.
-  fixed_tuning: TP=2, MTP depth 3, 0.76 GPU memory utilization, 1,048,576-token maximum context from a 4x YaRN override, eight sequences, 8,192 batched tokens, decode-aware prefill scheduling, FP8 KV cache, full and piecewise CUDA graphs capped at a 32-token capture size, B12X GDN prefill and decode, quantized B12X MXFP8 activations, and PLE tables in page-locked host memory. Never set CUDA_LAUNCH_BLOCKING, because b12x does not function with synchronous kernel launches.
+  fixed_tuning: TP=2, MTP depth 3, 0.74 GPU memory utilization, 1,048,576-token maximum context from a 4x YaRN override, eight sequences, 8,192 batched tokens, decode-aware prefill scheduling, FP8 KV cache, full and piecewise CUDA graphs capped at a 32-token capture size, B12X GDN prefill and decode, quantized B12X MXFP8 activations, NVFP4 target experts and MXFP8 MTP draft experts both on B12X kernels, PLE tables in page-locked host memory, and KV-event publishing from rank zero only. Never set CUDA_LAUNCH_BLOCKING, because b12x does not function with synchronous kernel launches.
   networking: Primary control traffic uses the operator-selected socket interfaces; tensor-parallel collectives use the selected RDMA HCAs. Kubernetes allocator units do not describe physical device counts.
   safety: Stop both ranks gracefully with a 120-second timeout. A long kernel is not grounds for force-killing a GB10 process.

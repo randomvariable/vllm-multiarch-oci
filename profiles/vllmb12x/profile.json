@@ -1,10 +1,10 @@
 {
-  "b12x_ref": "refs/heads/integration/karmic-kraken-beta",
+  "b12x_ref": "refs/heads/feat/mxfp8-moe",
   "name": "vllmb12x",
-  "source_ref": "refs/heads/cycle/karmic-kraken",
+  "source_ref": "refs/heads/dev/rv-mxfp8-mtp",
   "sources": {
     "b12x": {
-      "commit": "e8130f89752b5e3e6f83dfe38878b00065eb4cfb",
+      "commit": "965e748f74fe9dac0a35c497a0947c5b108617c5",
       "recursive_init_submodules": true,
       "remote": "https://github.com/randomvariable/b12x.git"
     },
@@ -67,7 +67,7 @@
     },
     "vllm": {
       "cargo_vendor": true,
-      "commit": "fe8b327bcd9f9c664f10260b4468a8004dc0461e",
+      "commit": "0a6739845a3249b07a30ad9b1e720e5e3fb6236f",
       "recursive_init_submodules": true,
       "remote": "https://github.com/randomvariable/vllm.git"
     },

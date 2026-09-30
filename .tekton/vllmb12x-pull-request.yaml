@@ -58,7 +58,7 @@ spec:
           accessModes: [ReadWriteOnce]
           resources:
             requests:
-              storage: 20Gi
+              storage: 256Gi
   pipelineSpec:
     params:
       - {name: repo_url, type: string}
@@ -73,7 +73,21 @@ spec:
     workspaces:
       - name: source
     tasks:
+      # Frees earlier finished runs' 256Gi staging claims before this run's
+      # claim is scheduled; the Task and its RBAC live with the ci manifests.
+      - name: release-staging
+        # PAC inlines named taskRefs from the repo or hub; a resolver
+        # reference is left for Tekton to fetch from the ci namespace.
+        taskRef:
+          resolver: cluster
+          params:
+            - {name: kind, value: task}
+            - {name: name, value: vllmb12x-release-staging}
+            - {name: namespace, value: ci}
+        params:
+          - {name: current, value: $(context.pipelineRun.name)}
       - name: clone
+        runAfter: [release-staging]
         taskRef:
           name: git-clone
         params:
@@ -81,6 +95,7 @@ spec:
           - {name: revision, value: $(params.revision)}
           - {name: depth, value: "1"}
           - {name: deleteExisting, value: "true"}
+          - {name: subdirectory, value: checkout}
         workspaces:
           - {name: output, workspace: source}
       - name: build-test-and-push
@@ -104,10 +119,11 @@ spec:
           steps:
             - name: build-test-and-push
               image: docker.io/library/ubuntu@sha256:2260313b31c8c011cd2eebe728008efac1b3982be73eb71348ea2648d2c0e09b
-              workingDir: $(workspaces.source.path)
+              workingDir: $(workspaces.source.path)/checkout
               securityContext: {runAsUser: 0, runAsGroup: 0}
               env:
-                - {name: HOME, value: /tekton/home}
+                - {name: HOME, value: $(workspaces.source.path)/.build-home}
+                - {name: TMPDIR, value: $(workspaces.source.path)/.build-home/tmp}
                 # The registry credential is mounted ready to use, so this lane
                 # never handles a token in the step itself.
                 - {name: DOCKER_CONFIG, value: /var/run/vllmb12x/registry}
@@ -120,6 +136,7 @@ spec:
               script: |
                 #!/usr/bin/env bash
                 set -euo pipefail
+                mkdir -p "$HOME" "$TMPDIR"
 
                 apt-get update
                 apt-get install --no-install-recommends --yes \
@@ -157,6 +174,7 @@ spec:
                 git config --global --add safe.directory "$PWD"
                 BUILD_REVISION="$(git rev-parse HEAD)"
                 cat > .bazelrc.user <<EOF
+                startup --output_user_root=${HOME}/bazel
                 build --remote_cache=$(params.remote_cache)
                 build --remote_timeout=21600
                 build --remote_cache_compression

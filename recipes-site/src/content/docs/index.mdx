@@ -34,7 +34,7 @@ This project builds [`local-inference-lab/vLLM`](https://github.com/local-infere
   <article class="recipe-card">
     <p class="recipe-status">Running on LWS</p>
     <h3>Qwen3.8 Flash Next</h3>
-    <p>NVFP4 weights, a 1,048,576-token context from a 4x YaRN override, MTP speculation at depth three, and PLE tables read from disk instead of memory.</p>
+    <p>NVFP4 weights, a 1,048,576-token context from a 4x YaRN override, MTP speculation at depth three, MXFP8 draft experts on B12X kernels, and PLE tables in page-locked host memory.</p>
     <div class="card-meta">
       <span>TP 2</span><span>2 nodes</span><span>ARM64</span>
     </div>
@@ -53,5 +53,7 @@ This project builds [`local-inference-lab/vLLM`](https://github.com/local-infere
 
 ## Open pull requests
 
-- [vllm-multiarch-oci#25](https://github.com/randomvariable/vllm-multiarch-oci/pull/25) moves the builder onto the Qwen3.8 Flash Next pins and adds that recipe. It also keeps the hermetic flash-attn patch, accepts a pinned commit instead of a branch name as the source ref, and installs wheel console scripts so `ninja` exists at runtime.
-- [local-inference-lab/vllm#777](https://github.com/local-inference-lab/vllm/pull/777) upstreams the fix the Qwen image carries: a target model's `hf_overrides` now reach the internally constructed MTP draft, so the draft keeps the same YaRN geometry and a 1,048,576-token prefill is accepted.
+- [local-inference-lab/vllm#800](https://github.com/local-inference-lab/vllm/pull/800) adds bounded shared-memory broadcast waits and gates the adaptive reader and writer waits behind `VLLM_EXPERIMENTAL_SHM_BROADCAST_ADAPTIVE_SPIN=1`. The Qwen3.8 Flash Next recipe enables it with a 50 ms maximum grace.
+- [local-inference-lab/b12x#384](https://github.com/local-inference-lab/b12x/pull/384) keeps prepared launchers alive through the PCIe and RoCE launcher factories and runs collective priming behind a deadline-enforced barrier, so later preparation waits until a timed-out callback exits.
+- [local-inference-lab/vllm#955](https://github.com/local-inference-lab/vllm/pull/955) routes ModelOpt MXFP8 MoE experts, such as the Qwen3.8 step-5500 MTP draft, to native B12X kernels instead of Marlin, preparing them at their sharded width.
+- [local-inference-lab/b12x#449](https://github.com/local-inference-lab/b12x/pull/449) adds native block-scaled MXFP8 W8A8 grouped MoE, including 32-aligned intermediate sizes such as the 320-wide per-rank experts at TP=2. vllm#955 depends on it.

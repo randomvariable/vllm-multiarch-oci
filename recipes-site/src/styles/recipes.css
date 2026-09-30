@@ -363,7 +363,7 @@ header.header :is(a, button) {
   font-size: 1.15rem;
 }
 
-.benchmark-primary small {
+.benchmark-row small {
   display: block;
   margin-block-start: 0.2rem;
   color: var(--recipe-soft);

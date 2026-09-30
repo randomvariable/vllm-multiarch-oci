@@ -35,7 +35,7 @@ Extended-resource numbers are allocator units defined by a device plugin. They a
 
 ## Serving and routing
 
-cert-manager precedes certificate-dependent controllers. LWS creates and coordinates the two-rank group. The Inference Extension defines the InferencePool/EPP contract. Envoy Gateway programs the Gateway data plane, and Envoy AI Gateway supplies AI-route policy.
+cert-manager precedes certificate-dependent controllers. LWS creates and coordinates the two-rank group. The Inference Extension defines the InferencePool/EPP contract; the picker binary that fills that contract is a separate choice, and the author's cluster swaps the upstream image for the llm-d router build. Envoy Gateway programs the Gateway data plane, and Envoy AI Gateway supplies AI-route policy - which requires Envoy Gateway to be installed with an extension-manager hook pointing at the AI Gateway controller, because that hook is what attaches the external processor to a route backed by an `InferencePool`.
 
 ```text
 cert-manager -> LWS -> rank 0 + rank 1

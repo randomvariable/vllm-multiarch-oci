@@ -52,7 +52,7 @@
 
         <path d="M 800 416 V 352 Q 800 344 792 344 H 744 Q 736 344 736 336 V 304" fill="none" stroke="#56616b" stroke-width="1" stroke-dasharray="5 4" marker-end="url(#llmd-request-arrow)"/>
         <rect x="748" y="320" width="104" height="12" rx="2" fill="#faf7f2"/>
-        <text x="800" y="328" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">METRICS :9002</text>
+        <text x="800" y="328" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">METRICS :8888</text>
 
         <path d="M 928 452 H 1000" fill="none" stroke="#a94e2b" stroke-width="2" marker-end="url(#llmd-request-arrow-accent)"/>
         <path d="M 1000 476 H 928" fill="none" stroke="#a94e2b" stroke-width="2" marker-end="url(#llmd-request-arrow-accent)"/>
@@ -79,7 +79,7 @@
         <rect x="652" y="188" width="32" height="16" rx="2" fill="none" stroke="rgba(37,43,50,.40)"/>
         <text x="668" y="200" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">EPP</text>
         <text x="736" y="224" fill="#252b32" font-family="'Geist',sans-serif" font-size="12" font-weight="600" text-anchor="middle">Endpoint picker</text>
-        <text x="736" y="244" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">queue 2 / KV 2 / prefix 3</text>
+        <text x="736" y="244" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">scores queue / KV / prefix</text>
         <text x="736" y="264" fill="#56616b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">failureMode: FailClose</text>
         <text x="736" y="284" fill="#6d747b" font-family="'Geist Mono',monospace" font-size="8" text-anchor="middle">payload never enters EPP</text>
 
@@ -130,7 +130,7 @@
     </div>
     <figcaption class="notes">
       <section class="note"><h2>Endpoint selection is out of band</h2><p>The Gateway asks EPP over gRPC. EPP scores endpoints represented by the <code>InferencePool</code> and returns a choice; it does not proxy the image or text payload.</p></section>
-      <section class="note"><h2>One TP group means one choice</h2><p>Only rank zero is eligible. With a single two-rank group, prefix-aware scoring has no second replica to choose; rank one contributes compute through collectives.</p></section>
+      <section class="note"><h2>Only rank zero is pooled</h2><p>The pool selector admits <code>worker-index=0</code>, so one TP=2 group contributes one eligible endpoint and scoring has nothing to choose between. Add an independent group and the same contract places work across two rank-zero APIs; rank one never leaves the group, it only contributes compute through collectives.</p></section>
     </figcaption>
     <footer><span>LWS is orchestration, not the router.</span><span>Icons: CNCF Envoy artwork and Kubernetes Community resources (Apache-2.0); geometry embedded and sanitized.</span></footer>
   </figure>
