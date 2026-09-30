@@ -3,26 +3,38 @@
 # vLLM runtime requirements not built from this profile's pinned source trees.
 -r ../../third_party/vllm-common-requirements.txt
 
-apache-tvm-ffi==0.1.11
-cuda-python==13.3.1
-cuda-tile>=1.4.0
+# CUDA packages track the latest release, pre-releases included; see the
+# bump-vllmb12x-deps skill. Non-CUDA packages track upstream vLLM's pins.
+apache-tvm-ffi
+cuda-python
+cuda-tile
 cupy-cuda13x
+# Tokenizer backend for VLLM_USE_FASTOKENS=1; vLLM requires >= 0.2.0.
+fastokens==0.3.2
 fastsafetensors>=0.3.3
-humming-kernels[cu13]==0.1.12
-nccl4py>=0.3.1
-nvidia-cudnn-frontend>=1.25.0
-nvidia-cutlass-dsl[cu13]==4.6.2
+humming-kernels[cu13]
+nccl4py
+# Object-store KV tiering (vllm/v1/kv_offload/tiering/obj). The metapackage
+# depends on both nixl-cu13 and nixl-cu12 unconditionally.
+nixl
+# Upstream vLLM requirements/cuda.txt pin: ngram proposer, JIT monitor and
+# vision processors import it.
+numba==0.65.0
+nvidia-cudnn-frontend
+nvidia-cutlass-dsl[cu13]
 nvidia-ml-py
-nvtx==0.2.15
+nvtx
 # CUDA 13 Mooncake Store. Its base distribution owns aiohttp, requests, and
 # msgpack; the profile supplies its optional Python modules below.
-mooncake-transfer-engine-cuda13==0.3.13.post1
+mooncake-transfer-engine-cuda13
 # SSD registration and SPDK target modules use Paramiko. The remaining
 # optional Mooncake imports are already supplied by the vLLM profile.
 paramiko
-quack-kernels==0.6.4
-tilelang==0.1.12
-tokenspeed-mla==0.1.8
+# GPU video decode backend (vllm/multimodal/video_decoders/pynvvideocodec.py).
+PyNvVideoCodec
+quack-kernels
+tilelang
+tokenspeed-mla
 torchcodec>=0.14
 
 # Source-built wheels installed by venv_layer, excluded from Bazel's PyPI hub.
