@@ -1,0 +1,16 @@
+scripts/release-vllmb12x.py
+  h_15da545fc8cfbe 33,96-100,102
+scripts/release_vllmb12x_test.py
+  h_15da545fc8cfbe 39-67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "fbe2318b0901c74131184082396b90a89e533910",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
