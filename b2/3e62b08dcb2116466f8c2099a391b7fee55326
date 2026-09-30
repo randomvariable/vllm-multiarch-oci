@@ -1,0 +1,52 @@
+recipes-site/public/figures/llm-d-request-path.html
+  h_15da545fc8cfbe 55,82,133
+recipes-site/public/figures/serving-routing-dependencies.html
+  h_15da545fc8cfbe 50,53
+recipes-site/scripts/build-data.mjs
+  h_15da545fc8cfbe 14,39,44-57
+recipes-site/src/components/RecipeBuilder.astro
+  h_15da545fc8cfbe 35-38,51,62,288-291
+recipes-site/src/content/docs/explanation/llm-d-request-path.mdx
+  h_15da545fc8cfbe 6,16,29-30,50
+recipes-site/src/content/docs/explanation/platform-dependencies.mdx
+  h_15da545fc8cfbe 38
+recipes-site/src/content/docs/explanation/tp2-traffic-paths.mdx
+  h_15da545fc8cfbe 12
+recipes-site/src/content/docs/guides/cluster-prerequisites.mdx
+  h_15da545fc8cfbe 53,70-95,98,102-103,113,142
+recipes-site/src/content/docs/guides/deploy-tp2.mdx
+  h_15da545fc8cfbe 100,109
+recipes-site/src/content/docs/guides/llm-d-routing.mdx
+  h_15da545fc8cfbe 6,19,23,28,30-32,34,36-42,50-51,57-58,60-62,65,68-69,71,80-87,90,97,100-101,106,109-110,126,131-141,150-151,153,156-157
+recipes-site/src/content/docs/image-releases/index.mdx
+  h_15da545fc8cfbe 35
+recipes-site/src/content/docs/index.mdx
+  h_15da545fc8cfbe 37
+recipes-site/src/content/docs/recipes/qwen38-flash-next-tp2.mdx
+  h_15da545fc8cfbe 12,15-16,22-23,29-37,45-47,58,60-63,65,67-85,88-101,105-108,111-115,119-122,126-129,132-137
+recipes-site/src/content/docs/reference/glossary.mdx
+  h_15da545fc8cfbe 24-29
+recipes-site/src/content/docs/reference/platform-dependencies.mdx
+  h_15da545fc8cfbe 32-34
+recipes-site/src/content/docs/tutorials/k3s-to-deepseek.mdx
+  h_15da545fc8cfbe 19,91
+recipes-site/src/render.js
+  h_15da545fc8cfbe 48-49,120-123,133,137-143,196,209-213,218,321,361-365,406,419-438,440
+recipes-site/src/styles/recipes.css
+  h_15da545fc8cfbe 366
+recipes-site/tests/render.test.js
+  h_15da545fc8cfbe 13,45-48,200,204,210-213,235-262
+recipes/local-inference-lab/Qwen3.8-Flash-Next-NVFP4.yaml
+  h_15da545fc8cfbe 7,9-11,46,73-76,78,112-137,178-181,186-191,377,381-400,403
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b23e62b08dcb2116466f8c2099a391b7fee55326",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
