@@ -55,3 +55,5 @@ This project builds [`local-inference-lab/vLLM`](https://github.com/local-infere
 
 - [local-inference-lab/vllm#800](https://github.com/local-inference-lab/vllm/pull/800) adds bounded shared-memory broadcast waits and gates the adaptive reader and writer waits behind `VLLM_EXPERIMENTAL_SHM_BROADCAST_ADAPTIVE_SPIN=1`. The Qwen3.8 Flash Next recipe enables it with a 50 ms maximum grace.
 - [local-inference-lab/b12x#384](https://github.com/local-inference-lab/b12x/pull/384) keeps prepared launchers alive through the PCIe and RoCE launcher factories and runs collective priming behind a deadline-enforced barrier, so later preparation waits until a timed-out callback exits.
+- [local-inference-lab/vllm#955](https://github.com/local-inference-lab/vllm/pull/955) routes ModelOpt MXFP8 MoE experts, such as the Qwen3.8 step-5500 MTP draft, to native B12X kernels instead of Marlin, preparing them at their sharded width.
+- [local-inference-lab/b12x#449](https://github.com/local-inference-lab/b12x/pull/449) adds native block-scaled MXFP8 W8A8 grouped MoE, including 32-aligned intermediate sizes such as the 320-wide per-rank experts at TP=2. vllm#955 depends on it.
