@@ -11,8 +11,8 @@
           "pull_request": null,
           "title": "Native MXFP8 MTP through the ModelOpt B12X backend",
           "inclusion": "branch",
-          "commits": 1,
-          "note": "User-directed feature-branch pin. Preserves E4M3 weights and UE8M0 scales through the paired B12X W8A8 recipe. Bounded SM120 numerical, ModelOpt lifecycle and graph tests pass. Full step5500 serving and SM121 execution remain unmeasured. No upstream PR is open."
+          "commits": 2,
+          "note": "User-directed feature-branch pin. Preserves E4M3 weights and UE8M0 scales through the paired B12X W8A8 recipe, zero-padding the per-rank expert intermediate to the 128-wide W8A8 K block (step5500 MTP at TP=2: 320 -> 384). Bounded SM120 numerical, ModelOpt lifecycle (I=640 and I=320) and graph tests pass. No upstream PR is open."
         },
         {
           "pull_request": null,

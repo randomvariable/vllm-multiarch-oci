@@ -13,10 +13,10 @@ The image is built from pinned fork revisions rather than from upstream branches
 
 | Component | Change | Included as |
 | --- | --- | --- |
-| vLLM `da61df22f2b9` | Native MXFP8 MTP through the ModelOpt B12X backend (no upstream pull request) | Merged into the pinned revision (1 commits) |
-| vLLM `da61df22f2b9` | Partial port of vLLM PR 779: Qwen HC ownership and checkpoint coalescing (no upstream pull request) | Merged into the pinned revision (9 commits) |
-| vLLM `da61df22f2b9` | [local-inference-lab/vllm#800](https://github.com/local-inference-lab/vllm/pull/800) Bounded shared-memory broadcast waits | Merged into the pinned revision (1 commits) |
-| vLLM `da61df22f2b9` | Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute (no upstream pull request) | Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch` |
+| vLLM `b607be360037` | Native MXFP8 MTP through the ModelOpt B12X backend (no upstream pull request) | Merged into the pinned revision (2 commits) |
+| vLLM `b607be360037` | Partial port of vLLM PR 779: Qwen HC ownership and checkpoint coalescing (no upstream pull request) | Merged into the pinned revision (9 commits) |
+| vLLM `b607be360037` | [local-inference-lab/vllm#800](https://github.com/local-inference-lab/vllm/pull/800) Bounded shared-memory broadcast waits | Merged into the pinned revision (1 commits) |
+| vLLM `b607be360037` | Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute (no upstream pull request) | Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch` |
 | B12X `b600bf26c8e4` | Native block-scaled MXFP8 W8A8 MoE execution (no upstream pull request) | Merged into the pinned revision (2 commits) |
 | B12X `b600bf26c8e4` | PLE checkpoint exports, prepared launcher closures and collective entry barriers (no upstream pull request) | Merged into the pinned revision (11 commits) |
 <!-- included-changes:end -->
