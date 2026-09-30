@@ -65,6 +65,14 @@ The OCI metadata identifies the built vLLM source through `org.opencontainers.im
 
 The public pipeline names only PAC parameters. The private PAC Repository binds registry, authentication, remote-execution, storage, and Lease details.
 
+Both publisher lanes request a 256 GiB CSI workspace. `HOME`, `TMPDIR`, and
+Bazel's `output_user_root` stay on that volume, so source extraction and OCI
+assembly do not fill the node root filesystem through Tekton's `/tekton/home`
+`emptyDir`. This is per-run staging, not a build cache: deleting its PVC removes
+the staged files. The shared ccache and remote action cache remain separate.
+The checkout occupies `checkout/` and staging occupies its sibling
+`.build-home/`. Bazel rejects its repository contents cache inside the checkout.
+
 ## Pull-Request Builds
 
 [`.tekton/vllmb12x-pull-request.yaml`](../../.tekton/vllmb12x-pull-request.yaml) builds and contract-tests the same image for a pull request against `main`, then pushes it to the internal registry only. It skips the same documentation-only paths as the nightly, and a new commit on the pull request cancels the run building the previous one.
