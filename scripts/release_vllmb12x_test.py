@@ -36,6 +36,35 @@ class ReleaseNotesTest(unittest.TestCase):
         self.assertIn("Mooncake Transfer Engine CUDA 13 `0.3.13.post1`", notes)
 
 
+class ImageLabelsTest(unittest.TestCase):
+    INDEX = {
+        "manifests": [
+            {"digest": "sha256:" + "a" * 64, "platform": {"os": "linux", "architecture": "arm64"}},
+            {"digest": "sha256:" + "b" * 64, "platform": {"os": "linux", "architecture": "amd64"}},
+        ]
+    }
+
+    def labels(self, amd64, arm64):
+        json = __import__("json")
+        configs = [json.dumps({"config": {"Labels": amd64}}), json.dumps({"config": {"Labels": arm64}})]
+        with patch.object(RELEASE, "run", side_effect=[json.dumps(self.INDEX), *configs]):
+            return RELEASE.image_labels("example/image@sha256:" + "0" * 64, "crane")
+
+    def test_per_architecture_base_creation_times_are_accepted(self):
+        build = {"uk.co.randomvariable.vllmb12x.vllm-revision": "1" * 40}
+        amd64 = dict(build, **{"org.opencontainers.image.created": "2026-09-01T20:37:00Z"})
+        arm64 = dict(build, **{"org.opencontainers.image.created": "2026-09-01T20:40:13Z"})
+
+        self.assertEqual(self.labels(amd64, arm64), build)
+
+    def test_differing_build_labels_are_rejected(self):
+        amd64 = {"uk.co.randomvariable.vllmb12x.vllm-revision": "1" * 40}
+        arm64 = {"uk.co.randomvariable.vllmb12x.vllm-revision": "2" * 40}
+
+        with self.assertRaisesRegex(RuntimeError, "labels disagree"):
+            self.labels(amd64, arm64)
+
+
 class ReleaseCandidateTest(unittest.TestCase):
     def setUp(self):
         self.module = RELEASE.ledger()

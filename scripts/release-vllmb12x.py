@@ -30,6 +30,7 @@ _PUBLICATION_TAG: Final = re.compile(
     r"vllmb12x-.+-(?P<source>[0-9a-f]{12})-(?P<builder>[0-9a-f]{12})-(?P<date>[0-9]{8})-n(?P<sequence>[0-9]+)"
 )
 _RELEASE_PLATFORMS: Final = frozenset({("linux", "arm64"), ("linux", "amd64")})
+_PER_ARCH_LABEL: Final = "org.opencontainers.image.created"
 
 
 def ledger() -> Any:
@@ -92,9 +93,13 @@ def image_labels(reference: str, crane: str) -> dict[str, str]:
         if not isinstance(labels, dict) or not all(isinstance(key, str) and isinstance(value, str) for key, value in labels.items()):
             raise RuntimeError(f"OCI child {platform[0]}/{platform[1]} lacks string image labels")
         child_labels.append(labels)
-    if child_labels[0] != child_labels[1]:
+    # Each architecture inherits org.opencontainers.image.created from its own
+    # CUDA base image, so the timestamps legitimately differ. Every other label
+    # describes this build and must agree.
+    shared = [{key: value for key, value in labels.items() if key != _PER_ARCH_LABEL} for labels in child_labels]
+    if shared[0] != shared[1]:
         raise RuntimeError("OCI child image labels disagree")
-    return child_labels[0]
+    return shared[0]
 
 
 def check_release_candidate(reference: str, publication_tag: str, labels: dict[str, str], module: Any) -> None:
