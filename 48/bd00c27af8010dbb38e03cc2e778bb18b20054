@@ -1,0 +1,14 @@
+tests/image/vllmb12x.yaml
+  h_15da545fc8cfbe 17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "48bd00c27af8010dbb38e03cc2e778bb18b20054",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
