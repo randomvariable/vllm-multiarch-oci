@@ -53,5 +53,5 @@ This project builds [`local-inference-lab/vLLM`](https://github.com/local-infere
 
 ## Open pull requests
 
-- [vllm-multiarch-oci#25](https://github.com/randomvariable/vllm-multiarch-oci/pull/25) moves the builder onto the Qwen3.8 Flash Next pins and adds that recipe. It also keeps the hermetic flash-attn patch, accepts a pinned commit instead of a branch name as the source ref, and installs wheel console scripts so `ninja` exists at runtime.
-- [local-inference-lab/vllm#777](https://github.com/local-inference-lab/vllm/pull/777) upstreams the fix the Qwen image carries: a target model's `hf_overrides` now reach the internally constructed MTP draft, so the draft keeps the same YaRN geometry and a 1,048,576-token prefill is accepted.
+- [local-inference-lab/vllm#800](https://github.com/local-inference-lab/vllm/pull/800) adds bounded shared-memory broadcast waits and gates the adaptive reader and writer waits behind `VLLM_EXPERIMENTAL_SHM_BROADCAST_ADAPTIVE_SPIN=1`. The Qwen3.8 Flash Next recipe enables it with a 50 ms maximum grace.
+- [local-inference-lab/b12x#384](https://github.com/local-inference-lab/b12x/pull/384) keeps prepared launchers alive through the PCIe and RoCE launcher factories and runs collective priming behind a deadline-enforced barrier, so later preparation waits until a timed-out callback exits.
