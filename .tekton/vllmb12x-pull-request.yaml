@@ -73,7 +73,15 @@ spec:
     workspaces:
       - name: source
     tasks:
+      # Frees earlier finished runs' 256Gi staging claims before this run's
+      # claim is scheduled; the Task and its RBAC live with the ci manifests.
+      - name: release-staging
+        taskRef:
+          name: vllmb12x-release-staging
+        params:
+          - {name: current, value: $(context.pipelineRun.name)}
       - name: clone
+        runAfter: [release-staging]
         taskRef:
           name: git-clone
         params:
