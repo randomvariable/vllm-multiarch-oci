@@ -1,0 +1,18 @@
+recipes-site/src/content/docs/image-releases/index.mdx
+  h_15da545fc8cfbe 35-45
+recipes-site/src/content/docs/recipes/qwen38-flash-next-tp2.mdx
+  h_15da545fc8cfbe 37
+recipes/local-inference-lab/Qwen3.8-Flash-Next-NVFP4.yaml
+  h_15da545fc8cfbe 377,390-392
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "8dfe891d01b1a934c0f1c9444e80f71102fbee85",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
