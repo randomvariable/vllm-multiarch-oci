@@ -34,7 +34,7 @@ Two things changed at this cut, and both trace back to the checkpoint.
 
 **The memory budget moved with them.** Step 5500 loads 42.77 GiB per rank against 40.32 GiB at step 4000, and at `0.76` the startup profile pass froze two GB10 hosts with no kernel log. `0.74` hands back 2.48 GiB of the node's 123.79 GiB and restores the absolute headroom step 4000 had. Measured on the live ranks after the change: one group reports 24.78 GiB of KV cache memory, 3,414,080 tokens, 3.26x concurrency for a full-window request; the other reports 25.29 GiB, 3,483,537 tokens, 3.32x. That spread is node memory state at boot, not a configuration difference.
 
-The image those ranks run is built by this repository's CI from vLLM `0a6739845a32` on `dev/rv-mxfp8-mtp` and B12X `965e748f74fe` on `feat/mxfp8-moe`. The digest the generator offers as validated is the newest public build that predates that source pair, `0.29.0+karmic.kraken.fe8b327bcd9f.e8130f89752b`; it cannot load this checkpoint's draft. The first public build of the pair replaces it as the validated image.
+The image those ranks run is published by this repository as [v20261001.1](https://github.com/randomvariable/vllm-multiarch-oci/releases/tag/v20261001.1): vLLM `0a6739845a32` on `dev/rv-mxfp8-mtp` and B12X `965e748f74fe` on `feat/mxfp8-moe`, digest `sha256:43aaf6d1b5e0…dae6cbde`. The RecipeBuilder offers it as the validated image.
 
 Two settings deserve attention because they are not interchangeable with defaults.
 
