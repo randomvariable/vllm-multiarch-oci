@@ -374,7 +374,7 @@ deployment:
       description: Routing-only accepted Envoy GatewayClass supplied by the cluster operator.
       help: {label: Install or inspect GatewayClass, href: guides/cluster-prerequisites/#install-envoy-gateway-183}
 validation:
-  image: ghcr.io/randomvariable/vllm-b12x-multi@sha256:c91826b2742928d22de651277e408d5c5b2c63828815a1b51744a18ef1171bb2
+  image: ghcr.io/randomvariable/vllm-b12x-multi@sha256:43aaf6d1b5e0b96bff630f5b5211afccd1b4838c40a29864aaee3eb7dae6cbde
   lws: verified
   docker: unverified
   evidence: >-
@@ -387,12 +387,9 @@ validation:
     permanently parked), and rank-zero KV-event publishing (--enable-scale-out plus
     --kv-events-config). The four live ranks run version
     0.29.0+rv.mxfp8.mtp.0a6739845a32.965e748f74fe.c6f1c3f3e582: vLLM 0a6739845a32 on
-    dev/rv-mxfp8-mtp with B12X 965e748f74fe on feat/mxfp8-moe, built by this
-    repository's pull-request CI. The step-5500 checkpoint ships its MTP draft experts
-    as MXFP8 (E4M3 weights, UE8M0 scales) and the target experts as NVFP4, so without
-    native B12X MXFP8 MoE --moe-backend b12x rejects the draft at kernel selection: the
-    public digest cited as validation.image - vLLM fe8b327bcd9f with B12X e8130f89752b -
-    predates that support and is replaced by the first public build of the pair.
+    dev/rv-mxfp8-mtp with B12X 965e748f74fe on feat/mxfp8-moe. That source pair is
+    published as vllm-multiarch-oci v20261001.1, and validation.image pins that
+    release digest - the same image the GB10 groups above serve.
     Kernel selection in the rank-0 log: B12X for the NVFP4 target experts, B12X_MXFP8
     for the MTP draft experts at their unpadded 320-wide TP=2 intermediate, and
     nothing on Marlin. The benchmark panel is a separate run: llm-inference-bench 0.7.5

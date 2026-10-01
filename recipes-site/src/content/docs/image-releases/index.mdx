@@ -32,7 +32,17 @@ A publication pins one vLLM revision and one b12x revision together. The pairing
 - Restores the per-rank provider census and the symmetric-preparation guard, so a rank that fails to publish its providers raises a structured error instead of stalling the group.
 - Builder side: console scripts are now materialized into `/opt/venv/bin`, which is what makes `ninja` present for runtime C++ extension builds; the image contract and publisher accept a pinned commit rather than a branch name.
 - Pull requests: [vllm-multiarch-oci#25](https://github.com/randomvariable/vllm-multiarch-oci/pull/25) for the builder and recipe, [local-inference-lab/vllm#777](https://github.com/local-inference-lab/vllm/pull/777) for the MTP override fix upstream.
-- Current state: the Qwen recipe cites this repository's newest public nightly, `sha256:c91826b2742928d22de651277e408d5c5b2c63828815a1b51744a18ef1171bb2` (28 September 2026, vLLM `fe8b327bcd9f` with b12x `e8130f89752b`). The recipe's accepted runtime is no longer any public digest: the checkpoint it now serves has MXFP8 MTP draft experts, which need native B12X MXFP8 MoE, and that support arrives with [vllm-multiarch-oci#36](https://github.com/randomvariable/vllm-multiarch-oci/pull/36), whose build is published only to the private registry until the branch reaches `main`.
+
+### Qwen3.8 Flash Next with MXFP8 MTP experts
+
+`sha256:43aaf6d1b5e0b96bff630f5b5211afccd1b4838c40a29864aaee3eb7dae6cbde` · 1 October 2026 · [v20261001.1](https://github.com/randomvariable/vllm-multiarch-oci/releases/tag/v20261001.1)
+
+- vLLM `0a6739845a3249b07a30ad9b1e720e5e3fb6236f` (`dev/rv-mxfp8-mtp`), b12x `965e748f74fe9dac0a35c497a0947c5b108617c5` (`feat/mxfp8-moe`). First public release whose source pair reaches `main`.
+- Native block-scaled MXFP8 W8A8 MoE on both architectures: Qwen3.8 Flash Next step 5500's MTP draft experts are MXFP8 and run on `B12X_MXFP8` at their unpadded 320-wide TP=2 shard; the NVFP4 target experts run on `B12X`. Nothing selects Marlin.
+- Runtime dependencies move to current CUDA-era pins (nvidia-cutlass-dsl 4.8.0, tilelang 0.1.15, cuda-python 13.4.1, nixl, numba, PyNvVideoCodec, fastokens); locks target manylinux_2_34.
+- Serving acceptance and the idle benchmark are recorded in the [release notes](https://github.com/randomvariable/vllm-multiarch-oci/releases/tag/v20261001.1) and the [Qwen recipe](/recipes/qwen38-flash-next-tp2/), which pins this digest as its validated image.
+- Pull requests: [vllm-multiarch-oci#36](https://github.com/randomvariable/vllm-multiarch-oci/pull/36) for the source pair, dependency bump and docs, [#37](https://github.com/randomvariable/vllm-multiarch-oci/pull/37) for the per-architecture base-creation label the first release attempt tripped.
+- Current state: both open recipes' `validation.image` digests are public releases again.
 
 ### DeepSeek V4 Flash Vision lineage
 

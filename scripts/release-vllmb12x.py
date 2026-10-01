@@ -170,6 +170,9 @@ def release_notes(reference: str, publication_tag: str, release_tag: str, module
 
 
 def main(argv: list[str] | None = None) -> int:
+    # --reference and --publication-tag must name the same digest-qualified
+    # image: the publication tag carries the builder revision the label check
+    # pins, so the release cannot drift from the tree it was built from.
     parser = argparse.ArgumentParser()
     parser.add_argument("--reference", required=True, help="Digest-qualified image published earlier")
     parser.add_argument("--publication-tag", required=True, help="The immutable tag that image was published under")
