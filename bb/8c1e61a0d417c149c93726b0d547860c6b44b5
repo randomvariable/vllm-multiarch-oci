@@ -1,0 +1,34 @@
+.tekton/vllmb12x-nightly.yaml
+  h_15da545fc8cfbe 134,139-140,148,150,152,158
+.tekton/vllmb12x-pull-request.yaml
+  h_15da545fc8cfbe 130,134-135,143,146,152
+.tekton/vllmb12x-release.yaml
+  h_15da545fc8cfbe 1-193
+docs/reference/build-configuration.md
+  h_15da545fc8cfbe 68-70,92,98,101-102,105-112,114,118-126
+scripts/BUILD.bazel
+  h_15da545fc8cfbe 75-81
+scripts/ci/bootstrap-arm64-tools.sh
+  h_15da545fc8cfbe 1-78
+scripts/ci/login-ghcr.sh
+  h_15da545fc8cfbe 1-16
+scripts/ci/vllmb12x-build-and-publish.sh
+  h_15da545fc8cfbe 1-95
+scripts/ci/vllmb12x_lane_test.py
+  h_15da545fc8cfbe 1-143
+scripts/release-vllmb12x.py
+  h_15da545fc8cfbe 105-107,137-151,186-200,209-214,226-227,229-241,254-257
+scripts/release_vllmb12x_test.py
+  h_15da545fc8cfbe 4,8,124-191
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "bb8c1e61a0d417c149c93726b0d547860c6b44b5",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
