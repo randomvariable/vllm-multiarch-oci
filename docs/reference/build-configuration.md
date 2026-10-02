@@ -65,7 +65,9 @@ The OCI metadata identifies the built vLLM source through `org.opencontainers.im
 
 The public pipeline names only PAC parameters. The private PAC Repository binds registry, authentication, remote-execution, storage, and Lease details.
 
-Both publisher lanes request a 256 GiB CSI workspace. `HOME`, `TMPDIR`, and
+All three lanes invoke the same committed scripts: `scripts/ci/bootstrap-arm64-tools.sh` installs the pinned toolchain, `scripts/ci/login-ghcr.sh` writes the crane configuration for the public registry, and `scripts/ci/vllmb12x-build-and-publish.sh` runs the tests, the image build, both contract lanes, and the publisher. A lane therefore differs only by its `LANE` environment value and its publisher arguments, which is what `scripts/ci/vllmb12x_lane_test.py` asserts against stub tools.
+
+Every CI lane requests a 256 GiB CSI workspace. `HOME`, `TMPDIR`, and
 Bazel's `output_user_root` stay on that volume, so source extraction and OCI
 assembly do not fill the node root filesystem through Tekton's `/tekton/home`
 `emptyDir`. This is per-run staging, not a build cache: deleting its PVC removes
@@ -87,13 +89,33 @@ The tag carries no sequence and no date, so re-running a pull-request build over
 
 ## Build Serialization
 
-Both lanes build on one node, against one remote worker pool and one ccache volume. Running them at once halves the workers each build sees and evicts the other lane's cache entries, so `scripts/build-mutex.py` holds a Kubernetes Lease named by the `build_lease` parameter for the whole build, test, and publication sequence, and the other lane waits for it.
+All three lanes build on one node, against one remote worker pool and one ccache volume. Running them at once halves the workers each build sees and evicts the other lane's cache entries, so `scripts/build-mutex.py` holds a Kubernetes Lease named by the `build_lease` parameter for the whole build, test, and publication sequence, and the other lane waits for it.
 
 The Lease duration is short relative to a build and the holder renews it, so a cancelled or killed run blocks the other lane only until its Lease expires, not until someone cleans up. A single failed renewal is not treated as a lost Lease: ownership ends only when another holder appears, the Lease is deleted, or the last successful renewal could itself have expired. The publication Lease is separate and still covers only tag allocation and registry mutation.
 
 ## Releases
 
-Publication is continuous: every accepted build receives an immutable tag, and nothing about that tag says the image is the one to run. A release is that separate statement, and `scripts/release-vllmb12x.py` makes it in three places at once:
+A release is the deliberate statement that one image is the one to run, and pushing a tag is what makes it:
+
+```bash
+git tag --annotate v20261003.1 --message 'v20261003.1: main at <commit>'
+git push origin v20261003.1
+```
+
+[`.tekton/vllmb12x-release.yaml`](../../.tekton/vllmb12x-release.yaml) matches a `push` whose ref is `refs/tags/v<YYYYMMDD>.<N>`, checks out exactly the tagged commit, and runs the nightly's sequence unchanged: `//scripts:all`, the multiarch image build, then the image contract on each architecture. Publication follows the green tests, and only then does `scripts/release-vllmb12x.py` copy the published image to the release tag and open the GitHub release whose notes carry the pins, both image references, and the change ledger the image advertises.
+
+A failed build or contract lane therefore creates nothing. The git tag stays as the request, the registry gains no release tag, and no release is opened. That is the one property the order buys: the tag is intent, and only a green run turns it into a release.
+
+Two checks keep a tag from naming a build that never happened:
+
+- the publication tag's builder revision must equal the checked-out `HEAD`, and the image's vLLM revision, source ref, and description label must match the committed lock and ledger, so a release cannot promise source that never produced the image;
+- `--expected-revision` binds the checkout to the commit the webhook resolved from the tag, so the run promotes what was tagged rather than whatever `main` has since become.
+
+Push at most three tags at a time; GitHub suppresses tag webhook deliveries beyond that. Repeating a tag is safe: the release tag is re-pointed at the newest publication and the existing GitHub release is updated rather than duplicated.
+
+Release tags are calendar, not semantic. This builder tracks moving upstream fork branches, so a version number would imply a compatibility promise it cannot keep.
+
+The script also runs by hand against an image the nightly published, which is how a release is cut when the lane is unavailable. Omit `--tag-exists` and it allocates the next `v<YYYYMMDD>.<N>` itself, and it requires a clean working tree and a pushed `HEAD` on `origin/main`:
 
 ```bash
 scripts/release-vllmb12x.py \
@@ -101,12 +123,6 @@ scripts/release-vllmb12x.py \
   --publication-tag vllmb12x-<branch>-<vllm>-<builder>-<date>-n<sequence> \
   --dry-run
 ```
-
-Without `--dry-run` it tags the image in the registry as `v<YYYYMMDD>.<N>`, tags the commit, and opens a GitHub release whose notes carry the pins, both image references, and the same change ledger the image advertises. The registry tag is written first: a git tag pointing at an image that failed to tag is worse than a registry tag with no release yet.
-
-The command refuses rather than releases when the image does not belong to this tree. It compares the image's vLLM revision, source ref, and description label against the current lock and ledger, requires a clean working tree and a pushed `HEAD`, and requires the builder revision inside the publication tag to be `HEAD` — so a release cannot promise source that never produced the image.
-
-Release tags are calendar, not semantic. This builder tracks moving upstream fork branches, so a version number would imply a compatibility promise it cannot keep.
 
 ## Image Version
 

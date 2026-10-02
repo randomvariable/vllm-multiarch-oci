@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import importlib.util
+import json
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 
@@ -117,6 +119,74 @@ class ReleaseCandidateTest(unittest.TestCase):
     def test_a_foreign_publication_tag_is_rejected(self):
         with self.assertRaisesRegex(RuntimeError, "not a publication tag"):
             self.check(tag="latest")
+
+
+class TagTriggerTest(unittest.TestCase):
+    HEAD = "0123456789ab" + "0" * 28
+    RELEASE_TAG = "v20261003.1"
+    PUBLICATION_TAG = "vllmb12x-dev-branch-abcdefabcdef-0123456789ab-20261003-n1"
+
+    def setUp(self):
+        self.module = RELEASE.ledger()
+        lock = self.module.load_lock()
+        manifest = json.loads(self.module.MANIFEST.read_text())
+        self.labels = {
+            "uk.co.randomvariable.vllmb12x.vllm-revision": lock["sources"]["vllm"]["commit"],
+            "uk.co.randomvariable.vllmb12x.vllm-source-ref": lock["source_ref"],
+            "org.opencontainers.image.description": self.module.description_body(manifest, lock),
+        }
+        self.reference = "example/image@sha256:" + "0" * 64
+
+    def promote(self, *, release_exists: bool = False):
+        calls: list[list[str]] = []
+
+        def fake_run(*command, cwd=None):
+            calls.append(list(command))
+            if command[:2] == ("git", "status"):
+                return ""
+            if command[:2] == ("git", "ls-remote"):
+                return f"{self.HEAD}\trefs/tags/{self.RELEASE_TAG}\n"
+            return self.HEAD + "\n"
+
+        probe = SimpleNamespace(returncode=0 if release_exists else 1)
+        with patch.object(RELEASE, "run", side_effect=fake_run):
+            with patch.object(RELEASE, "image_labels", return_value=self.labels):
+                with patch.object(RELEASE.subprocess, "run", return_value=probe):
+                    RELEASE.main([
+                        "--reference", self.reference,
+                        "--publication-tag", self.PUBLICATION_TAG,
+                        "--tag", self.RELEASE_TAG,
+                        "--expected-revision", self.HEAD,
+                        "--tag-exists",
+                    ])
+        return calls
+
+    def gh(self, calls, verb):
+        return [call for call in calls if call[:3] == ["gh", "release", verb]]
+
+    def test_a_pushed_tag_promotes_without_creating_the_git_tag(self):
+        calls = self.promote()
+
+        self.assertEqual([call for call in calls if call[:2] in (["git", "tag"], ["git", "push"])], [])
+        self.assertIn(["crane", "copy", self.reference, f"example/image:{self.RELEASE_TAG}"], calls)
+        self.assertEqual(len(self.gh(calls, "create")), 1)
+
+    def test_promoting_a_tag_twice_updates_the_existing_release(self):
+        calls = self.promote(release_exists=True)
+
+        self.assertEqual(self.gh(calls, "create"), [])
+        self.assertEqual(len(self.gh(calls, "edit")), 1)
+
+    def test_a_tag_that_was_never_pushed_is_refused(self):
+        with patch.object(RELEASE, "run", return_value=""):
+            with self.assertRaisesRegex(RuntimeError, "not pushed to origin"):
+                RELEASE.check_trigger_tag(self.RELEASE_TAG, self.HEAD)
+
+    def test_a_checkout_that_is_not_the_tagged_commit_is_refused(self):
+        with patch.object(RELEASE, "run", return_value="f" * 40 + "\n"):
+            with self.assertRaisesRegex(RuntimeError, "but v20261003.1 names"):
+                RELEASE.check_trigger_tag(self.RELEASE_TAG, self.HEAD)
+
 
 
 if __name__ == "__main__":

@@ -72,3 +72,10 @@ py_test(
     data = _LEDGER_INPUTS,
     main = "release_vllmb12x_test.py",
 )
+
+py_test(
+    name = "vllmb12x_lane_test",
+    srcs = ["ci/vllmb12x_lane_test.py"],
+    data = ["ci/vllmb12x-build-and-publish.sh"],
+    main = "ci/vllmb12x_lane_test.py",
+)
