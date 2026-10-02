@@ -1,0 +1,30 @@
+MODULE.bazel.lock
+  h_15da545fc8cfbe 298,305,437
+README.md
+  h_15da545fc8cfbe 16-19
+docs/reference/vllmb12x-runtime-configuration.md
+  h_15da545fc8cfbe 7-9,22-33,35-44,48-49,53-54,59-63,94-96,99,101-102,108,123,137-139,142-146,149-182,195
+profiles/vllmb12x/description.bzl
+  h_15da545fc8cfbe 5
+profiles/vllmb12x/included-changes.json
+  h_15da545fc8cfbe 15,40-41,43-44
+profiles/vllmb12x/profile.json
+  h_15da545fc8cfbe 7,70
+profiles/vllmb12x/source-update-notes.md
+  h_15da545fc8cfbe 7-9,12-22,25,27-28,32,34-35,37
+profiles/vllmb12x/version.bzl
+  h_15da545fc8cfbe 13,15
+recipes-site/src/content/docs/image-releases/included-changes.mdx
+  h_15da545fc8cfbe 15,19,28,30-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5168091db56aa25a0cdd007a7890128509e9b192",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
