@@ -3,7 +3,7 @@
     {
       "name": "vllm",
       "title": "vLLM",
-      "branch": "refs/heads/dev/rv-mxfp8-mtp",
+      "branch": "refs/heads/cycle/karmic-kraken",
       "upstream": "local-inference-lab/vllm",
       "upstream_base": "refs/heads/integration/karmic-kraken-beta",
       "changes": [
@@ -32,7 +32,7 @@
     {
       "name": "b12x",
       "title": "B12X",
-      "branch": "refs/heads/feat/mxfp8-moe",
+      "branch": "refs/heads/cycle/karmic-kraken",
       "upstream": "local-inference-lab/b12x",
       "upstream_base": "refs/heads/integration/karmic-kraken-beta",
       "changes": [

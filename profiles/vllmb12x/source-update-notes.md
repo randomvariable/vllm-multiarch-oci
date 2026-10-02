@@ -4,9 +4,9 @@ This file records upstream pull requests selected for the next Qwen source-lock 
 
 ## Integration Branches
 
-- vLLM target: [`randomvariable/vllm:dev/rv-mxfp8-mtp`](https://github.com/randomvariable/vllm/tree/dev/rv-mxfp8-mtp), rebased onto `local-inference-lab/vllm:integration/karmic-kraken-beta`.
-- B12X target: [`randomvariable/b12x:feat/mxfp8-moe`](https://github.com/randomvariable/b12x/tree/feat/mxfp8-moe), rebased onto `local-inference-lab/b12x:integration/karmic-kraken-beta`.
-- Both branch names predate that base and still describe work the base now supplies. They are kept because `scripts/refresh-vllmb12x.py` composes the published version from `source_ref`; renaming would rewrite every image label for no functional gain.
+- vLLM target: [`randomvariable/vllm:cycle/karmic-kraken`](https://github.com/randomvariable/vllm/tree/cycle/karmic-kraken), rebased onto `local-inference-lab/vllm:integration/karmic-kraken-beta`.
+- B12X target: [`randomvariable/b12x:cycle/karmic-kraken`](https://github.com/randomvariable/b12x/tree/cycle/karmic-kraken), rebased onto `local-inference-lab/b12x:integration/karmic-kraken-beta`.
+- Each fork branch is named for the upstream cycle because `scripts/refresh-vllmb12x.py` composes the published version from `source_ref`; these refs put the local version segment at `karmic.kraken`. The superseded `dev/rv-mxfp8-mtp` and `feat/mxfp8-moe` names still resolve on the forks, at the same commits, and can be deleted once no `main` lock names them.
 - Do not push to `local-inference-lab` repositories. The source lock stores immutable fork commits, not these moving branch names.
 
 ## Already supplied by the beta base

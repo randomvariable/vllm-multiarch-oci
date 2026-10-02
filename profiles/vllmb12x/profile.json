@@ -1,7 +1,7 @@
 {
-  "b12x_ref": "refs/heads/feat/mxfp8-moe",
+  "b12x_ref": "refs/heads/cycle/karmic-kraken",
   "name": "vllmb12x",
-  "source_ref": "refs/heads/dev/rv-mxfp8-mtp",
+  "source_ref": "refs/heads/cycle/karmic-kraken",
   "sources": {
     "b12x": {
       "commit": "efbc65547ff8ba9654ed9bb07c78a12229396221",
