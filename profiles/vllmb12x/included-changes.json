@@ -8,17 +8,11 @@
       "upstream_base": "refs/heads/integration/karmic-kraken-beta",
       "changes": [
         {
-          "pull_request": null,
-          "title": "Partial port of vLLM PR 779: Qwen HC ownership and checkpoint coalescing",
-          "inclusion": "branch",
-          "commits": 9,
-          "note": "Carries the HC/coalescing runtime port to Qwen4Exp, not the complete upstream PR or an upstream beta merge. HC and coalescing remain opt-in. The nine commits replay byte-identically onto the karmic-kraken-beta base 58d05bc7626d; GPU serving was not exercised in that rebase."
-        },
-        {
           "pull_request": "local-inference-lab/vllm#800",
           "title": "Bounded shared-memory broadcast waits",
           "inclusion": "branch",
-          "commits": 1
+          "commits": 1,
+          "note": "The only change this branch carries beyond the base: cherry-picked from randomvariable/vllm arm-spinloop-karmic-gated (29ebd2dfb82c) onto the karmic-kraken-beta tip 58d05bc7626d."
         },
         {
           "pull_request": null,
@@ -32,18 +26,10 @@
     {
       "name": "b12x",
       "title": "B12X",
-      "branch": "refs/heads/cycle/karmic-kraken",
+      "branch": "refs/heads/integration/karmic-kraken-beta",
       "upstream": "local-inference-lab/b12x",
       "upstream_base": "refs/heads/integration/karmic-kraken-beta",
-      "changes": [
-        {
-          "pull_request": "local-inference-lab/b12x#386",
-          "title": "Export prepared PLE internal prefill checkpoints",
-          "inclusion": "branch",
-          "commits": 2,
-          "note": "The two commits match the head commits of the open B12X PR 386 (087b15b326a5, 8801c016c429) and supply the export_checkpoint API Qwen coalescing calls. The paired prepared-launcher and collective-preparation work reached the beta base through merge 748fa9ea94f2 and native MXFP8 W8A8 MoE through merge 914921dad15d, so this branch no longer carries either."
-        }
-      ]
+      "changes": []
     }
   ]
 }

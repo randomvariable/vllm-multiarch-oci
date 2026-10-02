@@ -12,24 +12,18 @@ A change reaches the build in one of two ways. It is either already merged into 
 {/* included-changes:start */}
 ## vLLM
 
-Pinned at [`39e9ae0eabae`](https://github.com/randomvariable/vllm/commit/39e9ae0eabaef2877d56e5bd16d77fba953e2869), branched from [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm) `integration/karmic-kraken-beta`.
+Pinned at [`28d82aa6479a`](https://github.com/randomvariable/vllm/commit/28d82aa6479a32171788048b0d31ed008dd099cd), branched from [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm) `integration/karmic-kraken-beta`.
 
-- **Partial port of vLLM PR 779: Qwen HC ownership and checkpoint coalescing** — no upstream pull request
-  - Merged into the pinned revision (9 commits).
-  - Carries the HC/coalescing runtime port to Qwen4Exp, not the complete upstream PR or an upstream beta merge. HC and coalescing remain opt-in. The nine commits replay byte-identically onto the karmic-kraken-beta base 58d05bc7626d; GPU serving was not exercised in that rebase.
 - **[local-inference-lab/vllm#800](https://github.com/local-inference-lab/vllm/pull/800)** — Bounded shared-memory broadcast waits
   - Merged into the pinned revision (1 commits).
+  - The only change this branch carries beyond the base: cherry-picked from randomvariable/vllm arm-spinloop-karmic-gated (29ebd2dfb82c) onto the karmic-kraken-beta tip 58d05bc7626d.
 - **Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute** — no upstream pull request
   - Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch`.
   - Packaging repair for this builder's symlink install path, which skips the import rewrite the upstream CMake copy performs. It carries no upstream change.
 
 ## B12X
 
-Pinned at [`efbc65547ff8`](https://github.com/randomvariable/b12x/commit/efbc65547ff8ba9654ed9bb07c78a12229396221), branched from [`local-inference-lab/b12x`](https://github.com/local-inference-lab/b12x) `integration/karmic-kraken-beta`.
-
-- **[local-inference-lab/b12x#386](https://github.com/local-inference-lab/b12x/pull/386)** — Export prepared PLE internal prefill checkpoints
-  - Merged into the pinned revision (2 commits).
-  - The two commits match the head commits of the open B12X PR 386 (087b15b326a5, 8801c016c429) and supply the export_checkpoint API Qwen coalescing calls. The paired prepared-launcher and collective-preparation work reached the beta base through merge 748fa9ea94f2 and native MXFP8 W8A8 MoE through merge 914921dad15d, so this branch no longer carries either.
+Pinned at [`a77b3f85e5e2`](https://github.com/local-inference-lab/b12x/commit/a77b3f85e5e2a81315ff4a90088912f187708005), branched from [`local-inference-lab/b12x`](https://github.com/local-inference-lab/b12x) `integration/karmic-kraken-beta`.
 {/* included-changes:end */}
 
 ## Keeping this list honest

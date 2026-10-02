@@ -1,12 +1,12 @@
 {
-  "b12x_ref": "refs/heads/cycle/karmic-kraken",
+  "b12x_ref": "refs/heads/integration/karmic-kraken-beta",
   "name": "vllmb12x",
   "source_ref": "refs/heads/cycle/karmic-kraken",
   "sources": {
     "b12x": {
-      "commit": "efbc65547ff8ba9654ed9bb07c78a12229396221",
+      "commit": "a77b3f85e5e2a81315ff4a90088912f187708005",
       "recursive_init_submodules": true,
-      "remote": "https://github.com/randomvariable/b12x.git"
+      "remote": "https://github.com/local-inference-lab/b12x.git"
     },
     "cutlass": {
       "commit": "e6233cbac5d7c7a865c19c91cd684ceece19513c",
@@ -67,7 +67,7 @@
     },
     "vllm": {
       "cargo_vendor": true,
-      "commit": "39e9ae0eabaef2877d56e5bd16d77fba953e2869",
+      "commit": "28d82aa6479a32171788048b0d31ed008dd099cd",
       "recursive_init_submodules": true,
       "remote": "https://github.com/randomvariable/vllm.git"
     },
