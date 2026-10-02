@@ -295,14 +295,14 @@
         "bzlTransitiveDigest": "hc26F5s55jBCXFimaxIvPmNc1rt22HMVwgH4iuCjKBU=",
         "usagesDigest": "27S2nJnWs7icY1Yi+UWrPv4nfudZ01z3cIqvW9izwLY=",
         "recordedInputs": [
-          "FILE:@@//profiles/vllmb12x/profile.json 266b6c68d0bcb1eddc94b455a10eb412936e9ca03d3a8070af7188ef63eb4bbf"
+          "FILE:@@//profiles/vllmb12x/profile.json beb1ea684279fb6650a739f968c08f200074d5b18a160efa13f9a26557c9bef5"
         ],
         "generatedRepoSpecs": {
           "vllmb12x_b12x": {
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
-              "remote": "https://github.com/randomvariable/b12x.git",
-              "commit": "ca8e62faa41b8b5e10e8de3565a9d2ad3fd3724f",
+              "remote": "https://github.com/local-inference-lab/b12x.git",
+              "commit": "a77b3f85e5e2a81315ff4a90088912f187708005",
               "recursive_init_submodules": true,
               "patches": [],
               "cargo_vendor": false,
@@ -434,7 +434,7 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/randomvariable/vllm.git",
-              "commit": "588bc2641de67036581db2fa222d478076810372",
+              "commit": "28d82aa6479a32171788048b0d31ed008dd099cd",
               "recursive_init_submodules": true,
               "patches": [
                 "@@//third_party:vllm_flash_attn_cute_namespace.patch"

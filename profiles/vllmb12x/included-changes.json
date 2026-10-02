@@ -3,29 +3,16 @@
     {
       "name": "vllm",
       "title": "vLLM",
-      "branch": "refs/heads/dev/rv-mxfp8-mtp",
+      "branch": "refs/heads/cycle/karmic-kraken",
       "upstream": "local-inference-lab/vllm",
       "upstream_base": "refs/heads/integration/karmic-kraken-beta",
       "changes": [
         {
-          "pull_request": null,
-          "title": "Native MXFP8 MTP through the ModelOpt B12X backend",
-          "inclusion": "branch",
-          "commits": 4,
-          "note": "User-directed feature-branch pin. Preserves E4M3 weights and UE8M0 scales through the paired B12X W8A8 recipe and prepares the step5500 MTP experts at their unpadded TP=2 intermediate (320). Bounded SM120 numerical, ModelOpt lifecycle (I=640 and I=320) and graph tests pass. No upstream PR is open."
-        },
-        {
-          "pull_request": null,
-          "title": "Partial port of vLLM PR 779: Qwen HC ownership and checkpoint coalescing",
-          "inclusion": "branch",
-          "commits": 9,
-          "note": "Carries the HC/coalescing runtime port to Qwen4Exp, not the complete upstream PR or an upstream beta merge. HC and coalescing remain opt-in. GPU serving was not exercised in this rebase."
-        },
-        {
           "pull_request": "local-inference-lab/vllm#800",
           "title": "Bounded shared-memory broadcast waits",
           "inclusion": "branch",
-          "commits": 1
+          "commits": 1,
+          "note": "The only change this branch carries beyond the base: cherry-picked from randomvariable/vllm arm-spinloop-karmic-gated (29ebd2dfb82c) onto the karmic-kraken-beta tip 58d05bc7626d."
         },
         {
           "pull_request": null,
@@ -39,25 +26,10 @@
     {
       "name": "b12x",
       "title": "B12X",
-      "branch": "refs/heads/feat/mxfp8-moe",
+      "branch": "refs/heads/integration/karmic-kraken-beta",
       "upstream": "local-inference-lab/b12x",
       "upstream_base": "refs/heads/integration/karmic-kraken-beta",
-      "changes": [
-        {
-          "pull_request": null,
-          "title": "Native block-scaled MXFP8 W8A8 MoE execution",
-          "inclusion": "branch",
-          "commits": 3,
-          "note": "User-directed feature-branch pin. Implements lossless E4M3/UE8M0 K32 preparation and grouped expert execution, including 32-aligned intermediate sizes through separate up/gate descriptors. Numerical (I=640/320/96), CUDA graph replay and bounded memcheck pass on SM120 with sm_120f artifacts. SM120 MoE kernel time at I=320 unpadded vs I=384 padded: equal at 1-4 tokens, 6-10% lower at 16-64 tokens. No SM121 runtime or serving-performance claim. No upstream PR is open."
-        },
-        {
-          "pull_request": null,
-          "title": "PLE checkpoint exports, prepared launcher closures and collective entry barriers",
-          "inclusion": "branch",
-          "commits": 11,
-          "note": "Fork-only changes remain outside upstream beta, including the PLE export_checkpoint API from B12X PR 386 required by Qwen coalescing."
-        }
-      ]
+      "changes": []
     }
   ]
 }
