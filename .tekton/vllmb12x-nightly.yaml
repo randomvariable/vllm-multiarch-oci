@@ -131,10 +131,13 @@ spec:
                 - {name: TMPDIR, value: $(workspaces.source.path)/.build-home/tmp}
                 - {name: DOCKER_CONFIG, value: /tekton/docker}
                 - {name: GITHUB_TOKEN_FILE, value: /var/run/vllmb12x/github/token}
+                - {name: LANE, value: nightly}
                 - {name: IMAGE_REPOSITORY, value: $(params.image_repository)}
                 - {name: PUBLISHER_LEASE, value: $(params.publisher_lease)}
                 - {name: PUBLISHER_NAMESPACE, value: $(params.publisher_namespace)}
                 - {name: REMOTE_CACHE, value: $(params.remote_cache)}
+                - {name: REMOTE_EXECUTOR, value: $(params.remote_executor)}
+                - {name: RESULT, value: $(workspaces.source.path)/.build-home/publish-result.json}
               computeResources:
                 requests: {cpu: "4", memory: 8Gi}
                 limits: {memory: 24Gi}
@@ -142,95 +145,17 @@ spec:
                 #!/usr/bin/env bash
                 set -euo pipefail
                 mkdir -p "$HOME" "$TMPDIR"
-
-                apt-get update
-                apt-get install --no-install-recommends --yes \
-                  build-essential ca-certificates curl git patch python3 unzip zip
-                rm -rf /var/lib/apt/lists/*
-                BAZELISK=/usr/local/bin/bazel
-                curl --fail --silent --show-error --location \
-                  https://github.com/bazelbuild/bazelisk/releases/download/v1.29.0/bazelisk-linux-arm64 \
-                  --output "$BAZELISK"
-                printf '%s  %s\n' \
-                  e20e8b0f4f240091b7a55bf17b9398bd4f40ee70ae0208dff95dd4c445fb4010 \
-                  "$BAZELISK" | sha256sum --check --status
-                chmod 0755 "$BAZELISK"
-                RUSTUP_HOME=/opt/rustup
-                CARGO_HOME=/opt/cargo
-                export RUSTUP_HOME CARGO_HOME PATH="${CARGO_HOME}/bin:${PATH}"
-                curl --fail --silent --show-error --location https://sh.rustup.rs | \
-                  sh -s -- -y --profile minimal --default-toolchain 1.95.0
-                KUBECTL_VERSION="$(curl --fail --silent --show-error --location https://dl.k8s.io/release/stable.txt)"
-                curl --fail --silent --show-error --location \
-                  "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/arm64/kubectl" \
-                  --output /usr/local/bin/kubectl
-                chmod 0755 /usr/local/bin/kubectl
-                CRANE_ARCHIVE="${HOME}/go-containerregistry_Linux_arm64.tar.gz"
-                curl --fail --silent --show-error --location \
-                  https://github.com/google/go-containerregistry/releases/download/v0.22.1/go-containerregistry_Linux_arm64.tar.gz \
-                  --output "$CRANE_ARCHIVE"
-                printf '%s  %s\n' \
-                  898c0cff975f898a33e8c4580bdafb0e7c02c7faa33374e946762f97c4ab7110 \
-                  "$CRANE_ARCHIVE" | sha256sum --check --status
-                tar --extract --gzip --file "$CRANE_ARCHIVE" --directory /usr/local/bin crane
-                chmod 0755 /usr/local/bin/crane
-                crane version
-
+                source scripts/ci/bootstrap-arm64-tools.sh
                 git config --global --add safe.directory "$PWD"
+                bash scripts/ci/login-ghcr.sh
                 BUILD_REVISION="$(git rev-parse HEAD)"
-                cat > .bazelrc.user <<EOF
-                startup --output_user_root=${HOME}/bazel
-                build --remote_cache=$(params.remote_cache)
-                build --remote_timeout=21600
-                build --remote_cache_compression
-                build --remote_upload_local_results=true
-                build:remote-aarch64 --remote_executor=$(params.remote_executor)
-                build:remote-x86_64 --remote_executor=$(params.remote_executor)
-                build:remote-multiarch --remote_executor=$(params.remote_executor)
-                EOF
-
-                mkdir -p "$DOCKER_CONFIG"
-                TOKEN="$(cat "$GITHUB_TOKEN_FILE")"
-                printf '{"auths":{"ghcr.io":{"auth":"%s"}}}\n' \
-                  "$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)" > "$DOCKER_CONFIG/config.json"
-                RESULT="${HOME}/publish-result.json"
-                export BUILD_REVISION RESULT
-                cat > "${HOME}/build-test-and-publish.sh" <<'SCRIPT'
-                #!/usr/bin/env bash
-                set -euo pipefail
-                # Local strategy: these are host Python tests, and the remote
-                # ARM64 worker image carries no python3 interpreter.
-                bazel test //scripts:all --disk_cache= --test_output=errors
-                export VLLMB12X_CACHE_ROOT=/ccache
-                bazel build //image:vllmb12x --config=remote-multiarch --disk_cache= --//platforms:vllmb12x_cache_root="$VLLMB12X_CACHE_ROOT"
-                # The rule defaults to --test-report $XML_OUTPUT_FILE --output junit, which
-                # sends every per-test line to a file that dies with the pod. Clearing the
-                # report and forcing text keeps container-structure-test's === RUN / --- FAIL
-                # detail in test.log, where --test_output=errors surfaces it in the TaskRun.
-                # Every worker runs its own dockerd and exposes its socket at
-                # /var/run/docker/docker.sock, not at the docker default. A remote
-                # action's environment is built by Bazel, not inherited from the
-                # worker's container, so the path has to be passed explicitly.
-                bazel test //tests/image:vllmb12x_contract --config=remote-aarch64 --disk_cache= --//platforms:vllmb12x_cache_root="$VLLMB12X_CACHE_ROOT" --test_output=errors --test_arg=--test-report= --test_arg=--output --test_arg=text --test_env=DOCKER_HOST=unix:///var/run/docker/docker.sock
-                bazel test //tests/image:vllmb12x_contract --config=remote-x86_64 --disk_cache= --//platforms:vllmb12x_cache_root="$VLLMB12X_CACHE_ROOT" --test_output=errors --test_arg=--test-report= --test_arg=--output --test_arg=text --test_env=DOCKER_HOST=unix:///var/run/docker/docker.sock
-                python3 scripts/publish-vllmb12x.py \
-                  --repository "$IMAGE_REPOSITORY" \
-                  --build-revision "$BUILD_REVISION" \
-                  --lease-name "$PUBLISHER_LEASE" \
-                  --namespace "$PUBLISHER_NAMESPACE" \
-                  --bazel-arg=--config=remote-multiarch \
-                  --bazel-arg=--//platforms:vllmb12x_cache_root="$VLLMB12X_CACHE_ROOT" \
-                  --bazel-arg=--remote_cache="$REMOTE_CACHE" \
-                  --bazel-arg=--disk_cache= \
-                  --result-file "$RESULT"
-                SCRIPT
-                # One build at a time across both lanes: they share this node,
+                # One build at a time across every lane: they share this node,
                 # the remote worker pool, and the ccache volume.
                 python3 scripts/build-mutex.py \
                   --name "$(params.build_lease)" \
                   --namespace "$(params.publisher_namespace)" \
                   --holder "nightly-$BUILD_REVISION" \
-                  -- bash "${HOME}/build-test-and-publish.sh"
+                  -- bash scripts/ci/vllmb12x-build-and-publish.sh
                 REF="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["reference"])' "$RESULT")"
                 printf '%s' "$REF" > "$(results.image_ref.path)"
               volumeMounts:

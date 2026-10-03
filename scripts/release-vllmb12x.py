@@ -102,7 +102,9 @@ def image_labels(reference: str, crane: str) -> dict[str, str]:
     return shared[0]
 
 
-def check_release_candidate(reference: str, publication_tag: str, labels: dict[str, str], module: Any) -> None:
+def check_release_candidate(
+    reference: str, publication_tag: str, labels: dict[str, str], module: Any, tag_is_trigger: bool = False
+) -> None:
     """Fail unless the image was built from the current, committed tree."""
     published = _PUBLICATION_TAG.fullmatch(publication_tag)
     if published is None:
@@ -132,9 +134,21 @@ def check_release_candidate(reference: str, publication_tag: str, labels: dict[s
         )
     # A release names the default branch, not a branch that may be rebased or
     # deleted once its pull request closes.
-    branches = {line.strip().lstrip("* ") for line in run("git", "branch", "--remotes", "--contains", "HEAD").splitlines()}
-    if "origin/main" not in branches:
-        raise RuntimeError("HEAD is not on origin/main, so the release tag would name a commit that may disappear")
+    if not tag_is_trigger:
+        branches = {line.strip().lstrip("* ") for line in run("git", "branch", "--remotes", "--contains", "HEAD").splitlines()}
+        if "origin/main" not in branches:
+            raise RuntimeError("HEAD is not on origin/main, so the release tag would name a commit that may disappear")
+
+
+def check_trigger_tag(release_tag: str, expected_revision: str) -> None:
+    """Fail unless the pushed release tag names the commit being released."""
+    if not run("git", "ls-remote", "origin", f"refs/tags/{release_tag}").strip():
+        raise RuntimeError(f"{release_tag} is not pushed to origin, so no release was requested")
+    head = run("git", "rev-parse", "HEAD").strip()
+    # The webhook resolved the tag to the commit it points at, so this is what
+    # binds the image to the tag rather than to whatever the checkout holds.
+    if head != expected_revision:
+        raise RuntimeError(f"the checkout is {head}, but {release_tag} names {expected_revision}")
 
 
 def release_notes(reference: str, publication_tag: str, release_tag: str, module: Any) -> str:
@@ -169,6 +183,21 @@ def release_notes(reference: str, publication_tag: str, release_tag: str, module
     ))
 
 
+def publish_github_release(release_tag: str, notes: str) -> None:
+    """Create the release, or rewrite its notes when a re-run repeats a tag."""
+    title = f"{release_tag} — vLLM {lock_version()}"
+    repository = ("--repo", "randomvariable/vllm-multiarch-oci")
+    if subprocess.run(
+        ("gh", "release", "view", release_tag, *repository),
+        cwd=ROOT,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    ).returncode == 0:
+        run("gh", "release", "edit", release_tag, *repository, "--title", title, "--notes", notes)
+        return
+    run("gh", "release", "create", release_tag, *repository, "--title", title, "--notes", notes)
+
+
 def main(argv: list[str] | None = None) -> int:
     # --reference and --publication-tag must name the same digest-qualified
     # image: the publication tag carries the builder revision the label check
@@ -177,6 +206,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--reference", required=True, help="Digest-qualified image published earlier")
     parser.add_argument("--publication-tag", required=True, help="The immutable tag that image was published under")
     parser.add_argument("--tag", help="Release tag, by default the next vYYYYMMDD.N")
+    parser.add_argument("--expected-revision", help="Full commit the release tag names, required with --tag-exists")
+    parser.add_argument(
+        "--tag-exists",
+        action="store_true",
+        help="The git tag is the trigger and is already pushed: verify it instead of creating it",
+    )
     parser.add_argument("--crane", default="crane")
     parser.add_argument("--dry-run", action="store_true", help="Print the notes and the commands, change nothing")
     arguments = parser.parse_args(argv)
@@ -188,11 +223,22 @@ def main(argv: list[str] | None = None) -> int:
 
     module = ledger()
     labels = image_labels(arguments.reference, arguments.crane)
-    check_release_candidate(arguments.reference, arguments.publication_tag, labels, module)
-
-    release_tag = arguments.tag or next_release_tag(
-        run("git", "tag", "--list").splitlines(), dt.datetime.now(tz=dt.timezone.utc).strftime("%Y%m%d")
+    check_release_candidate(
+        arguments.reference, arguments.publication_tag, labels, module, tag_is_trigger=arguments.tag_exists
     )
+    if arguments.tag_exists:
+        # The pushed tag is the request, and it names both the release and the
+        # commit, so a lane gets no licence to guess a calendar tag of its own.
+        if arguments.tag is None:
+            parser.error("--tag is required with --tag-exists")
+        if arguments.expected_revision is None:
+            parser.error("--expected-revision is required with --tag-exists")
+        check_trigger_tag(arguments.tag, arguments.expected_revision)
+        release_tag = arguments.tag
+    else:
+        release_tag = arguments.tag or next_release_tag(
+            run("git", "tag", "--list").splitlines(), dt.datetime.now(tz=dt.timezone.utc).strftime("%Y%m%d")
+        )
     if _RELEASE_TAG.fullmatch(release_tag) is None:
         parser.error(f"release tag must look like v20260917.1, not {release_tag!r}")
     notes = release_notes(arguments.reference, arguments.publication_tag, release_tag, module)
@@ -205,14 +251,10 @@ def main(argv: list[str] | None = None) -> int:
     # Registry first: a git tag pointing at an image that failed to tag is
     # worse than a registry tag with no release yet.
     run(arguments.crane, "copy", arguments.reference, f"{repository}:{release_tag}")
-    run("git", "tag", "--annotate", release_tag, "--message", f"{release_tag}: {arguments.reference}")
-    run("git", "push", "origin", release_tag)
-    run(
-        "gh", "release", "create", release_tag,
-        "--repo", "randomvariable/vllm-multiarch-oci",
-        "--title", f"{release_tag} — vLLM {lock_version()}",
-        "--notes", notes,
-    )
+    if not arguments.tag_exists:
+        run("git", "tag", "--annotate", release_tag, "--message", f"{release_tag}: {arguments.reference}")
+        run("git", "push", "origin", release_tag)
+    publish_github_release(release_tag, notes)
     print(json.dumps({
         "release": release_tag,
         "registry_tag": f"{repository}:{release_tag}",
