@@ -1,0 +1,30 @@
+.github/workflows/recipes-pages.yaml
+  h_15da545fc8cfbe 11-15,56,58-67,116-130
+recipes-site/scripts/build-data.mjs
+  h_15da545fc8cfbe 6-10,83,130-147,156,158-160,163-166
+recipes-site/scripts/prepare-pyodide.mjs
+  h_15da545fc8cfbe 1-327
+recipes-site/scripts/resolve-configs.mjs
+  h_15da545fc8cfbe 1-529
+recipes-site/scripts/resolve-releases.mjs
+  h_15da545fc8cfbe 1-314
+recipes-site/tests/fixtures/configs.json
+  h_15da545fc8cfbe 1-3539
+recipes-site/tests/fixtures/options.json
+  h_15da545fc8cfbe 1-2095
+recipes-site/tests/fixtures/releases.json
+  h_15da545fc8cfbe 1-142
+recipes-site/tests/site-data.test.js
+  h_15da545fc8cfbe 1-306
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c6db74fad54c1c311e7038c568326d9749543208",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
