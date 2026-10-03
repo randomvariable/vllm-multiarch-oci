@@ -150,10 +150,10 @@ spec:
                 mkdir -p "$HOME" "$TMPDIR"
                 source scripts/ci/bootstrap-arm64-tools.sh
                 git config --global --add safe.directory "$PWD"
-                # Both the promotion and the release need registry and API
-                # credentials from the same mounted publisher token.
+                # The registry login and the release both read the mounted
+                # publisher token, and neither needs it in the environment of
+                # the build or of crane: pass it to the one command that asks.
                 bash scripts/ci/login-ghcr.sh
-                export GH_TOKEN="$(cat "$GITHUB_TOKEN_FILE")"
                 BUILD_REVISION="$(git rev-parse HEAD)"
                 # One build at a time across every lane: they share this node,
                 # the remote worker pool, and the ccache volume.
@@ -166,7 +166,7 @@ spec:
                 # failure exits above and leaves no release tag and no release.
                 REF="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["reference"])' "$RESULT")"
                 PUB="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["tag"])' "$RESULT")"
-                python3 scripts/release-vllmb12x.py \
+                GH_TOKEN="$(cat "$GITHUB_TOKEN_FILE")" python3 scripts/release-vllmb12x.py \
                   --reference "$REF" \
                   --publication-tag "$PUB" \
                   --tag "$(params.release_tag)" \
