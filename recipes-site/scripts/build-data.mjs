@@ -3,6 +3,11 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
 
+// The deployment-flow artefacts are produced by these two scripts, so the same
+// validators gate them here: one rule, checked at generation and again at build.
+import { assertNoPrivateReference, validateReleases } from "./resolve-releases.mjs";
+import { recipeInventory, validateConfigs, validateOptions } from "./resolve-configs.mjs";
+
 const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const REPOSITORY_ROOT = resolve(SITE_ROOT, "..");
 const RECIPES_ROOT = join(REPOSITORY_ROOT, "recipes");
@@ -75,7 +80,7 @@ function validateRecipe(recipe, source) {
   }
   assert(DIGEST_REFERENCE.test(recipe.validation.image) && !recipe.validation.image.includes("internal.randomvariable"), `${source}: validation image must be a public digest-qualified reference`);
   assert(recipe.validation.lws === "verified" && recipe.validation.docker === "unverified" && typeof recipe.validation.evidence === "string", `${source}: validation status and evidence are required`);
-  assert(!JSON.stringify(recipe).includes("harbor.services.home.internal"), `${source}: private registry leaked into public recipe`);
+  assertNoPrivateReference(JSON.stringify(recipe), source);
   return recipe;
 }
 
@@ -122,6 +127,24 @@ async function publishRuntimeConfiguration() {
   await writeFile(RUNTIME_CONFIGURATION_PAGE, `${frontmatter}\n${body.join("\n")}`);
 }
 
+// The three artefacts the deployment flow renders from. Each is produced by a
+// script in this directory and re-checked here, so a hand-edited or stale file
+// under public/ cannot reach the Pages build.
+export async function publishDeploymentData(publicRoot = PUBLIC_ROOT) {
+  const { values, declarations } = recipeInventory();
+  const artefacts = [
+    ["releases.json", (document, source) => validateReleases(document, source)],
+    ["configs.json", (document, source) => validateConfigs(document, source, declarations)],
+    ["options.json", (document, source) => validateOptions(document, source, values)],
+  ];
+  for (const [name, validate] of artefacts) {
+    const source = join(publicRoot, name);
+    const document = JSON.parse(await readFile(source, "utf8"));
+    validate(document, source);
+    assertNoPrivateReference(JSON.stringify(document), source);
+  }
+}
+
 async function main() {
   const recipes = [];
   for (const path of await recipeFiles(RECIPES_ROOT)) recipes.push(validateRecipe(parseYaml(await readFile(path, "utf8")), path));
@@ -130,8 +153,14 @@ async function main() {
   assert(new Set(slugs).size === slugs.length, "recipe slugs must be unique");
   validateLatest(JSON.parse(await readFile(join(PUBLIC_ROOT, "latest-image.json"), "utf8")));
   validateDependencies(parseYaml(await readFile(join(SITE_ROOT, "src/data/platform-dependencies.yaml"), "utf8")));
+  await publishDeploymentData();
   await publishRuntimeConfiguration();
-  await writeFile(join(PUBLIC_ROOT, "recipes.json"), `${JSON.stringify({ recipes }, null, 2)}\n`);
+  const document = { recipes };
+  assertNoPrivateReference(JSON.stringify(document), "recipes.json");
+  await writeFile(join(PUBLIC_ROOT, "recipes.json"), `${JSON.stringify(document, null, 2)}\n`);
 }
 
-await main();
+// Importable by the tests without regenerating the site.
+if (process.argv[1] && import.meta.url === `file://${resolve(process.argv[1])}`) {
+  await main();
+}

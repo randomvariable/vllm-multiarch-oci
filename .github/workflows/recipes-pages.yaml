@@ -8,6 +8,11 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "17 * * * *"
+  # A published release changes the history the deployment flow lists, so the
+  # site regenerates the moment one lands rather than waiting for the hour.
+  release:
+    types:
+      - published
 
 permissions:
   contents: read
@@ -48,9 +53,18 @@ jobs:
       - name: Install dependencies
         run: pnpm --dir recipes-site install --frozen-lockfile
 
-      - name: Use deterministic image metadata for pull requests
+      - name: Use deterministic site data for pull requests
         if: github.event_name == 'pull_request'
-        run: cp recipes-site/tests/fixtures/latest-image.json recipes-site/public/latest-image.json
+        env:
+          FIXTURES: recipes-site/tests/fixtures
+        run: |
+          set -euo pipefail
+          # No network on this path: GitHub Releases, the pinned upstream policy
+          # data and the resolved configurations all come from committed
+          # fixtures, so a pull request builds the same shape the trunk will.
+          cp "$FIXTURES/latest-image.json" recipes-site/public/latest-image.json
+          node recipes-site/scripts/resolve-releases.mjs --fixture "$FIXTURES/releases.json"
+          node recipes-site/scripts/resolve-configs.mjs --fixture-dir "$FIXTURES"
 
       - name: Install checksum-verified crane
         if: github.event_name != 'pull_request'
@@ -98,6 +112,21 @@ jobs:
             cat "$RESOLVED_IMAGE"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Resolve releases, configurations and option documentation
+        if: github.event_name != 'pull_request'
+        env:
+          WORK_DIR: ${{ runner.temp }}/recipes-site-data
+        run: |
+          set -euo pipefail
+          # The two sources of truth, in the order that keeps the build honest:
+          # the published releases, then the launcher's own resolver run against
+          # the pinned upstream policy tree, then the browser's copy of that
+          # resolver. Every artefact is validated as it is produced, so a stale
+          # pin or a recipe that no longer resolves fails here, not on the site.
+          node recipes-site/scripts/resolve-releases.mjs
+          node recipes-site/scripts/resolve-configs.mjs --work-dir "$WORK_DIR"
+          node recipes-site/scripts/prepare-pyodide.mjs --work-dir "$WORK_DIR"
 
       - name: Test image resolver
         run: python3 -m unittest scripts/resolve_recipe_image_test.py

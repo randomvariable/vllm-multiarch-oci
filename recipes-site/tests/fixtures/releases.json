@@ -1,0 +1,142 @@
+{
+  "releases": [
+    {
+      "tag": "v20261003.1",
+      "published_at": "2026-10-03T10:40:37Z",
+      "digest": "sha256:17ef10a5323b6fa58aad4a96bf7237e1c1430b70dedce64f0a62f26bcc56570a",
+      "publication_tag": "vllmb12x-cycle-karmic-kraken-28d82aa6479a-db2e3bec08e3-20261003-n74",
+      "vllm_commit": "28d82aa6479a32171788048b0d31ed008dd099cd",
+      "b12x_commit": "a77b3f85e5e2a81315ff4a90088912f187708005",
+      "lil_runtime_commit": "353efc679f631206e0b001e67047dea80ee6d76e",
+      "builder_commit": "db2e3bec08e3fe265acaf64257c9f6d680cdb05a",
+      "highlights": [
+        "Mooncake Transfer Engine CUDA 13 0.3.13.post1 provides the mooncake Python package and its service and benchmark commands for deployments that select vLLM's MooncakeStoreConnector. It does not enable a connector or start Mooncake services.",
+        "See Mooncake Transfer Engine for the installed surface and deployment boundary."
+      ],
+      "included_changes": [
+        {
+          "component": "vLLM 28d82aa6479a",
+          "change": "local-inference-lab/vllm#800 Bounded shared-memory broadcast waits",
+          "included_as": "Merged into the pinned revision (1 commits)",
+          "url": "https://github.com/local-inference-lab/vllm/pull/800"
+        },
+        {
+          "component": "vLLM 28d82aa6479a",
+          "change": "Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute (no upstream pull request)",
+          "included_as": "Applied at build time by third_party/vllm_flash_attn_cute_namespace.patch",
+          "url": null
+        }
+      ],
+      "url": "https://github.com/randomvariable/vllm-multiarch-oci/releases/tag/v20261003.1"
+    },
+    {
+      "tag": "v20261001.1",
+      "published_at": "2026-10-01T00:03:12Z",
+      "digest": "sha256:43aaf6d1b5e0b96bff630f5b5211afccd1b4838c40a29864aaee3eb7dae6cbde",
+      "publication_tag": "vllmb12x-dev-rv-mxfp8-mtp-0a6739845a32-607a9619a9c3-20261001-n70",
+      "vllm_commit": "0a6739845a3249b07a30ad9b1e720e5e3fb6236f",
+      "b12x_commit": "965e748f74fe9dac0a35c497a0947c5b108617c5",
+      "lil_runtime_commit": "353efc679f631206e0b001e67047dea80ee6d76e",
+      "builder_commit": "607a9619a9c31e7b75d776e0ee5d398b8067fe2e",
+      "highlights": [
+        "Mooncake Transfer Engine CUDA 13 0.3.13.post1 provides the mooncake Python package and its service and benchmark commands for deployments that select vLLM's MooncakeStoreConnector. It does not enable a connector or start Mooncake services.",
+        "See Mooncake Transfer Engine for the installed surface and deployment boundary."
+      ],
+      "included_changes": [
+        {
+          "component": "vLLM 0a6739845a32",
+          "change": "Native MXFP8 MTP through the ModelOpt B12X backend (no upstream pull request)",
+          "included_as": "Merged into the pinned revision (4 commits)",
+          "url": null
+        },
+        {
+          "component": "vLLM 0a6739845a32",
+          "change": "Partial port of vLLM PR 779: Qwen HC ownership and checkpoint coalescing (no upstream pull request)",
+          "included_as": "Merged into the pinned revision (9 commits)",
+          "url": null
+        },
+        {
+          "component": "vLLM 0a6739845a32",
+          "change": "local-inference-lab/vllm#800 Bounded shared-memory broadcast waits",
+          "included_as": "Merged into the pinned revision (1 commits)",
+          "url": "https://github.com/local-inference-lab/vllm/pull/800"
+        },
+        {
+          "component": "vLLM 0a6739845a32",
+          "change": "Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute (no upstream pull request)",
+          "included_as": "Applied at build time by third_party/vllm_flash_attn_cute_namespace.patch",
+          "url": null
+        },
+        {
+          "component": "B12X 965e748f74fe",
+          "change": "Native block-scaled MXFP8 W8A8 MoE execution (no upstream pull request)",
+          "included_as": "Merged into the pinned revision (3 commits)",
+          "url": null
+        },
+        {
+          "component": "B12X 965e748f74fe",
+          "change": "PLE checkpoint exports, prepared launcher closures and collective entry barriers (no upstream pull request)",
+          "included_as": "Merged into the pinned revision (11 commits)",
+          "url": null
+        }
+      ],
+      "url": "https://github.com/randomvariable/vllm-multiarch-oci/releases/tag/v20261001.1"
+    },
+    {
+      "tag": "v20260917.1",
+      "published_at": "2026-09-17T11:37:19Z",
+      "digest": "sha256:cdf2602bb2e42da5b8f8cae8ae4bbe0842388cd6d8bf6ca2e6e3c27d7e27ad1e",
+      "publication_tag": "vllmb12x-dev-rv-jovian-judgement-profile-base-bd22e0f25043-13527e984717-20260917-n59",
+      "vllm_commit": "bd22e0f250439659d9fe30903b7aa124c321a932",
+      "b12x_commit": "4401ce4fb98265c3b1e1579ae03960ff41d84d50",
+      "lil_runtime_commit": "353efc679f631206e0b001e67047dea80ee6d76e",
+      "builder_commit": "13527e9847178f123098b7967c27333f4c82773b",
+      "highlights": [],
+      "included_changes": [
+        {
+          "component": "vLLM bd22e0f25043",
+          "change": "local-inference-lab/vllm#777 fix(qwen): propagate MTP positional overrides",
+          "included_as": "Merged into the pinned revision (3 commits)",
+          "url": "https://github.com/local-inference-lab/vllm/pull/777"
+        },
+        {
+          "component": "vLLM bd22e0f25043",
+          "change": "local-inference-lab/vllm#779 perf(qwen): shard TP4 HC prefill and coalesce recurrent checkpoints",
+          "included_as": "Merged into the pinned revision (9 commits)",
+          "url": "https://github.com/local-inference-lab/vllm/pull/779"
+        },
+        {
+          "component": "vLLM bd22e0f25043",
+          "change": "vllm-project/vllm#52917 Adaptive spin grace and bounded architectural waits for shm_broadcast",
+          "included_as": "Applied at build time by third_party/vllm_shm_broadcast_spin_grace.patch",
+          "url": "https://github.com/vllm-project/vllm/pull/52917"
+        },
+        {
+          "component": "vLLM bd22e0f25043",
+          "change": "Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute (no upstream pull request)",
+          "included_as": "Applied at build time by third_party/vllm_flash_attn_cute_namespace.patch",
+          "url": null
+        },
+        {
+          "component": "B12X 4401ce4fb982",
+          "change": "local-inference-lab/b12x#384 fix(preparation): retain prepared launchers and coordinate collectives",
+          "included_as": "Merged into the pinned revision (10 commits)",
+          "url": "https://github.com/local-inference-lab/b12x/pull/384"
+        },
+        {
+          "component": "B12X 4401ce4fb982",
+          "change": "local-inference-lab/b12x#386 feat(ple): export prepared internal prefill checkpoints",
+          "included_as": "Merged into the pinned revision (2 commits)",
+          "url": "https://github.com/local-inference-lab/b12x/pull/386"
+        },
+        {
+          "component": "B12X 4401ce4fb982",
+          "change": "local-inference-lab/b12x#387 perf(qsa): reuse representative keys across paired queries",
+          "included_as": "Merged into the pinned revision (4 commits)",
+          "url": "https://github.com/local-inference-lab/b12x/pull/387"
+        }
+      ],
+      "url": "https://github.com/randomvariable/vllm-multiarch-oci/releases/tag/v20260917.1"
+    }
+  ]
+}
