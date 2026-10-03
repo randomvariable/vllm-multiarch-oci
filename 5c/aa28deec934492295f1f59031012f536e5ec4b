@@ -1,0 +1,24 @@
+.tekton/vllmb12x-nightly.yaml
+  h_15da545fc8cfbe 148
+.tekton/vllmb12x-pull-request.yaml
+  h_15da545fc8cfbe 143
+.tekton/vllmb12x-release.yaml
+  h_15da545fc8cfbe 151
+scripts/ci/bootstrap-arm64-tools.sh
+  h_15da545fc8cfbe 8-11
+scripts/ci/vllmb12x-build-and-publish.sh
+  h_15da545fc8cfbe 39-47
+scripts/ci/vllmb12x_lane_test.py
+  h_15da545fc8cfbe 10,20,43,59,62,88,166-180
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5caa28deec934492295f1f59031012f536e5ec4b",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
