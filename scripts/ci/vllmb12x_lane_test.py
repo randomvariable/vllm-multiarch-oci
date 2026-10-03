@@ -6,10 +6,8 @@ here gets proved locally instead: the assertions are on what each lane actually
 asks its tools for, in order, with the real environment contract of the script.
 """
 
-import json
 import os
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -18,6 +16,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 LANE_SCRIPT = ROOT / "scripts" / "ci" / "vllmb12x-build-and-publish.sh"
 BUILDER_REVISION = "b" * 40
+CALL = "\x01"
+ARGUMENT = "\x01ARG "
 
 
 def scratch() -> Path:
@@ -32,29 +32,37 @@ class LaneScriptTest(unittest.TestCase):
         self.directory = scratch()
         self.checkpoint = self.directory / "checkpoint"
         self.checkpoint.mkdir()
-        self.trace = self.directory / "trace.jsonl"
+        self.trace = self.directory / "trace"
+        self.trace.write_text("")
         self.bin = self.directory / "bin"
         self.bin.mkdir()
-        self.stub("bazel", "log(sys.argv[1:])")
-        self.stub("python3", "log(sys.argv[1:])")
+        self.stub("bazel")
+        self.stub("python3")
+        # git answers the two queries the lane script asks and records nothing:
+        # the lane is defined by what it asks bazel and the publisher for.
         self.stub(
             "git",
-            "if '--show-toplevel' in sys.argv:\n"
-            "    print(os.environ['CHECKPOINT'])\n"
-            "else:\n"
-            "    print(os.environ['BUILDER_REVISION'])",
+            'if [ "${1-}" = rev-parse ] && [ "${2-}" = --show-toplevel ]; then\n'
+            '    printf \'%s\\n\' "$CHECKPOINT"\n'
+            "else\n"
+            '    printf \'%s\\n\' "$BUILDER_REVISION"\n'
+            "fi\n",
+            log=False,
         )
 
-    def stub(self, name: str, body: str) -> None:
+    def stub(self, name: str, tail: str = "", log: bool = True) -> None:
+        # Plain bash, not a Python script with an interpreter shebang: the sandbox
+        # this test runs in does not reliably execute sys.executable from a stub.
         script = self.bin / name
         script.write_text(
-            "#!" + sys.executable + "\n"
-            "import json, os, sys\n"
-            "def log(arguments):\n"
-            "    with open(os.environ['TRACE'], 'a') as handle:\n"
-            "        handle.write(json.dumps(arguments) + '\\n')\n"
-            + body
-            + "\n"
+            "#!/usr/bin/env bash\n"
+            + (
+                "for argument in \"$@\"; do printf '\\001ARG %s\\n' \"$argument\" >> \"$TRACE\"; done\n"
+                "printf '\\001\\n' >> \"$TRACE\"\n"
+                if log
+                else ""
+            )
+            + tail
         )
         script.chmod(0o755)
 
@@ -81,16 +89,18 @@ class LaneScriptTest(unittest.TestCase):
         )
 
     def commands(self) -> list[list[str]]:
-        if not self.trace.exists():
-            return []
-        return [json.loads(line) for line in self.trace.read_text().splitlines()]
+        blocks: list[list[str]] = []
+        current: list[str] = []
+        for line in self.trace.read_text().splitlines():
+            if line == CALL:
+                blocks.append(current)
+                current = []
+            elif line.startswith(ARGUMENT):
+                current.append(line[len(ARGUMENT):])
+        return blocks
 
     def publisher_command(self) -> list[str]:
-        matches = [
-            command
-            for command in self.commands()
-            if command[:1] == ["scripts/publish-vllmb12x.py"]
-        ]
+        matches = [command for command in self.commands() if command[:1] == ["scripts/publish-vllmb12x.py"]]
         self.assertEqual(len(matches), 1, f"expected one publisher call, got {matches!r}")
         return matches[0]
 
@@ -121,7 +131,8 @@ class LaneScriptTest(unittest.TestCase):
         self.assertEqual(publisher[position + 1], BUILDER_REVISION)
 
     def test_pull_request_lane_publishes_by_number_and_holds_no_lease(self):
-        self.run_lane(LANE="pull-request", PULL_REQUEST="41")
+        result = self.run_lane(LANE="pull-request", PULL_REQUEST="41")
+        self.assertEqual(result.returncode, 0, result.stderr)
         publisher = self.publisher_command()
         self.assertIn("--pull-request", publisher)
         self.assertIn("41", publisher)
