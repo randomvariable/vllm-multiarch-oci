@@ -116,6 +116,16 @@ class LaneScriptTest(unittest.TestCase):
             [command[2] for command in commands[2:-1]],
             ["--config=remote-aarch64", "--config=remote-x86_64"],
         )
+        # The fetch of a cargo-vendored source failed in CI because repository
+        # rules run with a sanitised PATH, so the lane must declare it.
+        bazelrc = (self.checkpoint / ".bazelrc.user").read_text().splitlines()
+        self.assertIn(f"startup --output_user_root={self.directory}/home/bazel", bazelrc)
+        self.assertIn("build --remote_cache=grpc://cache:50055", bazelrc)
+        self.assertIn("build:remote-multiarch --remote_executor=grpc://executor:50062", bazelrc)
+        self.assertTrue(
+            any(line.startswith("build --repo_env=PATH=") and str(self.bin) in line for line in bazelrc),
+            f"repository rules must see the bootstrapped tools: {bazelrc!r}",
+        )
         publisher = self.publisher_command()
         self.assertIn("--lease-name", publisher)
         self.assertIn("vllmb12x-publish", publisher)

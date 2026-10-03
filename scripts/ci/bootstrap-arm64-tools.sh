@@ -45,9 +45,16 @@ fi
 if ! command -v cargo >/dev/null 2>&1; then
     export RUSTUP_HOME CARGO_HOME
     fetch "${DOWNLOAD_DIR}/rustup-init" https://sh.rustup.rs
-    bash "${DOWNLOAD_DIR}/rustup-init" -y --profile minimal --default-toolchain "$RUST_TOOLCHAIN"
+    # The step runs as root with HOME on the run's staging volume, which rustup
+    # reports as a sudo mismatch. Install against the real root home and let the
+    # export below own PATH rather than letting the installer edit a profile file.
+    HOME=/root bash "${DOWNLOAD_DIR}/rustup-init" -y --profile minimal \
+        --default-toolchain "$RUST_TOOLCHAIN" --no-modify-path
 fi
 export RUSTUP_HOME CARGO_HOME PATH="${CARGO_HOME}/bin:${PATH}"
+# A cargo that never landed surfaces hundreds of actions later as
+# execvp(cargo) inside _pinned_source_repository, where the cause is invisible.
+command -v cargo >/dev/null 2>&1 || { echo "cargo is not executable after bootstrap" >&2; exit 1; }
 
 if ! command -v kubectl >/dev/null 2>&1; then
     kubectl_version="$(curl --fail --silent --show-error --location https://dl.k8s.io/release/stable.txt)"

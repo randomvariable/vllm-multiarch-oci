@@ -39,7 +39,7 @@ esac
 cd "$(git rev-parse --show-toplevel)"
 
 cat >.bazelrc.user <<EOF
-startup --output_user_root=${HOME:-/tmp}/bazel
+startup --output_user_root=${HOME:?HOME must be the per-run staging directory}/bazel
 build --remote_cache=${REMOTE_CACHE}
 build --remote_timeout=21600
 build --remote_cache_compression
@@ -47,6 +47,11 @@ build --remote_upload_local_results=true
 build:remote-aarch64 --remote_executor=${REMOTE_EXECUTOR}
 build:remote-x86_64 --remote_executor=${REMOTE_EXECUTOR}
 build:remote-multiarch --remote_executor=${REMOTE_EXECUTOR}
+# Bazel gives repository rules a sanitised environment, so a rule that shells out
+# to a bootstrapped host tool has to be told where it lives. _pinned_source_repository
+# runs cargo vendor to seal the llguidance sources, and cargo is not on the default
+# PATH: without this the fetch dies as execvp(cargo): No such file or directory.
+build --repo_env=PATH=${PATH}
 EOF
 
 # Local strategy: these are host Python tests, and the remote ARM64 worker
