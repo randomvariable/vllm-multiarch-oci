@@ -1,0 +1,18 @@
+scripts/ci/bootstrap-arm64-tools.sh
+  h_15da545fc8cfbe 48-52,55-57
+scripts/ci/vllmb12x-build-and-publish.sh
+  h_15da545fc8cfbe 42,50-54
+scripts/ci/vllmb12x_lane_test.py
+  h_15da545fc8cfbe 119-128
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f7480e6cb388a2b0a66cb94d96b12d0944ee81ea",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
