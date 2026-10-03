@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Model-agnostic Kubernetes helpers shipped with the vLLM image."""
+"""Command line for the Kubernetes and Docker helpers shipped with the vLLM image.
+
+Every subcommand here is a process the deployment manifest names directly: no
+shell script, no inline Python, no ``sh -c``. ``launch`` is the server entry
+point and the file lives in :mod:`image_tools.launcher.launch`; the commands
+below are the pieces it reuses plus the operator-facing checks.
+"""
 
 from __future__ import annotations
 
@@ -19,20 +25,18 @@ import urllib.request
 from collections.abc import Sequence
 from pathlib import Path, PurePosixPath
 
+from image_tools.launcher import (
+    EXIT_CACHE,
+    EXIT_CONFIG,
+    EXIT_DNS,
+    EXIT_ENGINE,
+    EXIT_HTTP,
+    EXIT_MODEL,
+    EXIT_PORT,
+    ConfigError,
+)
 
-EXIT_CONFIG = 2
-EXIT_DNS = 10
-EXIT_PORT = 11
-EXIT_HTTP = 20
-EXIT_ENGINE = 21
-EXIT_MODEL = 30
 _COMMIT = re.compile(r"^[0-9a-f]{40}$")
-
-
-class CommandError(Exception):
-    def __init__(self, message: str, code: int) -> None:
-        super().__init__(message)
-        self.code = code
 
 
 def _terminated(_signum: int, _frame: object) -> None:
@@ -52,155 +56,113 @@ def _value_or_env(value: str | int | None, env_name: str | None, label: str) -> 
         return str(value)
     if env_name and os.environ.get(env_name):
         return os.environ[env_name]
-    raise CommandError(f"{label} is required (flag or {env_name or 'configured environment variable'})", EXIT_CONFIG)
+    raise ConfigError(f"{label} is required (flag or {env_name or 'configured environment variable'})", EXIT_CONFIG)
 
 
-def rendezvous_wait(args: argparse.Namespace) -> None:
-    rank = int(_value_or_env(args.rank, args.rank_env, "rank"))
-    if rank < 0:
-        raise CommandError("rank must be non-negative", EXIT_CONFIG)
-    if rank == 0:
-        print("rendezvous: leader rank 0; no wait required", flush=True)
-        return
-    leader = _value_or_env(args.leader, args.leader_env, "leader")
-    dns_deadline = time.monotonic() + args.dns_timeout
+def wait_for_leader(
+    leader: str,
+    port: int,
+    *,
+    dns_timeout: float = 1200.0,
+    dns_period: float = 10.0,
+    connect_timeout: float = 300.0,
+    connect_period: float = 5.0,
+    socket_timeout: float = 2.0,
+) -> None:
+    """Block until the leader's rendezvous port accepts a connection.
+
+    A worker that starts its collective before the leader is listening fails in
+    a way that is hard to tell apart from a network fault, so the wait is
+    explicit: resolve the headless-service address, then connect.
+    """
+    if not leader:
+        raise ConfigError("leader address is empty", EXIT_CONFIG)
+    dns_deadline = time.monotonic() + dns_timeout
     addresses: list[tuple] = []
     last_dns_error = "no addresses"
     while time.monotonic() < dns_deadline:
         try:
-            addresses = socket.getaddrinfo(leader, args.port, type=socket.SOCK_STREAM)
+            addresses = socket.getaddrinfo(leader, port, type=socket.SOCK_STREAM)
             if addresses:
                 break
         except socket.gaierror as error:
             last_dns_error = str(error)
-        time.sleep(min(args.dns_period, max(0, dns_deadline - time.monotonic())))
+        time.sleep(min(dns_period, max(0, dns_deadline - time.monotonic())))
     if not addresses:
-        raise CommandError(
-            f"rendezvous DNS timeout: {leader} did not resolve within {args.dns_timeout:g}s ({last_dns_error})",
+        raise ConfigError(
+            f"rendezvous DNS timeout: {leader} did not resolve within {dns_timeout:g}s ({last_dns_error})",
             EXIT_DNS,
         )
 
-    port_deadline = time.monotonic() + args.connect_timeout
+    port_deadline = time.monotonic() + connect_timeout
     last_connect_error = "connection refused"
     while time.monotonic() < port_deadline:
         for family, socktype, proto, _canonname, sockaddr in addresses:
             try:
                 with socket.socket(family, socktype, proto) as connection:
-                    connection.settimeout(args.socket_timeout)
+                    connection.settimeout(socket_timeout)
                     connection.connect(sockaddr)
-                print(f"rendezvous: rank {rank} connected to {leader}:{args.port}", flush=True)
+                print(f"rendezvous: connected to {leader}:{port}", flush=True)
                 return
             except OSError as error:
                 last_connect_error = str(error)
-        time.sleep(min(args.connect_period, max(0, port_deadline - time.monotonic())))
-    raise CommandError(
-        f"rendezvous port timeout: {leader}:{args.port} did not accept a connection within {args.connect_timeout:g}s ({last_connect_error})",
+        time.sleep(min(connect_period, max(0, port_deadline - time.monotonic())))
+    raise ConfigError(
+        f"rendezvous port timeout: {leader}:{port} did not accept a connection within {connect_timeout:g}s ({last_connect_error})",
         EXIT_PORT,
     )
 
 
-_ENGINE_COMMS = {"VLLM::EngineCor", "VLLM::Worker_TP"}
-
-
-def _process_state(pid: int, proc_root: Path = Path("/proc")) -> str | None:
-    if pid <= 0:
-        return None
-    try:
-        os.kill(pid, 0)
-        return (proc_root / str(pid) / "stat").read_text().split(") ", 1)[1][0]
-    except (OSError, IndexError):
-        return None
-
-
-def _engine_alive(pid: int, proc_root: Path = Path("/proc")) -> bool:
-    return _process_state(pid, proc_root) not in {None, "X", "Z"}
-
-
-def _engine_child(parent_pid: int, proc_root: Path = Path("/proc")) -> int:
-    try:
-        children = (proc_root / str(parent_pid) / "task" / str(parent_pid) / "children").read_text().split()
-    except OSError as error:
-        raise CommandError(f"health engine failure: cannot inspect children of PID {parent_pid}: {error}", EXIT_ENGINE) from error
-    engines: list[int] = []
-    for value in children:
-        try:
-            pid = int(value)
-            comm = (proc_root / value / "comm").read_text().rstrip("\n")
-        except (OSError, ValueError):
-            continue
-        if comm in _ENGINE_COMMS and _engine_alive(pid, proc_root):
-            engines.append(pid)
-    if not engines:
-        raise CommandError(
-            f"health engine failure: PID {parent_pid} has no live direct child with comm in {sorted(_ENGINE_COMMS)}",
-            EXIT_ENGINE,
-        )
-    if len(engines) != 1:
-        raise CommandError(
-            f"health engine failure: PID {parent_pid} has ambiguous live engine children: {engines}",
-            EXIT_ENGINE,
-        )
-    return engines[0]
-
-
-def _http_ready(url: str, timeout: float) -> None:
-    try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:
-            if not 200 <= response.status < 300:
-                raise CommandError(f"health HTTP failure: {url} returned {response.status}", EXIT_HTTP)
-            response.read(1)
-    except CommandError:
-        raise
-    except (OSError, urllib.error.URLError) as error:
-        raise CommandError(f"health HTTP failure: {url}: {error}", EXIT_HTTP) from error
-
-
-def _leader_url(args: argparse.Namespace) -> str:
-    if args.leader_url:
-        return args.leader_url
-    host = os.environ.get(args.leader_host_env, "") if args.leader_host_env else ""
-    if not host:
-        raise CommandError(
-            f"--leader-url is unset and leader host environment variable {args.leader_host_env!r} is empty",
-            EXIT_CONFIG,
-        )
-    return f"http://{host}:{args.leader_port}{args.leader_path}"
+def rendezvous_wait(args: argparse.Namespace) -> None:
+    rank = int(_value_or_env(args.rank, args.rank_env, "rank"))
+    if rank < 0:
+        raise ConfigError("rank must be non-negative", EXIT_CONFIG)
+    if rank == 0:
+        print("rendezvous: leader rank 0; no wait required", flush=True)
+        return
+    wait_for_leader(
+        _value_or_env(args.leader, args.leader_env, "leader"),
+        args.port,
+        dns_timeout=args.dns_timeout,
+        dns_period=args.dns_period,
+        connect_timeout=args.connect_timeout,
+        connect_period=args.connect_period,
+        socket_timeout=args.socket_timeout,
+    )
 
 
 def health(args: argparse.Namespace) -> None:
-    rank = int(_value_or_env(args.rank, args.rank_env, "rank"))
-    if rank < 0:
-        raise CommandError("rank must be non-negative", EXIT_CONFIG)
-    if rank == 0:
-        if not args.local_url:
-            raise CommandError("--local-url is required for leader rank", EXIT_CONFIG)
-        url = args.local_url
-    else:
-        if args.engine_pid is not None:
-            engine_pid = args.engine_pid
-        elif args.engine_parent_pid is not None:
-            engine_pid = _engine_child(args.engine_parent_pid)
-        else:
-            raise CommandError("--engine-pid or --engine-parent-pid is required for worker ranks", EXIT_CONFIG)
-        if not _engine_alive(engine_pid):
-            raise CommandError(f"health engine failure: PID {engine_pid} is not alive", EXIT_ENGINE)
-        url = _leader_url(args)
-    _http_ready(url, args.timeout)
-    print(f"health: {args.phase} rank {rank} ready", flush=True)
+    """Ask a probe endpoint whether this container may serve or stay running.
+
+    The checks themselves live in :mod:`image_tools.launcher.probes`; this is
+    the command-line client the Docker ``healthcheck`` uses, so the container
+    needs no shell to ask its own server a question.
+    """
+    try:
+        with urllib.request.urlopen(args.url, timeout=args.timeout) as response:
+            status, body = int(response.status), response.read(4096)
+    except urllib.error.HTTPError as error:
+        status, body = int(error.code), error.read(4096)
+    except (OSError, urllib.error.URLError) as error:
+        raise ConfigError(f"probe {args.url} is unreachable: {error}", EXIT_HTTP) from error
+    if status != 200:
+        detail = body.decode("utf-8", "replace").strip() or f"status {status}"
+        raise ConfigError(f"probe {args.url} failed: {detail}", EXIT_HTTP)
+    print(f"health: {args.url} ready", flush=True)
 
 
 def _safe_relative(name: str) -> Path:
     pure = PurePosixPath(name)
     if pure.is_absolute() or ".." in pure.parts or name in {"", "."}:
-        raise CommandError(f"invalid indexed shard path: {name!r}", EXIT_MODEL)
+        raise ConfigError(f"invalid indexed shard path: {name!r}", EXIT_MODEL)
     return Path(*pure.parts)
 
 
 def _default_env(name: str, value: str) -> None:
     """Supply a Hugging Face cache location unless the deployment pinned one.
 
-    Deployments keep the Xet chunk cache on a scratch volume rather than the
-    model store, so an explicit value wins.
+    Deployments keep the Xet chunk cache on the JIT volume rather than the model
+    store, so an explicit value wins.
     """
     if not os.environ.get(name):
         os.environ[name] = value
@@ -209,7 +171,7 @@ def _default_env(name: str, value: str) -> None:
 def _validate_snapshot(snapshot: Path, required: Sequence[str] = ()) -> int:
     config = snapshot / "config.json"
     if not config.is_file() or config.stat().st_size == 0:
-        raise CommandError("incomplete model snapshot: config.json is missing or empty", EXIT_MODEL)
+        raise ConfigError("incomplete model snapshot: config.json is missing or empty", EXIT_MODEL)
     shards: set[Path] = set()
     indexes = sorted(snapshot.glob("*.safetensors.index.json"))
     for index in indexes:
@@ -217,19 +179,19 @@ def _validate_snapshot(snapshot: Path, required: Sequence[str] = ()) -> int:
             data = json.loads(index.read_text())
             values = data["weight_map"].values()
         except (OSError, json.JSONDecodeError, KeyError, AttributeError) as error:
-            raise CommandError(f"invalid safetensors index {index.name}: {error}", EXIT_MODEL) from error
+            raise ConfigError(f"invalid safetensors index {index.name}: {error}", EXIT_MODEL) from error
         shards.update(_safe_relative(str(name)) for name in values)
     if not indexes:
         shards.update(path.relative_to(snapshot) for path in snapshot.glob("*.safetensors"))
     if not shards:
-        raise CommandError("incomplete model snapshot: no safetensors weights or index found", EXIT_MODEL)
+        raise ConfigError("incomplete model snapshot: no safetensors weights or index found", EXIT_MODEL)
     bad = [str(path) for path in sorted(shards) if not (snapshot / path).is_file() or (snapshot / path).stat().st_size == 0]
     for name in required:
         path = _safe_relative(name)
         if not (snapshot / path).is_file() or (snapshot / path).stat().st_size == 0:
             bad.append(str(path))
     if bad:
-        raise CommandError(f"incomplete model snapshot: missing or empty files: {', '.join(bad)}", EXIT_MODEL)
+        raise ConfigError(f"incomplete model snapshot: missing or empty files: {', '.join(bad)}", EXIT_MODEL)
     return len(shards)
 
 
@@ -246,7 +208,7 @@ def _atomic_json(path: Path, value: dict[str, str]) -> None:
 def _publish(snapshot: Path, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists() and not destination.is_symlink():
-        raise CommandError(f"publish path exists and is not a symlink: {destination}", EXIT_MODEL)
+        raise ConfigError(f"publish path exists and is not a symlink: {destination}", EXIT_MODEL)
     temporary = destination.with_name(f".{destination.name}.tmp-{os.getpid()}")
     try:
         temporary.symlink_to(snapshot)
@@ -255,51 +217,90 @@ def _publish(snapshot: Path, destination: Path) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def model_sync(args: argparse.Namespace) -> None:
-    if not _COMMIT.fullmatch(args.revision):
-        raise CommandError("revision must be a full lowercase 40-hex Hugging Face commit OID", EXIT_CONFIG)
-    root = args.storage_root.resolve()
+def sync_model(
+    *,
+    repo: str,
+    revision: str,
+    storage_root: Path,
+    publish: Path,
+    min_free_bytes: int | None = None,
+    min_free_gib: float = 0.0,
+    workers: int = 8,
+    ignore: Sequence[str] = (),
+    require: Sequence[str] = (),
+    token: str | None = None,
+    token_env: str | None = "HF_TOKEN",
+) -> int:
+    """Fetch, verify and publish one checkpoint revision; return the shard count.
+
+    The launcher calls this before it execs the engine, which is why there are
+    no model-download init containers. A revision that is already published and
+    still complete is re-validated rather than re-downloaded, and the marker is
+    written only after every index-referenced shard verified, so a rank never
+    opens a half-written snapshot.
+    """
+    if not _COMMIT.fullmatch(revision):
+        raise ConfigError("revision must be a full lowercase 40-hex Hugging Face commit OID", EXIT_CONFIG)
+    root = Path(storage_root).resolve()
     root.mkdir(parents=True, exist_ok=True)
     _default_env("HF_HOME", str(root))
     _default_env("HF_HUB_CACHE", str(root / "hub"))
     _default_env("HF_XET_CACHE", str(root / "xet"))
-    free = os.statvfs(root).f_bavail * os.statvfs(root).f_frsize
-    minimum = args.min_free_bytes if args.min_free_bytes is not None else int(args.min_free_gib * 1024**3)
+    stats = os.statvfs(root)
+    free = stats.f_bavail * stats.f_frsize
+    minimum = min_free_bytes if min_free_bytes is not None else int(min_free_gib * 1024**3)
     if free < minimum:
-        raise CommandError(f"insufficient storage: {free} bytes free, require {minimum}", EXIT_MODEL)
+        raise ConfigError(f"insufficient storage: {free} bytes free, require {minimum}", EXIT_MODEL)
     state = root / ".vllm-image" / "model-sync"
     state.mkdir(parents=True, exist_ok=True)
-    marker = state / f"{_marker_key(args.repo, args.revision)}.json"
-    lock_path = state / f"{_marker_key(args.repo, args.revision)}.lock"
+    marker = state / f"{_marker_key(repo, revision)}.json"
+    lock_path = state / f"{_marker_key(repo, revision)}.lock"
     with lock_path.open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         snapshot: Path | None = None
         if marker.is_file():
             try:
                 saved = json.loads(marker.read_text())
-                if saved.get("repo") == args.repo and saved.get("revision") == args.revision:
+                if saved.get("repo") == repo and saved.get("revision") == revision:
                     snapshot = Path(saved["snapshot"])
-                    _validate_snapshot(snapshot, args.require)
-            except (OSError, KeyError, json.JSONDecodeError, CommandError):
+                    _validate_snapshot(snapshot, require)
+            except (OSError, KeyError, ValueError, ConfigError):
                 snapshot = None
         if snapshot is None:
             from huggingface_hub import snapshot_download
 
-            token = args.token or (os.environ.get(args.token_env) if args.token_env else None)
+            credential = token or (os.environ.get(token_env) if token_env else None)
             snapshot = Path(snapshot_download(
-                repo_id=args.repo,
-                revision=args.revision,
+                repo_id=repo,
+                revision=revision,
                 cache_dir=str(root / "hub"),
-                max_workers=args.workers,
-                ignore_patterns=args.ignore or None,
-                token=token,
+                max_workers=workers,
+                ignore_patterns=list(ignore) or None,
+                token=credential,
             )).resolve()
-            count = _validate_snapshot(snapshot, args.require)
-            _atomic_json(marker, {"repo": args.repo, "revision": args.revision, "snapshot": str(snapshot)})
+            count = _validate_snapshot(snapshot, require)
+            _atomic_json(marker, {"repo": repo, "revision": revision, "snapshot": str(snapshot)})
         else:
-            count = _validate_snapshot(snapshot, args.require)
-        _publish(snapshot, args.publish.absolute())
-    print(f"model-sync: published {args.repo}@{args.revision} ({count} shards) at {args.publish}", flush=True)
+            count = _validate_snapshot(snapshot, require)
+        _publish(snapshot, Path(publish).absolute())
+    print(f"model-sync: published {repo}@{revision} ({count} shards) at {publish}", flush=True)
+    return count
+
+
+def model_sync(args: argparse.Namespace) -> None:
+    sync_model(
+        repo=args.repo,
+        revision=args.revision,
+        storage_root=args.storage_root,
+        publish=args.publish,
+        min_free_bytes=args.min_free_bytes,
+        min_free_gib=args.min_free_gib,
+        workers=args.workers,
+        ignore=args.ignore,
+        require=args.require,
+        token=args.token,
+        token_env=args.token_env,
+    )
 
 
 def parser() -> argparse.ArgumentParser:
@@ -330,7 +331,7 @@ def parser() -> argparse.ArgumentParser:
     sync.add_argument("--ignore", action="append", default=[])
     # Checkpoints carry assets vLLM loads after the weights, such as the
     # tokenizer template and configuration. A deployment that depends on one
-    # names it here instead of re-checking the snapshot in an init container.
+    # names it here instead of re-checking the snapshot in a separate container.
     sync.add_argument(
         "--require",
         action="append",
@@ -344,28 +345,51 @@ def parser() -> argparse.ArgumentParser:
     sync.set_defaults(run=model_sync)
 
     probe = commands.add_parser("health")
-    probe.add_argument("--phase", choices=("startup", "readiness"), required=True)
-    probe.add_argument("--rank", type=int)
-    probe.add_argument("--rank-env", default="LWS_WORKER_INDEX")
-    probe.add_argument("--local-url")
-    probe.add_argument("--leader-url")
-    probe.add_argument("--leader-host-env", default="LWS_LEADER_ADDRESS")
-    probe.add_argument("--leader-port", type=int, default=8000)
-    probe.add_argument("--leader-path", default="/v1/models")
-    probe.add_argument("--engine-pid", type=int)
-    probe.add_argument("--engine-parent-pid", type=int)
+    probe.add_argument("--url", required=True)
     probe.add_argument("--timeout", type=_duration, default=8)
     probe.set_defaults(run=health)
+
+    # The probe server imports only the standard library, so registering it here
+    # costs nothing. The launcher module pulls the resolver, and the resolver needs
+    # PyYAML: importing it at parser-build time would make ``--help`` and every
+    # other subcommand depend on a package the wheel tests do not carry. It is
+    # therefore imported where it is used, in :func:`main`.
+    from image_tools.launcher import probe_server as _probe_server
+
+    # Registered so ``--help`` lists them; :func:`main` intercepts these two
+    # commands before argparse sees them. Their own options begin with ``--``,
+    # which this parser would otherwise claim as unknown arguments of the
+    # subcommand.
+    launch = commands.add_parser("launch", help="resolve a recipe or profile and exec the engine", add_help=False)
+    launch.add_argument("arguments", nargs=argparse.REMAINDER)
+    entrypoint = commands.add_parser("entrypoint", help="the image entry point", add_help=False)
+    entrypoint.add_argument("arguments", nargs=argparse.REMAINDER)
+    _probe_server.parser(commands)
     return root
 
 
 def main() -> int:
     signal.signal(signal.SIGTERM, _terminated)
+    argv = list(sys.argv[1:])
+    if argv and argv[0] in {"launch", "entrypoint"}:
+        # Imported here, not at module scope or in :func:`parser`: the launcher
+        # pulls the resolver, which needs PyYAML, and a command like ``health``
+        # must work in an environment that does not carry it.
+        from image_tools.launcher import launch as _launch
+
+        # These two carry their own ``--`` options, so they parse themselves; the
+        # dispatcher above only lists them in ``--help``.
+        arguments = (argv[1:],)
+        handler = _launch.run if argv[0] == "launch" else _launch.entrypoint
+    else:
+        try:
+            parsed = parser().parse_args(argv)
+        except SystemExit as exit_request:  # --help and usage errors
+            return int(exit_request.code or 0)
+        arguments, handler = (parsed,), parsed.run
     try:
-        args = parser().parse_args()
-        args.run(args)
-        return 0
-    except CommandError as error:
+        return int(handler(*arguments) or 0)
+    except ConfigError as error:
         print(f"ERROR: {error}", file=sys.stderr, flush=True)
         return error.code
     except (ValueError, OSError) as error:

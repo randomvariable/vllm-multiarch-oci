@@ -1,0 +1,743 @@
+{
+  "argv": [
+    "/opt/venv/bin/python",
+    "-m",
+    "vllm.entrypoints.cli.main",
+    "serve",
+    "/models/qwen38-flash-next",
+    "--additional-config",
+    "{\"ple_table_memory\":\"ram\"}",
+    "--async-scheduling",
+    "--block-size",
+    "16",
+    "--compilation-config",
+    "{\"cudagraph_mode\":\"FULL_AND_PIECEWISE\",\"custom_ops\":[\"all\"]}",
+    "--decode-context-parallel-size",
+    "1",
+    "--dtype",
+    "bfloat16",
+    "--enable-auto-tool-choice",
+    "--enable-chunked-prefill",
+    "--no-enable-flashinfer-autotune",
+    "--enable-prefix-caching",
+    "--enable-prompt-tokens-details",
+    "--gdn-decode-kernel",
+    "b12x",
+    "--gpu-memory-utilization",
+    "0.74",
+    "--hf-overrides",
+    "{\"text_config\":{\"max_position_embeddings\":1048576,\"rope_parameters\":{\"mrope_interleaved\":true,\"mrope_section\":[11,11,10],\"partial_rotary_factor\":0.25,\"rope_theta\":10000000,\"rope_type\":\"yarn\",\"factor\":4,\"original_max_position_embeddings\":262144}}}",
+    "--host",
+    "0.0.0.0",
+    "--kv-cache-dtype",
+    "fp8",
+    "--no-language-model-only",
+    "--limit-mm-per-prompt",
+    "{\"image\":1,\"video\":1}",
+    "--linear-backend",
+    "b12x",
+    "--load-format",
+    "instanttensor",
+    "--mamba-cache-mode",
+    "align",
+    "--mamba-ssm-cache-dtype",
+    "auto",
+    "--max-cudagraph-capture-size",
+    "32",
+    "--max-model-len",
+    "1048576",
+    "--max-num-batched-tokens",
+    "8192",
+    "--max-num-seqs",
+    "8",
+    "--max-parallel-prefills",
+    "auto",
+    "--mm-encoder-tp-mode",
+    "data",
+    "--mm-processor-cache-gb",
+    "0.0",
+    "--moe-backend",
+    "b12x",
+    "--pipeline-parallel-size",
+    "1",
+    "--port",
+    "8888",
+    "--prefill-compute-half-life",
+    "responsive",
+    "--prefill-compute-share",
+    "auto",
+    "--prefill-policy",
+    "decode-aware",
+    "--quantization",
+    "modelopt_mixed",
+    "--reasoning-parser",
+    "qwen3",
+    "--recurrent-checkpoint-policy",
+    "aligned",
+    "--served-model-name",
+    "qwen38-flash-next",
+    "--speculative-config",
+    "{\"method\":\"mtp\",\"draft_sample_method\":\"probabilistic\",\"rejection_sample_method\":\"standard\",\"moe_backend\":\"b12x\",\"num_speculative_tokens\":3}",
+    "--tensor-parallel-size",
+    "2",
+    "--tool-call-parser",
+    "qwen3_xml",
+    "--distributed-executor-backend",
+    "mp",
+    "--master-port",
+    "25000",
+    "--gdn-prefill-backend",
+    "b12x",
+    "--disable-access-log-for-endpoints",
+    "/metrics,/v1/models"
+  ],
+  "environment": {
+    "B12X_COMPILE_CACHE_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/b12x/compile"
+    },
+    "B12X_CUTE_COMPILE_CACHE_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/b12x/cute"
+    },
+    "B12X_DENSE_SPLITK_TURBO": {
+      "source": "model:qwen38-flash-next",
+      "value": "1"
+    },
+    "B12X_DYNAMIC_DETERMINISTIC_OUTPUT": {
+      "source": "model:qwen38-flash-next",
+      "value": "0"
+    },
+    "B12X_DYNAMIC_DIRECT_EXPERT_SCALES": {
+      "source": "model:qwen38-flash-next",
+      "value": "1"
+    },
+    "B12X_DYNAMIC_SKIP_SPLIT_BARRIER_RESET": {
+      "source": "model:qwen38-flash-next",
+      "value": "1"
+    },
+    "B12X_DYNAMIC_SPLIT_COMPUTE_MAC": {
+      "source": "model:qwen38-flash-next",
+      "value": "224"
+    },
+    "B12X_DYNAMIC_SPLIT_FAST_PREPARE": {
+      "source": "model:qwen38-flash-next",
+      "value": "1"
+    },
+    "B12X_DYNAMIC_SPLIT_LOW_SMEM": {
+      "source": "model:qwen38-flash-next",
+      "value": "1"
+    },
+    "B12X_DYNAMIC_SPLIT_ROUTE_COMPUTE": {
+      "source": "model:qwen38-flash-next",
+      "value": "1"
+    },
+    "B12X_DYNAMIC_WORK_SOURCE": {
+      "source": "model:qwen38-flash-next",
+      "value": "persistent_grid"
+    },
+    "B12X_MHC_PDL": {
+      "source": "model:qwen38-flash-next",
+      "value": "1"
+    },
+    "B12X_PCIE_ONESHOT_BLOCK_LIMIT": {
+      "source": "model:qwen38-flash-next",
+      "value": "4"
+    },
+    "B12X_PCIE_ONESHOT_PDL": {
+      "source": "model:qwen38-flash-next",
+      "value": "1"
+    },
+    "B12X_PCIE_ONESHOT_THREADS": {
+      "source": "model:qwen38-flash-next",
+      "value": "512"
+    },
+    "B12X_ROCE_SPIN_LIMIT": {
+      "source": "hardware:gb10-roce",
+      "value": "600000000"
+    },
+    "CUDA_CACHE_PATH": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/cuda"
+    },
+    "CUDA_COREDUMP_FILE": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": "/cache/ima-debug/core.%h.%p.%t.nvcudmp"
+    },
+    "CUDA_COREDUMP_GENERATION_FLAGS": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": "faulted_contexts_only,gzip_compress"
+    },
+    "CUDA_DEVICE_ORDER": {
+      "source": "common:single-node-vllm",
+      "value": "PCI_BUS_ID"
+    },
+    "CUDA_ENABLE_COREDUMP_ON_EXCEPTION": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": "1"
+    },
+    "CUPY_CACHE_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/cupy"
+    },
+    "CUTE_DSL_ARCH": {
+      "source": "hardware:gb10-roce",
+      "value": "sm_121a"
+    },
+    "CUTE_DSL_CACHE_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/cute-dsl"
+    },
+    "FLASHINFER_CUDA_ARCH_LIST": {
+      "source": "hardware:gb10-roce",
+      "value": "12.1a"
+    },
+    "FLASHINFER_WORKSPACE_BASE": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": "/cache/flashinfer"
+    },
+    "FLASH_ATTENTION_CUTE_DSL_CACHE_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/flash-attention-cute-dsl"
+    },
+    "HF_HOME": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": "/models"
+    },
+    "HF_HUB_OFFLINE": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": "1"
+    },
+    "INSTANTTENSOR_BACKEND": {
+      "source": "common:single-node-vllm",
+      "value": "BUFFERED"
+    },
+    "INSTANTTENSOR_BUFFER_SIZE": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": "1342177280"
+    },
+    "INSTANTTENSOR_CONCURRENCY": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": "1"
+    },
+    "INSTANTTENSOR_IO_DEPTH": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": "3"
+    },
+    "NCCL_CROSS_NIC": {
+      "source": "hardware:gb10-roce",
+      "value": "1"
+    },
+    "NCCL_CUMEM_ENABLE": {
+      "source": "hardware:gb10-roce",
+      "value": "0"
+    },
+    "NCCL_DEBUG": {
+      "source": "hardware:gb10-roce",
+      "value": "WARN"
+    },
+    "NCCL_IB_DISABLE": {
+      "source": "hardware:gb10-roce",
+      "value": "0"
+    },
+    "NCCL_IGNORE_CPU_AFFINITY": {
+      "source": "hardware:gb10-roce",
+      "value": "1"
+    },
+    "NCCL_NET": {
+      "source": "hardware:gb10-roce",
+      "value": "IB"
+    },
+    "NCCL_NET_PLUGIN": {
+      "source": "platform:foundation",
+      "value": "spcx"
+    },
+    "NCCL_NVLS_ENABLE": {
+      "source": "hardware:gb10-roce",
+      "value": "0"
+    },
+    "NUMBA_CACHE_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/numba"
+    },
+    "OMP_NUM_THREADS": {
+      "source": "model:qwen38-flash-next",
+      "value": "2"
+    },
+    "PYTHONFAULTHANDLER": {
+      "source": "hardware:gb10-roce",
+      "value": "1"
+    },
+    "PYTHONPATH": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": "/opt/venv/lib/python3.12/site-packages:/opt/venv/lib/python3.12/site-packages/nvidia_cutlass_dsl/dsl_packages"
+    },
+    "PYTORCH_CUDA_ALLOC_CONF": {
+      "source": "common:single-node-vllm",
+      "value": "expandable_segments:True"
+    },
+    "SAFETENSORS_FAST_GPU": {
+      "source": "common:single-node-vllm",
+      "value": "1"
+    },
+    "SPARKINFER_COMPILE_CACHE_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/b12x/compile"
+    },
+    "TILELANG_CACHE_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/tilelang"
+    },
+    "TORCHINDUCTOR_CACHE_DIR": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": "/cache/torchinductor"
+    },
+    "TORCH_CUDA_ARCH_LIST": {
+      "source": "hardware:gb10-roce",
+      "value": "12.1a"
+    },
+    "TORCH_EXTENSIONS_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/torch-extensions"
+    },
+    "TORCH_NCCL_ASYNC_ERROR_HANDLING": {
+      "source": "hardware:gb10-roce",
+      "value": "1"
+    },
+    "TRANSFORMERS_OFFLINE": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": "1"
+    },
+    "TRITON_CACHE_DIR": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": "/cache/triton"
+    },
+    "TVM_CACHE_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/tvm"
+    },
+    "TVM_FFI_CACHE_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/tvm-ffi"
+    },
+    "VLLM_B12X_DENSE_ACTIVATION_MODE": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": "a16"
+    },
+    "VLLM_B12X_MXFP8_ACTIVATION_MODE": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": "quantized"
+    },
+    "VLLM_CACHE_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/vllm"
+    },
+    "VLLM_CACHE_ROOT": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": "/cache/vllm"
+    },
+    "VLLM_CAUSAL_CONV1D_UPDATE_HOIST": {
+      "source": "model:qwen38-flash-next",
+      "value": "1"
+    },
+    "VLLM_COMPUTE_NANS_IN_LOGITS": {
+      "source": "model:qwen38-flash-next",
+      "value": "0"
+    },
+    "VLLM_DISABLED_KERNELS": {
+      "source": "model:qwen38-flash-next",
+      "value": "MarlinFP8ScaledMMLinearKernel"
+    },
+    "VLLM_ENABLE_PCIE_ALLREDUCE": {
+      "source": "hardware:gb10-roce",
+      "value": "0"
+    },
+    "VLLM_ENABLE_ROCE_ALLREDUCE": {
+      "source": "hardware:gb10-roce",
+      "value": "1"
+    },
+    "VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": "1800"
+    },
+    "VLLM_EXPERIMENTAL_SHM_BROADCAST_ADAPTIVE_SPIN": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": "1"
+    },
+    "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH": {
+      "source": "model:qwen38-flash-next",
+      "value": "1"
+    },
+    "VLLM_LM_HEAD_A16": {
+      "source": "model:qwen38-flash-next",
+      "value": "1"
+    },
+    "VLLM_MARLIN_USE_ATOMIC_ADD": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": "1"
+    },
+    "VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS": {
+      "source": "model:qwen38-flash-next",
+      "value": "0"
+    },
+    "VLLM_MTP_NVFP4_LM_HEAD": {
+      "source": "model:qwen38-flash-next",
+      "value": "1"
+    },
+    "VLLM_MXFP8_LM_HEAD": {
+      "source": "model:qwen38-flash-next",
+      "value": "0"
+    },
+    "VLLM_PLE_CPU_OFFLOAD": {
+      "source": "model:qwen38-flash-next",
+      "value": "1"
+    },
+    "VLLM_PLUGINS": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": ""
+    },
+    "VLLM_QWEN3_8_FLASH_NEXT_MTP_COMPACT": {
+      "source": "model:qwen38-flash-next",
+      "value": "1"
+    },
+    "VLLM_QWEN3_8_FLASH_NEXT_OVERLAP": {
+      "source": "model:qwen38-flash-next",
+      "value": "1"
+    },
+    "VLLM_ROCE_ALLREDUCE_MAX_SIZE": {
+      "source": "hardware:gb10-roce",
+      "value": "41943040"
+    },
+    "VLLM_SHM_BROADCAST_ADAPTIVE_MAX_GRACE_MS": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": "50"
+    },
+    "VLLM_SSM_CONV_STATE_LAYOUT": {
+      "source": "model:qwen38-flash-next",
+      "value": "DS"
+    },
+    "VLLM_USE_AOT_COMPILE": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": "1"
+    },
+    "VLLM_USE_FASTOKENS": {
+      "source": "common:single-node-vllm",
+      "value": "1"
+    },
+    "VLLM_USE_MEGA_AOT_ARTIFACT": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": "1"
+    },
+    "VLLM_USE_V2_MODEL_RUNNER": {
+      "source": "common:single-node-vllm",
+      "value": "1"
+    },
+    "VLLM_WORKER_MULTIPROC_METHOD": {
+      "source": "hardware:gb10-roce",
+      "value": "spawn"
+    },
+    "XDG_CACHE_HOME": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": "/cache"
+    }
+  },
+  "settings": {
+    "additional-config": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": {
+        "ple_table_memory": "ram"
+      }
+    },
+    "async-scheduling": {
+      "source": "model:qwen38-flash-next",
+      "value": true
+    },
+    "block-size": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": 16
+    },
+    "cache-broker-directory": {
+      "source": "common:single-node-vllm",
+      "value": "/cache/lmcache-cumem"
+    },
+    "cache-cpu-workers": {
+      "source": "common:single-node-vllm",
+      "value": 4
+    },
+    "cache-directory": {
+      "source": "common:single-node-vllm",
+      "value": "/cache/lmcache"
+    },
+    "cache-host": {
+      "source": "common:single-node-vllm",
+      "value": "127.0.0.1"
+    },
+    "cache-http-host": {
+      "source": "common:single-node-vllm",
+      "value": "127.0.0.1"
+    },
+    "cache-l1-gib": {
+      "source": "common:single-node-vllm",
+      "value": 24.0
+    },
+    "cache-l1-init-gib": {
+      "source": "common:single-node-vllm",
+      "value": 2
+    },
+    "cache-l2-checkpoint-writes": {
+      "source": "model:qwen38-flash-next",
+      "value": "on-evict"
+    },
+    "cache-l2-enabled": {
+      "source": "common:single-node-vllm",
+      "value": false
+    },
+    "cache-l2-gib": {
+      "source": "common:single-node-vllm",
+      "value": 256.0
+    },
+    "cache-l2-odirect": {
+      "source": "common:single-node-vllm",
+      "value": false
+    },
+    "cache-l2-prune-stale": {
+      "source": "common:single-node-vllm",
+      "value": false
+    },
+    "cache-l2-workers": {
+      "source": "common:single-node-vllm",
+      "value": 4
+    },
+    "cache-load-failure-policy": {
+      "source": "common:single-node-vllm",
+      "value": "recompute"
+    },
+    "cache-mode": {
+      "source": "common:single-node-vllm",
+      "value": "vram"
+    },
+    "cache-native-gib": {
+      "source": "common:single-node-vllm",
+      "value": 64.0
+    },
+    "cache-object-tokens": {
+      "source": "common:single-node-vllm",
+      "value": 4096
+    },
+    "cache-prefetch-policy": {
+      "source": "common:single-node-vllm",
+      "value": "retain"
+    },
+    "cache-start-timeout": {
+      "source": "common:single-node-vllm",
+      "value": 120.0
+    },
+    "cache-transfer-mode": {
+      "source": "common:single-node-vllm",
+      "value": "engine_driven"
+    },
+    "compilation-config": {
+      "source": "model:qwen38-flash-next",
+      "value": {
+        "cudagraph_mode": "FULL_AND_PIECEWISE",
+        "custom_ops": [
+          "all"
+        ]
+      }
+    },
+    "decode-context-parallel-size": {
+      "source": "common:single-node-vllm",
+      "value": 1
+    },
+    "draft-tokens": {
+      "source": "derived:effective proposal width",
+      "value": 3
+    },
+    "dtype": {
+      "source": "common:single-node-vllm",
+      "value": "bfloat16"
+    },
+    "enable-auto-tool-choice": {
+      "source": "common:single-node-vllm",
+      "value": true
+    },
+    "enable-chunked-prefill": {
+      "source": "common:single-node-vllm",
+      "value": true
+    },
+    "enable-flashinfer-autotune": {
+      "source": "model:qwen38-flash-next",
+      "value": false
+    },
+    "enable-prefix-caching": {
+      "source": "common:single-node-vllm",
+      "value": true
+    },
+    "enable-prompt-tokens-details": {
+      "source": "common:single-node-vllm",
+      "value": true
+    },
+    "gdn-decode-kernel": {
+      "source": "model:qwen38-flash-next",
+      "value": "b12x"
+    },
+    "gpu-memory-utilization": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": 0.74
+    },
+    "hf-overrides": {
+      "source": "derived:Qwen3.8 YaRN for 1048576 tokens",
+      "value": {
+        "text_config": {
+          "max_position_embeddings": 1048576,
+          "rope_parameters": {
+            "factor": 4,
+            "mrope_interleaved": true,
+            "mrope_section": [
+              11,
+              11,
+              10
+            ],
+            "original_max_position_embeddings": 262144,
+            "partial_rotary_factor": 0.25,
+            "rope_theta": 10000000,
+            "rope_type": "yarn"
+          }
+        }
+      }
+    },
+    "host": {
+      "source": "common:single-node-vllm",
+      "value": "0.0.0.0"
+    },
+    "kv-cache-dtype": {
+      "source": "common:single-node-vllm",
+      "value": "fp8"
+    },
+    "language-model-only": {
+      "source": "model:qwen38-flash-next",
+      "value": false
+    },
+    "limit-mm-per-prompt": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": {
+        "image": 1,
+        "video": 1
+      }
+    },
+    "linear-backend": {
+      "source": "model:qwen38-flash-next",
+      "value": "b12x"
+    },
+    "load-format": {
+      "source": "common:single-node-vllm",
+      "value": "instanttensor"
+    },
+    "mamba-cache-mode": {
+      "source": "model:qwen38-flash-next",
+      "value": "align"
+    },
+    "mamba-ssm-cache-dtype": {
+      "source": "model:qwen38-flash-next",
+      "value": "auto"
+    },
+    "max-cudagraph-capture-size": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": 32
+    },
+    "max-model-len": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": 1048576
+    },
+    "max-num-batched-tokens": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": 8192
+    },
+    "max-num-seqs": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": 8
+    },
+    "max-parallel-prefills": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": "auto"
+    },
+    "mm-encoder-tp-mode": {
+      "source": "model:qwen38-flash-next",
+      "value": "data"
+    },
+    "mm-processor-cache-gb": {
+      "source": "model:qwen38-flash-next",
+      "value": 0.0
+    },
+    "mode": {
+      "source": "model:qwen38-flash-next",
+      "value": "mtp"
+    },
+    "model": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": "/models/qwen38-flash-next"
+    },
+    "moe-backend": {
+      "source": "model:qwen38-flash-next",
+      "value": "b12x"
+    },
+    "pipeline-parallel-size": {
+      "source": "common:single-node-vllm",
+      "value": 1
+    },
+    "port": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": 8888
+    },
+    "prefill-compute-half-life": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": "responsive"
+    },
+    "prefill-compute-share": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": "auto"
+    },
+    "prefill-policy": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": "decode-aware"
+    },
+    "quantization": {
+      "source": "model:qwen38-flash-next",
+      "value": "modelopt_mixed"
+    },
+    "reasoning-parser": {
+      "source": "model:qwen38-flash-next",
+      "value": "qwen3"
+    },
+    "recurrent-checkpoint-policy": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": "aligned"
+    },
+    "replicas": {
+      "source": "common:single-node-vllm",
+      "value": 1
+    },
+    "served-model-name": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": "qwen38-flash-next"
+    },
+    "speculative-config": {
+      "source": "derived:mtp policy and resolved draft settings",
+      "value": {
+        "draft_sample_method": "probabilistic",
+        "method": "mtp",
+        "moe_backend": "b12x",
+        "num_speculative_tokens": 3,
+        "rejection_sample_method": "standard"
+      }
+    },
+    "tensor-parallel-size": {
+      "source": "recipe:qwen38-flash-next-gb10-tp2",
+      "value": 2
+    },
+    "tool-call-parser": {
+      "source": "model:qwen38-flash-next",
+      "value": "qwen3_xml"
+    }
+  }
+}

@@ -1,5 +1,6 @@
 {
   "b12x_ref": "refs/heads/integration/karmic-kraken-beta",
+  "lil_runtime_ref": "refs/heads/main",
   "name": "vllmb12x",
   "source_ref": "refs/heads/cycle/karmic-kraken",
   "sources": {
@@ -32,6 +33,11 @@
       "commit": "49b4010afc1cae0441e71fe0b0bffc24fa05e932",
       "recursive_init_submodules": true,
       "remote": "https://github.com/voipmonitor/InstantTensor.git"
+    },
+    "lil_runtime": {
+      "commit": "353efc679f631206e0b001e67047dea80ee6d76e",
+      "recursive_init_submodules": false,
+      "remote": "https://github.com/local-inference-lab/blackwell-llm-docker.git"
     },
     "llguidance": {
       "cargo_manifest": "python_ext/Cargo.toml",

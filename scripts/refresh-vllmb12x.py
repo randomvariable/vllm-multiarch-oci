@@ -186,9 +186,10 @@ def tracked_pair(manifest: dict[str, Any], name: str) -> tuple[str, str]:
 
     The manifest, not this script, decides which lineage a pin follows: the
     remote is recorded per source, and the ref is recorded as `source_ref` for
-    vLLM and `b12x_ref` for B12X. Script defaults cannot hold these, because a
-    default that drifts from the profile resolves another lineage and rewrites
-    the pin silently.
+    vLLM, `b12x_ref` for B12X, and `lil_runtime_ref` for the upstream launcher
+    policy data. Script defaults cannot hold these, because a default that
+    drifts from the profile resolves another lineage and rewrites the pin
+    silently.
     """
     key = "source_ref" if name == "vllm" else f"{name}_ref"
     if key not in manifest or "remote" not in manifest["sources"][name]:
@@ -255,6 +256,9 @@ def main() -> None:
     parser.add_argument("--b12x-remote")
     parser.add_argument("--b12x-ref")
     parser.add_argument("--b12x-commit")
+    parser.add_argument("--lil-runtime-remote")
+    parser.add_argument("--lil-runtime-ref")
+    parser.add_argument("--lil-runtime-commit")
     parser.add_argument("--allow-source-change", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
@@ -271,6 +275,26 @@ def main() -> None:
         source_ref = canonical_source_ref(vllm_ref)
         vllm_commit = resolve_ref(vllm_remote, args.vllm_commit or vllm_ref)
         b12x_commit = resolve_ref(b12x_remote, args.b12x_commit or b12x_ref)
+
+        # The launcher resolves a profile against upstream's pinned policy data, so
+        # that pin moves with these two: it is tracked by a ref the manifest records,
+        # exactly as vLLM and B12X are, and one refresh advances the whole lineage
+        # together. A source the manifest does not declare is left alone, because the
+        # manifest owns the source set.
+        lil_runtime: tuple[str, str, str] | None = None
+        if "lil_runtime" in manifest["sources"]:
+            remote, ref = select_pair(
+                "lil_runtime",
+                manifest,
+                args.lil_runtime_remote,
+                args.lil_runtime_ref,
+                args.allow_source_change,
+            )
+            lil_runtime = (
+                remote,
+                canonical_source_ref(ref),
+                resolve_ref(remote, args.lil_runtime_commit or ref),
+            )
         checkout(vllm_remote, vllm_commit, checkout_root)
 
         updated = json.loads(json.dumps(manifest))
@@ -283,6 +307,11 @@ def main() -> None:
         updated["sources"]["vllm"]["commit"] = vllm_commit
         updated["sources"]["b12x"]["remote"] = b12x_remote
         updated["sources"]["b12x"]["commit"] = b12x_commit
+        if lil_runtime is not None:
+            remote, ref, commit = lil_runtime
+            updated["lil_runtime_ref"] = ref
+            updated["sources"]["lil_runtime"]["remote"] = remote
+            updated["sources"]["lil_runtime"]["commit"] = commit
         for name, (relative_path, remote, variable) in CMAKE_SOURCES.items():
             source = checkout_root / relative_path
             if not source.is_file():

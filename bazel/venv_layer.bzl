@@ -10,8 +10,7 @@ def _venv_layer_impl(ctx):
     args.add("--nccl-tar", ctx.file.nccl.path)
     args.add("--python-launcher", ctx.file._python_launcher.path)
     args.add("--vllm-launcher", ctx.file._vllm_launcher.path)
-    args.add("--image-helper", ctx.file._image_helper.path)
-    args.add("--image-helper-launcher", ctx.file._image_helper_launcher.path)
+    args.add_all(ctx.files.image_tools, before_each = "--image-tools")
     args.add("--output", output.path)
     if ctx.attr.include_python:
         args.add("--include-python")
@@ -30,10 +29,8 @@ def _venv_layer_impl(ctx):
                 ctx.file._driver,
                 ctx.file._python_launcher,
                 ctx.file._vllm_launcher,
-                ctx.file._image_helper,
-                ctx.file._image_helper_launcher,
                 ctx.file.nccl,
-            ] + ctx.files.python_runtime + ctx.files.runtime_wheels + ctx.files.source_wheels,
+            ] + ctx.files.image_tools + ctx.files.python_runtime + ctx.files.runtime_wheels + ctx.files.source_wheels,
         ),
         outputs = [output],
         arguments = [args],
@@ -76,13 +73,9 @@ venv_layer = rule(
             default = Label("//bazel:venv_vllm_launcher.sh"),
             allow_single_file = True,
         ),
-        "_image_helper": attr.label(
-            default = Label("//image_tools:vllm_image.py"),
-            allow_single_file = True,
-        ),
-        "_image_helper_launcher": attr.label(
-            default = Label("//image_tools:vllm-image.sh"),
-            allow_single_file = True,
+        "image_tools": attr.label(
+            default = Label("//image_tools:launcher_sources"),
+            allow_files = True,
         ),
     },
     # The selected action Python is architecture-native. Resolve the matching

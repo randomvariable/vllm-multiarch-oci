@@ -103,6 +103,20 @@ class LaneScriptTest(unittest.TestCase):
                 current.append(line[len(ARGUMENT):])
         return blocks
 
+    def positions(self, prefix: list[str]) -> list[int]:
+        """Every traced call whose arguments start with `prefix`, in order."""
+        return [
+            index
+            for index, command in enumerate(self.commands())
+            if command[: len(prefix)] == prefix
+        ]
+
+    def only(self, prefix: list[str]) -> int:
+        """The one traced call whose arguments start with `prefix`."""
+        positions = self.positions(prefix)
+        self.assertEqual(len(positions), 1, f"expected exactly one call {prefix!r}, got {positions!r}")
+        return positions[0]
+
     def publisher_command(self) -> list[str]:
         matches = [command for command in self.commands() if command[:1] == ["scripts/publish-vllmb12x.py"]]
         self.assertEqual(len(matches), 1, f"expected one publisher call, got {matches!r}")
@@ -112,12 +126,33 @@ class LaneScriptTest(unittest.TestCase):
         result = self.run_lane(LANE="nightly", PUBLISHER_LEASE="vllmb12x-publish", PUBLISHER_NAMESPACE="ci")
         self.assertEqual(result.returncode, 0, result.stderr)
         commands = self.commands()
-        self.assertEqual(commands[0][:2], ["test", "//scripts:all"])
-        self.assertEqual(commands[1][:2], ["build", "//image:vllmb12x"])
-        contracts = [command[:2] for command in commands[2:-1]]
-        self.assertEqual(contracts, [["test", "//tests/image:vllmb12x_contract"]] * 2)
+        # Selected by content, not by index: a step added to the lane has to
+        # report itself as the call no assertion covers, not silently shift
+        # these offsets apart.
+        scripts_tests = self.only(["test", "//scripts:all"])
+        image_build = self.only(["build", "//image:vllmb12x"])
+        host_lanes = {
+            directory: self.only(["-m", "unittest", "discover", "-s", directory, "-p", "*_test.py"])
+            for directory in ("bazel", "image_tools")
+        }
+        publisher = self.only(["scripts/publish-vllmb12x.py"])
+        contracts = self.positions(["test", "//tests/image:vllmb12x_contract"])
+        self.assertEqual(len(contracts), 2, f"one contract run per architecture: {contracts!r}")
+        lanes = {scripts_tests, image_build, publisher, *contracts, *host_lanes.values()}
+        unclassified = sorted(set(range(len(commands))) - lanes)
         self.assertEqual(
-            [command[2] for command in commands[2:-1]],
+            unclassified,
+            [],
+            f"the lane made calls no assertion covers: {[commands[i] for i in unclassified]}",
+        )
+        # Everything that can fail cheaply runs before the image build; the
+        # per-architecture contract runs stay last but one.
+        for test_lane in [scripts_tests, *host_lanes.values()]:
+            self.assertLess(test_lane, image_build, "every test lane must precede the image build")
+        self.assertLess(image_build, contracts[0], "the image contract needs the built image")
+        self.assertLess(contracts[1], publisher, "the contract runs stay last but one")
+        self.assertEqual(
+            [commands[index][2] for index in contracts],
             ["--config=remote-aarch64", "--config=remote-x86_64"],
         )
         # The fetch of a cargo-vendored source failed in CI because repository

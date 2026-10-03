@@ -25,6 +25,8 @@ exports_files([
     "accounts_layer_action.py",
 
     "provenance_layer_action.py",
+    "launcher_data_layer.bzl",
+    "launcher_data_layer_action.py",
     "vllm_wheel.bzl",
     "vllm_extensions_action.py",
     "vllm_package_action.py",

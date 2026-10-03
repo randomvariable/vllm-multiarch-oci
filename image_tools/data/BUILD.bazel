@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: Apache-2.0
+"""Launcher data the image installs below /opt/vllm-image.
+
+The recipes and hardware profiles travel with the image so a launch resolves
+without a network. They are separate filegroups because the layer installs them
+into different directories: recipes stand alone, and our hardware profiles merge
+into the pinned upstream hardware directory, which is why a name collision there
+is a build failure rather than an override.
+"""
+
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "recipes",
+    srcs = glob(["recipes/*.yaml"]),
+)
+
+filegroup(
+    name = "hardware",
+    srcs = glob(["hardware/*.yaml"]),
+)
+
+# The accepted command and environment goldens the recipe tests diff against.
+exports_files(glob(["golden/*.json"]))
+
+filegroup(
+    name = "goldens",
+    srcs = glob(["golden/*.json"]),
+)

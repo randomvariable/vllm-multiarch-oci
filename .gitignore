@@ -4,7 +4,17 @@ recipes-site/dist/
 recipes-site/node_modules/
 recipes-site/public/latest-image.json
 recipes-site/public/recipes.json
+recipes-site/public/releases.json
+recipes-site/public/configs.json
+recipes-site/public/options.json
+recipes-site/public/pyodide/
 recipes-site/src/content/docs/reference/vllmb12x-runtime-configuration.md
+
+# Bazel's convenience output links and the local disk cache the Justfile
+# recipes pass with --disk_cache=.bazel-cache. Both are per-checkout build
+# scratch: committing them would pin one machine's paths into every worktree.
+bazel-*
+.bazel-cache/
 
 # Bytecode left by running the scripts directly rather than through Bazel
 __pycache__/

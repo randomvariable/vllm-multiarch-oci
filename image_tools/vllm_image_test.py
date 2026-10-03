@@ -103,80 +103,26 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(port.returncode, vllm_image.EXIT_PORT)
         self.assertIn("port timeout", port.stderr)
 
-    def test_health_leader_worker_and_dead_worker(self):
+    def test_health_accepts_a_ready_endpoint(self):
         with Server(http_server) as port:
-            url = f"http://127.0.0.1:{port}/v1/models"
-            leader = self.invoke("health", "--phase", "startup", "--rank", "0", "--local-url", url)
-            worker = self.invoke(
-                "health", "--phase", "readiness", "--rank", "3", "--leader-url", url,
-                "--engine-pid", str(os.getpid()),
-            )
-            dead = self.invoke(
-                "health", "--phase", "readiness", "--rank", "1", "--leader-url", url,
-                "--engine-pid", "2147483647",
-            )
-        self.assertEqual(leader.returncode, 0, leader.stderr)
-        self.assertEqual(worker.returncode, 0, worker.stderr)
-        self.assertEqual(dead.returncode, vllm_image.EXIT_ENGINE)
-        self.assertIn("is not alive", dead.stderr)
+            result = self.invoke("health", "--url", f"http://127.0.0.1:{port}/readyz")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("ready", result.stdout)
 
-    def test_health_derives_leader_url_from_environment(self):
-        with Server(http_server) as port:
-            worker = self.invoke(
-                "health", "--phase", "readiness", "--rank", "1",
-                "--leader-host-env", "TEST_LEADER", "--leader-port", str(port),
-                "--leader-path", "/v1/models", "--engine-pid", str(os.getpid()),
-                env={"TEST_LEADER": "127.0.0.1"},
-            )
-        self.assertEqual(worker.returncode, 0, worker.stderr)
+    def test_health_reports_failure_reason_and_status(self):
+        class Unhealthy(Handler):
+            def do_GET(self):
+                self.send_response(503)
+                self.end_headers()
+                self.wfile.write(b"[-] engine failed: no child\n")
 
-    def test_health_explicit_leader_url_precedes_environment(self):
-        with Server(http_server) as port:
-            worker = self.invoke(
-                "health", "--phase", "startup", "--rank", "1",
-                "--leader-url", f"http://127.0.0.1:{port}/v1/models",
-                "--leader-host-env", "TEST_LEADER", "--engine-pid", str(os.getpid()),
-                env={"TEST_LEADER": "invalid."},
-            )
-        self.assertEqual(worker.returncode, 0, worker.stderr)
-
-    def test_health_rejects_missing_leader_environment(self):
-        result = self.invoke(
-            "health", "--phase", "startup", "--rank", "1",
-            "--leader-host-env", "ABSENT_LEADER", "--engine-pid", str(os.getpid()),
-        )
-        self.assertEqual(result.returncode, vllm_image.EXIT_CONFIG)
-        self.assertIn("ABSENT_LEADER", result.stderr)
-
-    def proc_tree(self, root: Path, children: list[tuple[int, str, str]]) -> None:
-        parent = root / "1/task/1"
-        parent.mkdir(parents=True)
-        (parent / "children").write_text(" ".join(str(pid) for pid, _comm, _state in children))
-        for pid, comm, state in children:
-            process = root / str(pid)
-            process.mkdir()
-            (process / "comm").write_text(comm + "\n")
-            (process / "stat").write_text(f"{pid} ({comm}) {state} 1 1 1\n")
-
-    def test_engine_child_exact_live_identity(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            self.proc_tree(root, [(22, "python", "S"), (23, "VLLM::Worker_TP", "S")])
-            with mock.patch("image_tools.vllm_image.os.kill"):
-                self.assertEqual(vllm_image._engine_child(1, root), 23)
-
-    def test_engine_child_missing_dead_zombie_and_ambiguous(self):
-        cases = [
-            ([], "no live direct child"),
-            ([(22, "VLLM::Worker_TP", "Z")], "no live direct child"),
-            ([(22, "VLLM::Worker_TP", "S"), (23, "VLLM::EngineCor", "S")], "ambiguous"),
-        ]
-        for children, error in cases:
-            with self.subTest(children=children), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory)
-                self.proc_tree(root, children)
-                with mock.patch("image_tools.vllm_image.os.kill"), self.assertRaisesRegex(vllm_image.CommandError, error):
-                    vllm_image._engine_child(1, root)
+        with Server(lambda address: http.server.ThreadingHTTPServer(address, Unhealthy)) as port:
+            failing = self.invoke("health", "--url", f"http://127.0.0.1:{port}/readyz")
+            self.assertEqual(failing.returncode, vllm_image.EXIT_HTTP)
+            self.assertIn("engine failed: no child", failing.stderr)
+        unreachable = self.invoke("health", "--url", "http://127.0.0.1:1/readyz", "--timeout", "200ms")
+        self.assertEqual(unreachable.returncode, vllm_image.EXIT_HTTP)
+        self.assertIn("unreachable", unreachable.stderr)
 
     def snapshot(self, root: Path, revision: str, complete=True) -> Path:
         snapshot = root / "odd-cache-layout" / revision
@@ -197,7 +143,7 @@ class CommandTests(unittest.TestCase):
             ])
             fake = mock.Mock(return_value=str(snapshot))
             with mock.patch.dict(sys.modules, {"huggingface_hub": mock.Mock(snapshot_download=fake)}):
-                with self.assertRaisesRegex(vllm_image.CommandError, "missing or empty files: part.safetensors"):
+                with self.assertRaisesRegex(vllm_image.ConfigError, "missing or empty files: part.safetensors"):
                     vllm_image.model_sync(args)
             self.assertFalse((root / "published").exists())
             self.assertEqual(list((root / ".vllm-image/model-sync").glob("*.json")), [])
@@ -213,7 +159,7 @@ class CommandTests(unittest.TestCase):
             ])
             fake = mock.Mock(return_value=str(snapshot))
             with mock.patch.dict(sys.modules, {"huggingface_hub": mock.Mock(snapshot_download=fake)}):
-                with self.assertRaisesRegex(vllm_image.CommandError, "missing or empty files: tokenizer_config.json"):
+                with self.assertRaisesRegex(vllm_image.ConfigError, "missing or empty files: tokenizer_config.json"):
                     vllm_image.model_sync(args)
             self.assertFalse((root / "published").exists())
             self.assertEqual(list((root / ".vllm-image/model-sync").glob("*.json")), [])
@@ -229,7 +175,7 @@ class CommandTests(unittest.TestCase):
             ])
             fake = mock.Mock(return_value=str(snapshot))
             with mock.patch.dict(sys.modules, {"huggingface_hub": mock.Mock(snapshot_download=fake)}):
-                with self.assertRaisesRegex(vllm_image.CommandError, "invalid indexed shard path"):
+                with self.assertRaisesRegex(vllm_image.ConfigError, "invalid indexed shard path"):
                     vllm_image.model_sync(args)
 
     def test_model_sync_preserves_declared_cache_locations(self):

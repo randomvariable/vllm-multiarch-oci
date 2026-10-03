@@ -67,6 +67,22 @@ EOF
 # image carries no python3 interpreter.
 "$BAZEL" test //scripts:all --disk_cache= --test_output=errors
 
+# The two host lanes that follow cover what //scripts:all cannot: the tests of
+# the Bazel build actions under bazel/, and the image_tools tests that need
+# PyYAML or aiohttp. Without them a change to a layer action merges untested.
+# They run here, before the image build, so such a change costs seconds rather
+# than an hour of CUDA compilation. Neither lane can be a py_test target:
+# bazel/*_test.py reach their actions through importlib against a source tree,
+# and the pip hubs are download_only, so they publish wheels for the image
+# layers and no importable py_library. See the note in image_tools/BUILD.bazel.
+# Their scratch -- extracted trees, temporary wheels -- must not land in the
+# pod's /tmp, which is a tmpfs. Every .tekton/ lane already exports TMPDIR onto
+# the CSI workspace; an ad-hoc run gets the same place under the staging dir.
+export TMPDIR="${TMPDIR:-$HOME/.cache/vllm-multiarch-oci}"
+mkdir -p "$TMPDIR"
+"$PYTHON" -m unittest discover -s bazel -p '*_test.py'
+"$PYTHON" -m unittest discover -s image_tools -p '*_test.py'
+
 "$BAZEL" build //image:vllmb12x \
     --config=remote-multiarch \
     --disk_cache= \

@@ -1,7 +1,11 @@
 schemaVersion: 2.0.0
 
 metadataTest:
-  entrypoint: ["/opt/venv/bin/vllm"]
+  # The image enters the launcher, not a shell and not the vLLM CLI directly. The
+  # launcher publishes the checkpoint, resolves rank, waits for the leader,
+  # validates the cache, then execs vLLM as the container's PID 1. A command that
+  # is not a launcher option still reaches the vLLM CLI unchanged.
+  entrypoint: ["/opt/python/bin/python", "-m", "image_tools.vllm_image", "entrypoint"]
   workdir: "/root"
   labels:
     - key: "org.opencontainers.image.source"
@@ -24,6 +28,10 @@ metadataTest:
   envVars:
     - key: "CUDA_HOME"
       value: "/usr/local/cuda"
+    # The entrypoint names the hermetic interpreter, so the mounted wheel tree has
+    # to be on its import path from the image configuration.
+    - key: "PYTHONPATH"
+      value: "/opt/venv/lib/python3.12/site-packages"
     - key: "PATH"
       value: "/opt/venv/bin:/usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
@@ -92,9 +100,33 @@ fileExistenceTests:
     path: "/usr/include/infiniband/verbs.h"
     shouldExist: true
   - name: "Named non-root account home"
+  - name: "Named non-root account home"
     path: "/home/vllm"
     shouldExist: true
     permissions: "drwxr-xr-x"
+  # The launcher, its policy data and the probe endpoints are what replace the
+  # inline shell that used to live in the deployment manifests.
+  - name: "Launcher package"
+    path: "/opt/venv/lib/python3.12/site-packages/image_tools/launcher/launch.py"
+    shouldExist: true
+  - name: "Probe endpoints"
+    path: "/opt/venv/lib/python3.12/site-packages/image_tools/launcher/probes.py"
+    shouldExist: true
+  - name: "Cache runtime"
+    path: "/opt/venv/lib/python3.12/site-packages/image_tools/launcher/cache_runtime.py"
+    shouldExist: true
+  - name: "Replica proxy"
+    path: "/opt/venv/lib/python3.12/site-packages/image_tools/launcher/proxy.py"
+    shouldExist: true
+  - name: "Policy data"
+    path: "/opt/vllm-image/runtime/options.yaml"
+    shouldExist: true
+  - name: "GB10 hardware profile"
+    path: "/opt/vllm-image/runtime/hardware/gb10-roce.yaml"
+    shouldExist: true
+  - name: "Qwen GB10 recipe"
+    path: "/opt/vllm-image/recipes/qwen38-flash-next-gb10-tp2.yaml"
+    shouldExist: true
 
 # Ubuntu resolves accounts through these files, so the named account has to
 # appear in both.
@@ -110,11 +142,20 @@ commandTests:
   - name: "Generic image helper exposes stable commands"
     command: "/opt/venv/bin/vllm-image"
     args: ["--help"]
-    expectedOutput: ["rendezvous-wait,model-sync,health"]
-  - name: "Leader rendezvous exits without network wait"
+    expectedOutput: ["rendezvous-wait,model-sync,health,launch,entrypoint,probe"]
+  # Nothing in the launch path may be a shell script: a shell at PID 1 owns the
+  # process the runtime signals and hides the engine's real exit status, and a
+  # wheel console script that wraps `exec /opt/venv/bin/python -c` does the same.
+  - name: "Launch path executables are Python"
+    command: "/opt/venv/bin/python"
+    args:
+      - "-c"
+      - "from pathlib import Path; expected = '#!/opt/python/bin/python'; offenders = {name: Path(name).read_text(errors='ignore').splitlines()[0] for name in ('/opt/venv/bin/vllm-image', '/opt/venv/bin/lmcache') if not Path(name).read_text(errors='ignore').startswith(expected + chr(10))}; assert not offenders, offenders; print('launch path is python')"
+    expectedOutput: ["launch path is python"]
+  - name: "Recipe resolution needs no GPU and no download"
     command: "/opt/venv/bin/vllm-image"
-    args: ["rendezvous-wait", "--rank", "0", "--port", "25000"]
-    expectedOutput: ["leader rank 0; no wait required"]
+    args: ["launch", "--recipe", "qwen38-flash-next-gb10-tp2", "--print-config"]
+    expectedOutput: ["\"argv\":", "vllm.entrypoints.cli.main", "--moe-backend", "b12x"]
   # Torch links cuDNN, cuBLAS, cuSPARSELt and NCCL, so a successful import is
   # the only proof that every runtime layer resolves through the loader.
   - name: "Torch resolves its CUDA runtime"

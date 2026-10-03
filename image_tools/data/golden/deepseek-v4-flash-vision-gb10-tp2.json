@@ -1,0 +1,599 @@
+{
+  "argv": [
+    "/opt/venv/bin/python",
+    "-m",
+    "vllm.entrypoints.cli.main",
+    "serve",
+    "/models/deepseek-v4-flash-vision",
+    "--async-scheduling",
+    "--attention-backend",
+    "B12X",
+    "--block-size",
+    "256",
+    "--compilation-config",
+    "{\"cudagraph_mode\":\"FULL_AND_PIECEWISE\",\"custom_ops\":[\"all\"],\"cudagraph_capture_sizes\":[1,2,3,4,8,12,16]}",
+    "--decode-context-parallel-size",
+    "1",
+    "--default-chat-template-kwargs",
+    "{\"thinking\":true,\"reasoning_effort\":\"high\"}",
+    "--dtype",
+    "bfloat16",
+    "--enable-auto-tool-choice",
+    "--enable-chunked-prefill",
+    "--enable-flashinfer-autotune",
+    "--enable-force-include-usage",
+    "--enable-prefix-caching",
+    "--enable-prompt-tokens-details",
+    "--enable-request-id-headers",
+    "--gpu-memory-utilization",
+    "0.81",
+    "--host",
+    "0.0.0.0",
+    "--kv-cache-dtype",
+    "fp8",
+    "--limit-mm-per-prompt",
+    "{\"image\":1}",
+    "--linear-backend",
+    "b12x",
+    "--load-format",
+    "instanttensor",
+    "--max-cudagraph-capture-size",
+    "16",
+    "--max-model-len",
+    "1000000",
+    "--max-num-batched-tokens",
+    "8192",
+    "--max-num-seqs",
+    "4",
+    "--moe-backend",
+    "b12x",
+    "--override-generation-config",
+    "{\"temperature\":1.0,\"top_p\":0.95}",
+    "--pipeline-parallel-size",
+    "1",
+    "--port",
+    "8888",
+    "--prefix-cache-retention-interval",
+    "4096",
+    "--reasoning-parser",
+    "deepseek_v4",
+    "--no-scheduler-reserve-full-isl",
+    "--served-model-name",
+    "deepseek-v4-flash-vision",
+    "--speculative-config",
+    "{\"method\":\"dspark\",\"draft_sample_method\":\"probabilistic\",\"rejection_sample_method\":\"standard\",\"num_speculative_tokens\":3,\"model\":\"/models/deepseek-v4-flash-vision\"}",
+    "--tensor-parallel-size",
+    "2",
+    "--tokenizer-mode",
+    "deepseek_v4",
+    "--tool-call-parser",
+    "deepseek_v4",
+    "--trust-remote-code",
+    "--distributed-executor-backend",
+    "mp",
+    "--master-port",
+    "25000",
+    "--dcp-comm-backend",
+    "a2a",
+    "--reasoning-config",
+    "{\"reasoning_parser\":\"deepseek_v4\",\"reasoning_start_str\":\"\",\"reasoning_end_str\":\"\"}",
+    "--disable-access-log-for-endpoints",
+    "/metrics,/v1/models"
+  ],
+  "environment": {
+    "B12X_COMPILE_CACHE_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/b12x/compile"
+    },
+    "B12X_CUTE_COMPILE_CACHE_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/b12x/cute"
+    },
+    "B12X_DENSE_SPLITK_TURBO": {
+      "source": "recipe:deepseek-v4-flash-vision-gb10-tp2",
+      "value": "1"
+    },
+    "B12X_MOE_FORCE_A8": {
+      "source": "recipe:deepseek-v4-flash-vision-gb10-tp2",
+      "value": "1"
+    },
+    "B12X_ROCE_SPIN_LIMIT": {
+      "source": "hardware:gb10-roce",
+      "value": "600000000"
+    },
+    "CUDA_CACHE_PATH": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/cuda"
+    },
+    "CUDA_DEVICE_ORDER": {
+      "source": "common:single-node-vllm",
+      "value": "PCI_BUS_ID"
+    },
+    "CUPY_CACHE_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/cupy"
+    },
+    "CUTE_DSL_ARCH": {
+      "source": "hardware:gb10-roce",
+      "value": "sm_121a"
+    },
+    "CUTE_DSL_CACHE_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/cute-dsl"
+    },
+    "DG_JIT_USE_NVRTC": {
+      "source": "recipe:deepseek-v4-flash-vision-gb10-tp2",
+      "value": "0"
+    },
+    "FLASHINFER_CUDA_ARCH_LIST": {
+      "source": "hardware:gb10-roce",
+      "value": "12.1a"
+    },
+    "FLASHINFER_WORKSPACE_BASE": {
+      "source": "recipe:deepseek-v4-flash-vision-gb10-tp2",
+      "value": "/cache/flashinfer"
+    },
+    "FLASH_ATTENTION_CUTE_DSL_CACHE_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/flash-attention-cute-dsl"
+    },
+    "HF_HOME": {
+      "source": "recipe:deepseek-v4-flash-vision-gb10-tp2",
+      "value": "/models"
+    },
+    "HF_HUB_OFFLINE": {
+      "source": "recipe:deepseek-v4-flash-vision-gb10-tp2",
+      "value": "1"
+    },
+    "INSTANTTENSOR_BACKEND": {
+      "source": "common:single-node-vllm",
+      "value": "BUFFERED"
+    },
+    "NCCL_CROSS_NIC": {
+      "source": "hardware:gb10-roce",
+      "value": "1"
+    },
+    "NCCL_CUMEM_ENABLE": {
+      "source": "hardware:gb10-roce",
+      "value": "0"
+    },
+    "NCCL_DEBUG": {
+      "source": "hardware:gb10-roce",
+      "value": "WARN"
+    },
+    "NCCL_IB_DISABLE": {
+      "source": "hardware:gb10-roce",
+      "value": "0"
+    },
+    "NCCL_IGNORE_CPU_AFFINITY": {
+      "source": "hardware:gb10-roce",
+      "value": "1"
+    },
+    "NCCL_NET": {
+      "source": "hardware:gb10-roce",
+      "value": "IB"
+    },
+    "NCCL_NET_PLUGIN": {
+      "source": "platform:foundation",
+      "value": "spcx"
+    },
+    "NCCL_NVLS_ENABLE": {
+      "source": "hardware:gb10-roce",
+      "value": "0"
+    },
+    "NUMBA_CACHE_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/numba"
+    },
+    "OMP_NUM_THREADS": {
+      "source": "model:ds4-vision",
+      "value": "2"
+    },
+    "PYTHONFAULTHANDLER": {
+      "source": "hardware:gb10-roce",
+      "value": "1"
+    },
+    "PYTHONPATH": {
+      "source": "recipe:deepseek-v4-flash-vision-gb10-tp2",
+      "value": "/opt/venv/lib/python3.12/site-packages:/opt/venv/lib/python3.12/site-packages/nvidia_cutlass_dsl/dsl_packages"
+    },
+    "PYTORCH_CUDA_ALLOC_CONF": {
+      "source": "common:single-node-vllm",
+      "value": "expandable_segments:True"
+    },
+    "SAFETENSORS_FAST_GPU": {
+      "source": "common:single-node-vllm",
+      "value": "1"
+    },
+    "SPARKINFER_COMPILE_CACHE_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/b12x/compile"
+    },
+    "TILELANG_CACHE_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/tilelang"
+    },
+    "TORCHINDUCTOR_CACHE_DIR": {
+      "source": "recipe:deepseek-v4-flash-vision-gb10-tp2",
+      "value": "/cache/torchinductor"
+    },
+    "TORCH_CUDA_ARCH_LIST": {
+      "source": "hardware:gb10-roce",
+      "value": "12.1a"
+    },
+    "TORCH_EXTENSIONS_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/torch-extensions"
+    },
+    "TORCH_NCCL_ASYNC_ERROR_HANDLING": {
+      "source": "hardware:gb10-roce",
+      "value": "1"
+    },
+    "TRANSFORMERS_OFFLINE": {
+      "source": "recipe:deepseek-v4-flash-vision-gb10-tp2",
+      "value": "1"
+    },
+    "TRITON_CACHE_DIR": {
+      "source": "recipe:deepseek-v4-flash-vision-gb10-tp2",
+      "value": "/cache/triton"
+    },
+    "TVM_CACHE_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/tvm"
+    },
+    "TVM_FFI_CACHE_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/tvm-ffi"
+    },
+    "VLLM_ALLOW_LONG_MAX_MODEL_LEN": {
+      "source": "recipe:deepseek-v4-flash-vision-gb10-tp2",
+      "value": "1"
+    },
+    "VLLM_B12X_MOE_FP4_FORCE_A16": {
+      "source": "model:ds4-vision",
+      "value": "0"
+    },
+    "VLLM_CACHE_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/vllm"
+    },
+    "VLLM_CACHE_ROOT": {
+      "source": "recipe:deepseek-v4-flash-vision-gb10-tp2",
+      "value": "/cache/vllm"
+    },
+    "VLLM_ENABLE_PCIE_ALLREDUCE": {
+      "source": "hardware:gb10-roce",
+      "value": "0"
+    },
+    "VLLM_ENABLE_ROCE_ALLREDUCE": {
+      "source": "hardware:gb10-roce",
+      "value": "1"
+    },
+    "VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS": {
+      "source": "recipe:deepseek-v4-flash-vision-gb10-tp2",
+      "value": "1800"
+    },
+    "VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS": {
+      "source": "model:ds4-vision",
+      "value": "1"
+    },
+    "VLLM_MULTI_STREAM_GEMM_TOKEN_THRESHOLD": {
+      "source": "model:ds4-vision",
+      "value": "1024"
+    },
+    "VLLM_PLUGINS": {
+      "source": "recipe:deepseek-v4-flash-vision-gb10-tp2",
+      "value": "b12x_loader"
+    },
+    "VLLM_ROCE_ALLREDUCE_MAX_SIZE": {
+      "source": "hardware:gb10-roce",
+      "value": "41943040"
+    },
+    "VLLM_USE_AOT_COMPILE": {
+      "source": "model:ds4-vision",
+      "value": "1"
+    },
+    "VLLM_USE_BREAKABLE_CUDAGRAPH": {
+      "source": "model:ds4-vision",
+      "value": "0"
+    },
+    "VLLM_USE_FASTOKENS": {
+      "source": "common:single-node-vllm",
+      "value": "1"
+    },
+    "VLLM_USE_FLASHINFER_SAMPLER": {
+      "source": "model:ds4-vision",
+      "value": "1"
+    },
+    "VLLM_USE_MEGA_AOT_ARTIFACT": {
+      "source": "model:ds4-vision",
+      "value": "1"
+    },
+    "VLLM_USE_V2_MODEL_RUNNER": {
+      "source": "common:single-node-vllm",
+      "value": "1"
+    },
+    "VLLM_WORKER_MULTIPROC_METHOD": {
+      "source": "hardware:gb10-roce",
+      "value": "spawn"
+    },
+    "XDG_CACHE_HOME": {
+      "source": "recipe:deepseek-v4-flash-vision-gb10-tp2",
+      "value": "/cache"
+    }
+  },
+  "settings": {
+    "async-scheduling": {
+      "source": "model:ds4-vision",
+      "value": true
+    },
+    "attention-backend": {
+      "source": "model:ds4-vision",
+      "value": "B12X"
+    },
+    "block-size": {
+      "source": "model:ds4-vision",
+      "value": 256
+    },
+    "cache-broker-directory": {
+      "source": "common:single-node-vllm",
+      "value": "/cache/lmcache-cumem"
+    },
+    "cache-cpu-workers": {
+      "source": "model:ds4-vision",
+      "value": 4
+    },
+    "cache-directory": {
+      "source": "common:single-node-vllm",
+      "value": "/cache/lmcache"
+    },
+    "cache-host": {
+      "source": "common:single-node-vllm",
+      "value": "127.0.0.1"
+    },
+    "cache-http-host": {
+      "source": "common:single-node-vllm",
+      "value": "127.0.0.1"
+    },
+    "cache-l1-gib": {
+      "source": "model:ds4-vision",
+      "value": 24.0
+    },
+    "cache-l1-init-gib": {
+      "source": "model:ds4-vision",
+      "value": 24
+    },
+    "cache-l2-checkpoint-writes": {
+      "source": "common:single-node-vllm",
+      "value": "always"
+    },
+    "cache-l2-enabled": {
+      "source": "model:ds4-vision",
+      "value": false
+    },
+    "cache-l2-gib": {
+      "source": "model:ds4-vision",
+      "value": 256.0
+    },
+    "cache-l2-odirect": {
+      "source": "common:single-node-vllm",
+      "value": false
+    },
+    "cache-l2-prune-stale": {
+      "source": "common:single-node-vllm",
+      "value": false
+    },
+    "cache-l2-workers": {
+      "source": "model:ds4-vision",
+      "value": 4
+    },
+    "cache-load-failure-policy": {
+      "source": "common:single-node-vllm",
+      "value": "recompute"
+    },
+    "cache-mode": {
+      "source": "common:single-node-vllm",
+      "value": "vram"
+    },
+    "cache-native-gib": {
+      "source": "common:single-node-vllm",
+      "value": 64.0
+    },
+    "cache-object-tokens": {
+      "source": "common:single-node-vllm",
+      "value": 4096
+    },
+    "cache-prefetch-policy": {
+      "source": "common:single-node-vllm",
+      "value": "retain"
+    },
+    "cache-start-timeout": {
+      "source": "common:single-node-vllm",
+      "value": 120.0
+    },
+    "cache-transfer-mode": {
+      "source": "common:single-node-vllm",
+      "value": "engine_driven"
+    },
+    "compilation-config": {
+      "source": "recipe:deepseek-v4-flash-vision-gb10-tp2",
+      "value": {
+        "cudagraph_capture_sizes": [
+          1,
+          2,
+          3,
+          4,
+          8,
+          12,
+          16
+        ],
+        "cudagraph_mode": "FULL_AND_PIECEWISE",
+        "custom_ops": [
+          "all"
+        ]
+      }
+    },
+    "decode-context-parallel-size": {
+      "source": "common:single-node-vllm",
+      "value": 1
+    },
+    "default-chat-template-kwargs": {
+      "source": "model:ds4-vision",
+      "value": {
+        "reasoning_effort": "high",
+        "thinking": true
+      }
+    },
+    "draft-tokens": {
+      "source": "derived:effective proposal width",
+      "value": 3
+    },
+    "dtype": {
+      "source": "common:single-node-vllm",
+      "value": "bfloat16"
+    },
+    "enable-auto-tool-choice": {
+      "source": "common:single-node-vllm",
+      "value": true
+    },
+    "enable-chunked-prefill": {
+      "source": "common:single-node-vllm",
+      "value": true
+    },
+    "enable-flashinfer-autotune": {
+      "source": "model:ds4-vision",
+      "value": true
+    },
+    "enable-force-include-usage": {
+      "source": "model:ds4-vision",
+      "value": true
+    },
+    "enable-prefix-caching": {
+      "source": "common:single-node-vllm",
+      "value": true
+    },
+    "enable-prompt-tokens-details": {
+      "source": "common:single-node-vllm",
+      "value": true
+    },
+    "enable-request-id-headers": {
+      "source": "model:ds4-vision",
+      "value": true
+    },
+    "gpu-memory-utilization": {
+      "source": "recipe:deepseek-v4-flash-vision-gb10-tp2",
+      "value": 0.81
+    },
+    "host": {
+      "source": "common:single-node-vllm",
+      "value": "0.0.0.0"
+    },
+    "kv-cache-dtype": {
+      "source": "common:single-node-vllm",
+      "value": "fp8"
+    },
+    "limit-mm-per-prompt": {
+      "source": "recipe:deepseek-v4-flash-vision-gb10-tp2",
+      "value": {
+        "image": 1
+      }
+    },
+    "linear-backend": {
+      "source": "recipe:deepseek-v4-flash-vision-gb10-tp2",
+      "value": "b12x"
+    },
+    "load-format": {
+      "source": "common:single-node-vllm",
+      "value": "instanttensor"
+    },
+    "max-cudagraph-capture-size": {
+      "source": "recipe:deepseek-v4-flash-vision-gb10-tp2",
+      "value": 16
+    },
+    "max-model-len": {
+      "source": "recipe:deepseek-v4-flash-vision-gb10-tp2",
+      "value": 1000000
+    },
+    "max-num-batched-tokens": {
+      "source": "recipe:deepseek-v4-flash-vision-gb10-tp2",
+      "value": 8192
+    },
+    "max-num-seqs": {
+      "source": "model:ds4-vision",
+      "value": 4
+    },
+    "mode": {
+      "source": "model:ds4-vision",
+      "value": "dspark"
+    },
+    "model": {
+      "source": "recipe:deepseek-v4-flash-vision-gb10-tp2",
+      "value": "/models/deepseek-v4-flash-vision"
+    },
+    "moe-backend": {
+      "source": "model:ds4-vision",
+      "value": "b12x"
+    },
+    "override-generation-config": {
+      "source": "model:ds4-vision",
+      "value": {
+        "temperature": 1.0,
+        "top_p": 0.95
+      }
+    },
+    "pipeline-parallel-size": {
+      "source": "common:single-node-vllm",
+      "value": 1
+    },
+    "port": {
+      "source": "recipe:deepseek-v4-flash-vision-gb10-tp2",
+      "value": 8888
+    },
+    "prefix-cache-retention-interval": {
+      "source": "model:ds4-vision",
+      "value": 4096
+    },
+    "reasoning-parser": {
+      "source": "model:ds4-vision",
+      "value": "deepseek_v4"
+    },
+    "replicas": {
+      "source": "common:single-node-vllm",
+      "value": 1
+    },
+    "scheduler-reserve-full-isl": {
+      "source": "model:ds4-vision",
+      "value": false
+    },
+    "served-model-name": {
+      "source": "recipe:deepseek-v4-flash-vision-gb10-tp2",
+      "value": "deepseek-v4-flash-vision"
+    },
+    "speculative-config": {
+      "source": "derived:dspark policy and resolved draft settings",
+      "value": {
+        "draft_sample_method": "probabilistic",
+        "method": "dspark",
+        "model": "/models/deepseek-v4-flash-vision",
+        "num_speculative_tokens": 3,
+        "rejection_sample_method": "standard"
+      }
+    },
+    "tensor-parallel-size": {
+      "source": "model:ds4-vision",
+      "value": 2
+    },
+    "tokenizer-mode": {
+      "source": "model:ds4-vision",
+      "value": "deepseek_v4"
+    },
+    "tool-call-parser": {
+      "source": "model:ds4-vision",
+      "value": "deepseek_v4"
+    },
+    "trust-remote-code": {
+      "source": "model:ds4-vision",
+      "value": true
+    }
+  }
+}
