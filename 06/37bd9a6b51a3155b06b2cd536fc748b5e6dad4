@@ -1,0 +1,14 @@
+.tekton/vllmb12x-release.yaml
+  h_15da545fc8cfbe 153-155,169
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0637bd9a6b51a3155b06b2cd536fc748b5e6dad4",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
