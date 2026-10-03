@@ -145,7 +145,7 @@ spec:
                 #!/usr/bin/env bash
                 set -euo pipefail
                 mkdir -p "$HOME" "$TMPDIR"
-                bash scripts/ci/bootstrap-arm64-tools.sh
+                source scripts/ci/bootstrap-arm64-tools.sh
                 git config --global --add safe.directory "$PWD"
                 bash scripts/ci/login-ghcr.sh
                 BUILD_REVISION="$(git rev-parse HEAD)"

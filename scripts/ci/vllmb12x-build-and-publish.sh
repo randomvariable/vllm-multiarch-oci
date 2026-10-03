@@ -36,6 +36,15 @@ case "$LANE" in
         ;;
 esac
 
+# The build and the repository rules that vendor its sources resolve host tools
+# from PATH. Refuse here rather than hundreds of actions into the build.
+for tool in bazel cargo; do
+    command -v "$tool" >/dev/null 2>&1 || {
+        echo "$tool is not on PATH; source scripts/ci/bootstrap-arm64-tools.sh" >&2
+        exit 1
+    }
+done
+
 cd "$(git rev-parse --show-toplevel)"
 
 cat >.bazelrc.user <<EOF

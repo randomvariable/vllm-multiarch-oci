@@ -7,6 +7,7 @@ asks its tools for, in order, with the real environment contract of the script.
 """
 
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -16,6 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 LANE_SCRIPT = ROOT / "scripts" / "ci" / "vllmb12x-build-and-publish.sh"
 BUILDER_REVISION = "b" * 40
+BASH = shutil.which("bash")
 CALL = "\x01"
 ARGUMENT = "\x01ARG "
 
@@ -38,6 +40,7 @@ class LaneScriptTest(unittest.TestCase):
         self.bin.mkdir()
         self.stub("bazel")
         self.stub("python3")
+        self.stub("cargo")
         # git answers the two queries the lane script asks and records nothing:
         # the lane is defined by what it asks bazel and the publisher for.
         self.stub(
@@ -53,9 +56,10 @@ class LaneScriptTest(unittest.TestCase):
     def stub(self, name: str, tail: str = "", log: bool = True) -> None:
         # Plain bash, not a Python script with an interpreter shebang: the sandbox
         # this test runs in does not reliably execute sys.executable from a stub.
+        # The absolute path also survives the one test that restricts PATH.
         script = self.bin / name
         script.write_text(
-            "#!/usr/bin/env bash\n"
+            "#!/bin/bash\n"
             + (
                 "for argument in \"$@\"; do printf '\\001ARG %s\\n' \"$argument\" >> \"$TRACE\"; done\n"
                 "printf '\\001\\n' >> \"$TRACE\"\n"
@@ -81,7 +85,7 @@ class LaneScriptTest(unittest.TestCase):
         )
         environment.update(overrides)
         return subprocess.run(
-            ["bash", str(LANE_SCRIPT)],
+            [BASH, str(LANE_SCRIPT)],
             env=environment,
             text=True,
             capture_output=True,
@@ -158,6 +162,21 @@ class LaneScriptTest(unittest.TestCase):
         result = self.run_lane(LANE="release")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("PUBLISHER_LEASE", result.stderr)
+
+    def test_the_lane_refuses_without_the_bootstrapped_toolchain(self):
+        # A step that runs the bootstrap in a subshell loses its PATH export.
+        # That has to fail here, not inside a repository rule mid-build.
+        stripped = self.directory / "bin-no-cargo"
+        stripped.mkdir()
+        for name in ("bazel", "python3", "git"):
+            (stripped / name).write_text((self.bin / name).read_text())
+            (stripped / name).chmod(0o755)
+        result = self.run_lane(
+            LANE="nightly", PUBLISHER_LEASE="vllmb12x-publish", PUBLISHER_NAMESPACE="ci", PATH=str(stripped)
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("cargo is not on PATH", result.stderr)
+        self.assertEqual(self.commands(), [])
 
 
 if __name__ == "__main__":

@@ -5,6 +5,10 @@
 # plain Ubuntu base because gcr.io/bazel-public/bazel publishes amd64 only and
 # every lane is pinned to the arm64 build node, so nothing here is preinstalled.
 #
+# Source this script, do not run it in a subshell: it exports PATH for the
+# commands that follow, and a build started without that export fails later,
+# inside a repository rule, where the cause is invisible.
+#
 # Downloads are pinned by SHA-256 rather than by moving URL, and each tool is
 # skipped when it is already present so re-running a step does not refetch.
 

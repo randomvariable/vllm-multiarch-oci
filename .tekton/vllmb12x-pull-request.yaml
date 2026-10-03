@@ -140,7 +140,7 @@ spec:
                 #!/usr/bin/env bash
                 set -euo pipefail
                 mkdir -p "$HOME" "$TMPDIR"
-                bash scripts/ci/bootstrap-arm64-tools.sh
+                source scripts/ci/bootstrap-arm64-tools.sh
                 git config --global --add safe.directory "$PWD"
                 BUILD_REVISION="$(git rev-parse HEAD)"
                 # One build at a time across every lane: they share this node,

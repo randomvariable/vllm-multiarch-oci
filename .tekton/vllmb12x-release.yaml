@@ -148,7 +148,7 @@ spec:
                 #!/usr/bin/env bash
                 set -euo pipefail
                 mkdir -p "$HOME" "$TMPDIR"
-                bash scripts/ci/bootstrap-arm64-tools.sh
+                source scripts/ci/bootstrap-arm64-tools.sh
                 git config --global --add safe.directory "$PWD"
                 # Both the promotion and the release need registry and API
                 # credentials from the same mounted publisher token.
