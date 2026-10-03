@@ -1,0 +1,96 @@
+.gitignore
+  h_15da545fc8cfbe 7-10,13-18
+MODULE.bazel
+  h_15da545fc8cfbe 248
+MODULE.bazel.lock
+  h_15da545fc8cfbe 298,367-377
+bazel/BUILD.bazel
+  h_15da545fc8cfbe 28-29
+bazel/launcher_data_layer.bzl
+  h_15da545fc8cfbe 1-75
+bazel/launcher_data_layer_action.py
+  h_15da545fc8cfbe 1-220
+bazel/launcher_data_layer_test.py
+  h_15da545fc8cfbe 1-242
+bazel/reproducibility_test.py
+  h_15da545fc8cfbe 21-32,117-168
+bazel/venv_layer.bzl
+  h_15da545fc8cfbe 13,33,76-78
+bazel/venv_layer_action.py
+  h_15da545fc8cfbe 30-77,80-87,94-95,107,154-166
+bazel/vllm_image.bzl
+  h_15da545fc8cfbe 9-26,41-42,49-63,67,69
+image/BUILD.bazel
+  h_15da545fc8cfbe 9,106,121,180,203-214,235
+image_tools/BUILD.bazel
+  h_15da545fc8cfbe 3-15,23-41,44-45
+image_tools/cache_runtime_test.py
+  h_15da545fc8cfbe 1-715
+image_tools/data/BUILD.bazel
+  h_15da545fc8cfbe 1-29
+image_tools/data/golden/deepseek-v4-flash-vision-gb10-tp2.json
+  h_15da545fc8cfbe 1-599
+image_tools/data/golden/qwen38-27b.json
+  h_15da545fc8cfbe 1-686
+image_tools/data/golden/qwen38-flash-next-gb10-tp2.json
+  h_15da545fc8cfbe 1-743
+image_tools/data/hardware/gb10-roce.yaml
+  h_15da545fc8cfbe 1-68
+image_tools/data/recipes/deepseek-v4-flash-vision-gb10-tp2.yaml
+  h_15da545fc8cfbe 1-233
+image_tools/data/recipes/qwen38-27b.yaml
+  h_15da545fc8cfbe 1-322
+image_tools/data/recipes/qwen38-flash-next-gb10-tp2.yaml
+  h_15da545fc8cfbe 1-309
+image_tools/launcher/__init__.py
+  h_15da545fc8cfbe 1-29
+image_tools/launcher/cache_runtime.py
+  h_15da545fc8cfbe 1-630
+image_tools/launcher/launch.py
+  h_15da545fc8cfbe 1-797
+image_tools/launcher/probe_server.py
+  h_15da545fc8cfbe 1-253
+image_tools/launcher/probes.py
+  h_15da545fc8cfbe 1-455
+image_tools/launcher/proxy.py
+  h_15da545fc8cfbe 1-454
+image_tools/launcher/resolver.py
+  h_15da545fc8cfbe 1-2125
+image_tools/launcher_data_test.py
+  h_15da545fc8cfbe 1-1050
+image_tools/launcher_parity_test.py
+  h_15da545fc8cfbe 1-921
+image_tools/launcher_test.py
+  h_15da545fc8cfbe 1-539
+image_tools/probes_test.py
+  h_15da545fc8cfbe 1-471
+image_tools/replica_proxy_test.py
+  h_15da545fc8cfbe 1-215
+image_tools/vllm_image.py
+  h_15da545fc8cfbe 2-8,28-37,59-80,85,90,92-93,97,103,105,109-111,116-131,134-135,137-140,142-145,147-151,157,164-165,174,182,187,194,211,220-244,249-251,253,256-257,264,266-267,272,274-275,277-279,281-282,284-303,334,348,351-367,373-389,391-392
+image_tools/vllm_image_test.py
+  h_15da545fc8cfbe 106,108-125,146,162,178
+profiles/vllmb12x/profile.json
+  h_15da545fc8cfbe 3,37-41
+profiles/vllmb12x/version.bzl
+  h_15da545fc8cfbe 13
+scripts/ci/vllmb12x-build-and-publish.sh
+  h_15da545fc8cfbe 70-85
+scripts/ci/vllmb12x_lane_test.py
+  h_15da545fc8cfbe 106-119,129-153,155
+scripts/refresh-vllmb12x.py
+  h_15da545fc8cfbe 189-192,259-261,278-297,310-314
+tests/image/vllmb12x.yaml
+  h_15da545fc8cfbe 4-8,31-34,102,107-129,145-155,157-158
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "363dac94db78a7373f02606ac596ff08c228b481",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
