@@ -596,152 +596,24 @@ deployment:
   required_files:
     - tokenizer_config.json
     - chat_template.jinja
+  # -- site fields ---------------------------------------------------------------
+  # This is a two-node RoCE shape, so the shared set in
+  # `recipes-site/src/data/site-parameters.js` declares eleven fields on top of the
+  # eight every deployment asks for: the Multus attachment, the exclusive-topology
+  # key and values, the RDMA resource and its units, the HCA pair, the GID index, the
+  # host control interface and the two rank addresses. Each carries its label, type,
+  # requirement and explanation there, and every one of them already matches what the
+  # accepted group runs -- the Secret is `huggingface-token`/`HF_TOKEN`, the attachment
+  # `roce-net`, the allocator `rdma.com/roce` at one unit per rank, the HCA pair
+  # `rocep1s0f1,roceP2p1s0f1` at GID index 3 (qwen38-flash-next.yaml:686, 689 and the
+  # network guide). Two defaults are this deployment's own and are the only thing
+  # stated here: its resource name, and the JIT cache directory named after it
+  # (the model cache stays at the shared /var/lib/models).
   parameters:
-    namespace:
-      label: Kubernetes namespace
-      type: string
-      required: true
-      default: vllm
-      targets: [lws, llm-d-routing]
-      description: Namespace for the model and its routing resources.
-      help: {label: Namespace and Secret setup, href: guides/deploy-tp2/#create-namespace-and-credential}
     name:
-      label: Deployment name
-      type: string
-      required: true
       default: qwen38-flash-next
-      description: DNS-compatible base name for resources and Docker containers.
-      help: {label: Deployment walkthrough, href: guides/deploy-tp2/}
-    model_storage_path:
-      label: Model storage path
-      type: string
-      required: true
-      default: /var/lib/models
-      targets: [lws, docker]
-      description: Absolute persistent host path on each GPU node for the model cache and published snapshot. The engine loads the PLE tables from these files at boot, so it must stay local and readable for every load and restart.
-      help: {label: Storage layout, href: guides/deploy-tp2/#storage-paths}
     jit_storage_path:
-      label: JIT cache path
-      type: string
-      required: true
       default: /var/cache/vllm/qwen38-flash-next
-      targets: [lws, docker]
-      description: Absolute persistent host path on each GPU node for compiler and kernel caches.
-      help: {label: Storage layout, href: guides/deploy-tp2/#storage-paths}
-    hf_secret:
-      label: Hugging Face Secret
-      type: string
-      required: true
-      default: huggingface-token
-      targets: [lws]
-      description: Kubernetes Secret created from the operator's local HF_TOKEN environment variable.
-      help: {label: Create the Secret, href: guides/deploy-tp2/#create-namespace-and-credential}
-    hf_secret_key:
-      label: Hugging Face Secret key
-      type: string
-      required: true
-      default: HF_TOKEN
-      targets: [lws]
-      description: Data key in the Kubernetes Secret; the browser never accepts or stores the token itself.
-      help: {label: Create the Secret, href: guides/deploy-tp2/#create-namespace-and-credential}
-    network_attachment:
-      label: RoCE network attachment
-      type: string
-      required: true
-      default: roce-net
-      targets: [lws]
-      description: Multus NetworkAttachmentDefinition name for the secondary collective network.
-      help: {label: Create and inspect the attachment, href: guides/multus-rdma/#define-the-secondary-network}
-    node_selector:
-      label: GPU node selector
-      type: stringMap
-      required: false
-      default: {}
-      targets: [lws]
-      description: Operator-added node labels for the two GB10 nodes; the architecture and dgx role come from the recipe's `deployment.nodeSelector`.
-      help: {label: Find node labels, href: guides/deploy-tp2/#node-placement}
-    topology_key:
-      label: Exclusive topology key
-      type: string
-      required: true
-      default: ""
-      targets: [lws]
-      description: Site label that groups the two nodes allowed to form this TP group.
-      help: {label: Configure topology labels, href: guides/deploy-tp2/#node-placement}
-    topology_values:
-      label: Allowed topology values
-      type: string
-      required: true
-      default: ""
-      targets: [lws]
-      description: Comma-separated values accepted for the exclusive topology key.
-      help: {label: Configure topology labels, href: guides/deploy-tp2/#node-placement}
-    rdma_resource:
-      label: RDMA extended resource
-      type: string
-      required: true
-      default: rdma.com/roce
-      targets: [lws]
-      description: RDMA shared-device-plugin resource key for the selected host interfaces.
-      help: {label: Configure the RDMA resource, href: guides/multus-rdma/#advertise-one-rdma-unit-per-node}
-    rdma_units:
-      label: RDMA allocator units
-      type: integer
-      required: true
-      default: 1
-      targets: [lws]
-      description: Extended-resource allocator units per rank, not the number of HCAs or ports.
-      help: {label: Inspect RDMA allocation, href: guides/multus-rdma/#advertise-one-rdma-unit-per-node}
-    hca:
-      label: NCCL HCA list
-      type: string
-      required: true
-      default: rocep1s0f1,roceP2p1s0f1
-      suggestions:
-        - rocep1s0f1,roceP2p1s0f1
-      targets: [lws, docker]
-      description: Comma-separated RDMA devices. The preset is the pair used by this GB10 deployment; type over it if host enumeration differs.
-      help: {label: Find HCA names, href: guides/multus-rdma/#advertise-one-rdma-unit-per-node}
-    gid_index:
-      label: RoCE GID index
-      type: integer
-      required: true
-      default: 3
-      targets: [lws, docker]
-      description: GID index verified for the site's RoCE VLAN and address family.
-      help: {label: Select the GID, href: guides/multus-rdma/#identify-the-runtime-network-values}
-    control_interface:
-      label: Host control network interface
-      type: string
-      required: true
-      default: ""
-      targets: [docker]
-      description: Docker host interface used by Gloo coordination and NCCL socket bootstrap; Kubernetes uses the primary pod interface eth0.
-      help: {label: Find host interfaces, href: guides/deploy-tp2/#runtime-network-interfaces}
-    leader_ip:
-      label: Leader host IP
-      type: string
-      required: true
-      default: ""
-      targets: [docker]
-      description: Docker-only rank-zero address reachable from the worker over the host network.
-      help: {label: Docker host networking, href: guides/deploy-tp2/#docker-host-values}
-    worker_ip:
-      label: Worker host IP
-      type: string
-      required: true
-      default: ""
-      targets: [docker]
-      description: Docker-only rank-one address used as that rank's VLLM_HOST_IP.
-      help: {label: Docker host networking, href: guides/deploy-tp2/#docker-host-values}
-    gateway_class:
-      label: GatewayClass name
-      type: string
-      required: true
-      default: ""
-      targets: [llm-d-routing]
-      description: Routing-only accepted Envoy GatewayClass supplied by the cluster operator.
-      help: {label: Install or inspect GatewayClass, href: guides/cluster-prerequisites/#install-envoy-gateway-183}
 # The measured panel the recipe page renders, from the run recorded in
 # `validation.evidence`. Every number, qualifier and "not measured" statement is
 # here rather than in the page, so the site cannot show a figure this file does

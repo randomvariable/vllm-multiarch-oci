@@ -13,7 +13,8 @@
 // tree. Nothing here reimplements a rule that already lives in the launcher.
 
 import { benchmarkHtml } from "../benchmark.js";
-import { renderRecipe } from "../render.js";
+import { profileRecipe, renderRecipe, requiredSiteFields } from "../render.js";
+import { SITE_PARAMETERS } from "../data/site-parameters.js";
 import { resolveInBrowser } from "./browser-resolver.js";
 
 const NIGHTLY = "nightly";
@@ -66,7 +67,9 @@ function button(className, label, onClick) {
 export function payload(state) {
   const query = new URLSearchParams();
   query.set("model", state.model);
-  if (state.build && state.build !== NIGHTLY) query.set("build", state.build);
+  // An empty build means "the default", which is the newest release; nightly is a
+  // deliberate choice and so is recorded in the URL like any other build.
+  if (state.build) query.set("build", state.build);
   if (state.target && state.target !== "lws") query.set("target", state.target);
   for (const [key, item] of Object.entries(state.settings ?? {})) query.set(`x.${key}`, item);
   for (const [key, item] of Object.entries(state.environment ?? {})) query.set(`e.${key}`, item);
@@ -79,7 +82,7 @@ export function payload(state) {
 export function readState(search) {
   const query = new URLSearchParams(search);
   const state = {
-    build: query.get("build") || NIGHTLY,
+    build: query.get("build") || "",
     model: query.get("model") || "",
     target: query.get("target") || "lws",
     settings: Object.fromEntries([...query].filter(([k]) => k.startsWith("x.")).map(([k, v]) => [k.slice(2), v])),
@@ -193,6 +196,11 @@ class DeploymentFlow {
     this.base = root.dataset.base ?? "/";
     this.state = readState(window.location.search);
     this.tabs = new Map();
+    // The inferred deployment for the current selection, memoised by model: the site
+    // fields, the fill-in list and every manifest tab read this one object.
+    this.viewed = null;
+    this.viewedFor = null;
+    this.viewError = null;
   }
 
   async start() {
@@ -204,14 +212,16 @@ class DeploymentFlow {
         ),
       );
       Object.assign(this, { releases: releases.releases, latest, recipes: recipes.recipes, configs, options });
-      this.model = this.#resolveModel();
+      // Every URL the page writes is built from this.state, so the model that was
+      // picked by default has to live there too, or links come out as `model=`.
+      this.model = this.state.model = this.#resolveModel();
       this.#render();
     } catch (error) {
       this.#failure(error);
     }
     window.addEventListener("popstate", async () => {
       this.state = readState(window.location.search);
-      this.model = this.#resolveModel();
+      this.model = this.state.model = this.#resolveModel();
       await this.#render();
     });
   }
@@ -263,9 +273,39 @@ class DeploymentFlow {
     return this.recipes.find((candidate) => candidate.meta.slug === slug) ?? null;
   }
 
+  // The one deployment object every manifest surface reads: the shape the image
+  // resolved for this selection, with the recipe's measured fields layered over it
+  // when the selection is a recipe. The site fields, the fill-in guidance and the
+  // renderer all read this same object, so a selection cannot render a manifest with
+  // one set of parameters and show the operator a different one. An un-inferable
+  // record is kept as an error to display, never as a silent blank.
+  view() {
+    const record = this.record();
+    if (!record) return null;
+    if (this.viewedFor !== this.model) {
+      this.viewed = null;
+      this.viewError = null;
+      try {
+        this.viewed = profileRecipe(record, SITE_PARAMETERS, this.recipe());
+      } catch (error) {
+        this.viewError = error;
+      }
+      this.viewedFor = this.model;
+    }
+    return this.viewed;
+  }
+
+  // The default is the newest tagged release: it has a changelog, a build page and
+  // was cut deliberately, while nightly is whatever the pipeline last pushed.
+  // Nightly is only the fallback when nothing has been released.
+  effectiveBuild() {
+    return this.state.build || this.releases[0]?.tag || NIGHTLY;
+  }
+
   build() {
-    if (this.state.build !== NIGHTLY) {
-      const release = this.releases.find((candidate) => candidate.tag === this.state.build);
+    const chosen = this.effectiveBuild();
+    if (chosen !== NIGHTLY) {
+      const release = this.releases.find((candidate) => candidate.tag === chosen);
       if (release) return { kind: "release", release };
     }
     return {
@@ -291,7 +331,7 @@ class DeploymentFlow {
 
   select(patch) {
     Object.assign(this.state, patch);
-    if (patch.model) this.model = this.#resolveModel();
+    if (patch.model) this.model = this.state.model = this.#resolveModel();
     window.history.replaceState({}, "", payload(this.state));
     this.#render();
   }
@@ -312,10 +352,10 @@ class DeploymentFlow {
     slot.textContent = "";
     const channels = element("div", "choice-grid choice-grid-channels");
     const nightly = button("choice-card", "Nightly", () => this.select({ build: NIGHTLY }));
-    nightly.setAttribute("aria-pressed", String(this.state.build === NIGHTLY));
+    nightly.setAttribute("aria-pressed", String(this.effectiveBuild() === NIGHTLY));
     nightly.append(element("p", "choice-note", "The newest build the pipeline published, refreshed hourly."));
-    const release = button("choice-card", "Release", () => this.select({ build: this.releases[0]?.tag ?? NIGHTLY }));
-    release.setAttribute("aria-pressed", String(this.state.build !== NIGHTLY));
+    const release = button("choice-card", "Release", () => this.select({ build: "" }));
+    release.setAttribute("aria-pressed", String(this.effectiveBuild() !== NIGHTLY));
     release.append(element("p", "choice-note", "A tag you cut deliberately, with its changelog and its own page."));
     channels.append(nightly, release);
     slot.append(channels);
@@ -371,7 +411,7 @@ class DeploymentFlow {
         if (entry.highlights.length > 1) note.append(element("span", "build-more", ` +${entry.highlights.length - 1}`));
         row.append(note);
         const use = element("td");
-        use.append(button("link-button", this.state.build === entry.tag ? "Selected" : "Use", () => this.select({ build: entry.tag })));
+        use.append(button("link-button", this.effectiveBuild() === entry.tag ? "Selected" : "Use", () => this.select({ build: entry.tag })));
         row.append(use);
         body.append(row);
       }
@@ -639,7 +679,7 @@ class DeploymentFlow {
         "output-site-title",
         missing.length
           ? `Your cluster: ${missing.length} required field${missing.length === 1 ? "" : "s"} to fill in`
-          : "Your cluster: namespace, storage paths, network and node selection",
+          : "Your cluster: the namespace, name, host paths and node placement this deployment asks for",
       ),
       this.#siteFields(),
     );
@@ -699,8 +739,7 @@ class DeploymentFlow {
 
   #siteFields() {
     const wrapper = element("div", "output-site-fields");
-    const recipe = this.recipe();
-    const parameters = recipe?.deployment?.parameters ?? {};
+    const parameters = this.view()?.deployment?.parameters ?? {};
     for (const [name, definition] of Object.entries(parameters)) {
       const row = element("label", "site-field");
       row.append(element("span", "site-field-label", definition.label ?? name));
@@ -749,18 +788,13 @@ class DeploymentFlow {
   }
 
   #missingFields() {
-    const recipe = this.recipe();
-    const parameters = recipe?.deployment?.parameters ?? {};
-    // A field is answered when the reader supplied it or the recipe offers a
-    // default that is actually usable. `default: null` and `default: ""` are how a
-    // recipe says "no default", not a supplied answer, so they must not silence the
-    // prompt -- and an object default for a stringMap counts as an answer.
-    const usable = (value) =>
-      value !== undefined && value !== null && value !== "" &&
-      !(Array.isArray(value) && value.length === 0);
-    return Object.entries(parameters)
-      .filter(([name, definition]) => definition.required && !usable(this.state.parameters[name]) && !usable(definition.default))
-      .map(([name, definition]) => ({ name, label: definition.label ?? name }));
+    // The renderer's own rule about what it dereferences for this deployment's
+    // shape, so a field the output never reads is never demanded on the form: a
+    // single-node pod is asked for no HCA, no GID index, no network attachment, no
+    // RDMA resource and no topology label.
+    const view = this.view();
+    if (!view) return [];
+    return requiredSiteFields(view, this.state.parameters);
   }
 
   async #output(target) {
@@ -795,15 +829,17 @@ class DeploymentFlow {
       if (note) nodes.push(element("p", "output-note", note));
       return { text, file: "vllm.txt", nodes };
     }
-    const recipe = this.recipe();
-    if (!recipe && ["lws", "docker", "compose", "routing"].includes(target)) {
-      const text = `This selection has no recipe in this repository, so only the vLLM command is rendered. Copy it into your own container run:\n\n${record.argv.join(" ")}`;
-      nodes.push(element("pre", "output-code", text));
-      return { text, file: "README.txt", nodes };
+    const view = this.view();
+    if (!view) {
+      // The record itself could not be turned into a deployment shape; say which
+      // part of it, rather than printing the raw command as if it were a manifest.
+      const text = this.viewError?.message ?? "This selection did not resolve, so there is nothing to render.";
+      nodes.push(element("p", "output-error", text));
+      return { text: "", file: `${target}.txt`, nodes };
     }
     try {
-      const rendered = renderRecipe(recipe, {
-        parameters: coerceParameters(this.recipe(), this.state.parameters),
+      const rendered = renderRecipe(view, {
+        parameters: coerceParameters(view, this.state.parameters),
         settings: this.state.settings,
         environment: this.state.environment,
         target,
@@ -813,8 +849,27 @@ class DeploymentFlow {
       const text = parts.map((part) => part.body).join("\n");
       nodes.push(element("pre", "output-code", text));
       for (const step of rendered.steps ?? []) nodes.push(element("p", "output-step", step));
+      if (!this.recipe()) {
+        // Step 2 labels an upstream selection as unvalidated; the manifest it now
+        // produces has to carry that label too, including the one thing the renderer
+        // deliberately left out.
+        nodes.push(
+          element(
+            "p",
+            "output-note",
+            "Upstream profile, not validated on this image. The shape comes from the configuration the image resolved: the launcher selection, the device count and the node paths only. No CPU, memory or storage request or limit is claimed, because none has been measured for this hardware -- the vLLM command tab carries the full resolved engine configuration.",
+          ),
+        );
+      }
       return { text, file: parts[0]?.name ?? `${target}.txt`, nodes };
     } catch (error) {
+      // A site field this target needs and the reader has not filled in is guidance,
+      // not a fault: the panel stays empty and the "Fill in ..." line names it in
+      // its own label. Anything else is a real defect and is shown as one.
+      const field = /^([\w-]+) is required for(?: the [\w-]+ target)?/.exec(String(error?.message ?? ""));
+      if (field && this.#missingFields().some((missing) => missing.name === field[1])) {
+        return { text: "", file: `${target}.txt`, nodes: [] };
+      }
       const text = `${error.message}`;
       nodes.push(element("p", "output-error", text));
       return { text: "", file: `${target}.txt`, nodes };

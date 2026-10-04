@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { parseAllDocuments } from "yaml";
-import { renderRecipe } from "../src/render.js";
+import { parse, parseAllDocuments } from "yaml";
+import { SITE_PARAMETERS } from "../src/data/site-parameters.js";
+import { profileRecipe, renderRecipe, requiredSiteFields } from "../src/render.js";
 
 // The renderer is a pure function over a launcher-form recipe document, so these
 // tests build the document directly rather than reading the on-disk YAML — those files
@@ -489,11 +490,224 @@ test("invalid input throws TypeError before any output", () => {
   delete noHostPathType.deployment.volumes;
   assert.throws(() => renderLws(noHostPathType), TypeError, "the hostPath type must come from the recipe");
 
-  // qwen38-27b ships `deployment.parameters: {}`: no manifest target can render it, so
-  // every one must refuse rather than emit undefined names and host paths.
+  // A recipe that declares no site fields of its own still gets the eight the
+  // single-node shape asks for, from the shared set -- but the resource name is the
+  // deployment's answer, never the renderer's, so a target that dereferences it
+  // refuses rather than emitting `undefined` names. `profileRecipe` supplies it (from
+  // the recipe's slug, or from an upstream selection's profile, hardware and preset),
+  // which is what makes the same recipe render.
   const bare = singleRecipe();
-  bare.deployment = { parameters: {} };
+  delete bare.deployment.parameters;
   for (const target of ["lws", "docker", "compose", "routing"]) {
-    assert.throws(() => renderRecipe(bare, { parameters: {}, settings: {}, environment: {}, target, image: IMAGE }), TypeError, `${target} refuses a recipe with no parameters`);
+    assert.throws(
+      () => renderRecipe(bare, { parameters: {}, settings: {}, environment: {}, target, image: IMAGE }),
+      /name is required/,
+      `${target} refuses an unnamed deployment`,
+    );
   }
+  const named = renderRecipe(bare, { parameters: { name: "qwen38-27b", gateway_class: "ai-gateway" }, settings: {}, environment: {}, target: "lws", image: IMAGE });
+  assert.ok(named.files[0].body.includes("name: qwen38-27b"), "the same recipe renders once the name is answered");
+});
+
+// -- every selection the site publishes -----------------------------------------
+//
+// The flow renders a manifest for every selection the image resolves, not only the
+// three recipes. The deployment shape is a consequence of what the launcher resolved
+// -- node count, group width, and therefore the device count per pod -- so an upstream
+// profile has no reason to be unrenderable, and inventing nothing is what lets the
+// statement hold. These cases run over the committed fixture the Pages build is gated
+// on, so a selection that stops rendering fails the pull request.
+const CONFIGS = JSON.parse(readFileSync(join(siteRoot, "tests/fixtures/configs.json"), "utf8"));
+const MANIFEST_TARGETS = ["lws", "docker", "compose", "routing"];
+
+// The fields the shared set declares with no default because only the operator's
+// cluster knows them: the route's GatewayClass, and for a group the topology label
+// and the docker host addresses. A required blank field missing from this table fails
+// the test rather than being filled with a plausible value -- an invented answer here
+// would prove nothing about the renderer.
+const ANSWERED = {
+  gateway_class: "ai-gateway",
+  topology_key: "dspark.rv/roce-pair",
+  topology_values: "a,b",
+  control_interface: "eth0",
+  leader_ip: "192.0.2.10",
+  worker_ip: "192.0.2.11",
+};
+
+function recipeDocument(slug) {
+  const root = join(REPOSITORY_ROOT, "recipes");
+  for (const owner of readdirSync(root)) {
+    const file = join(root, owner, `${slug}.yaml`);
+    if (existsSync(file)) return parse(readFileSync(file, "utf8"));
+  }
+  throw new Error(`no recipe ${slug}.yaml under recipes/`);
+}
+
+function documentFor(selection) {
+  return selection.startsWith("recipe:") ? recipeDocument(selection.slice("recipe:".length)) : null;
+}
+
+function parametersFor(view) {
+  const supplied = {};
+  for (const [name, definition] of Object.entries(view.deployment.parameters)) {
+    const blank = definition.default === undefined || definition.default === null || definition.default === "";
+    if (definition.required && blank) {
+      assert.ok(name in ANSWERED, `${name} is required with no default and no answer in this table`);
+      supplied[name] = ANSWERED[name];
+    } else {
+      supplied[name] = definition.default;
+    }
+  }
+  return supplied;
+}
+
+test("every published selection renders every manifest target, or names Compose", () => {
+  const selections = Object.keys(CONFIGS);
+  assert.ok(selections.length > 0, "the fixture set is empty");
+  let rendered = 0;
+  let refused = 0;
+  for (const selection of selections) {
+    const view = profileRecipe(CONFIGS[selection], SITE_PARAMETERS, documentFor(selection));
+    for (const target of MANIFEST_TARGETS) {
+      try {
+        const result = renderRecipe(view, { parameters: parametersFor(view), settings: {}, environment: {}, target, image: IMAGE });
+        assert.ok(result.files.length > 0, `${selection}/${target} produced no file`);
+        assert.ok(result.files[0].body.length > 0, `${selection}/${target} produced an empty document`);
+        assert.ok(result.steps.length > 0, `${selection}/${target} produced no steps`);
+        rendered += 1;
+      } catch (error) {
+        // Docker is the only target allowed to refuse, and only for a layout that
+        // needs a service graph: an external cache, or replicas behind a proxy.
+        assert.equal(target, "docker", `${selection}/${target} failed: ${error.message}`);
+        assert.match(String(error.message), /Compose/, `${selection}/${target}: ${error.message}`);
+        refused += 1;
+      }
+    }
+  }
+  assert.equal(rendered + refused, selections.length * MANIFEST_TARGETS.length, "every selection and target was attempted");
+  assert.ok(refused > 0, "the fixture set holds a layout docker must hand to Compose, so that path is exercised");
+});
+
+test("a profile manifest carries the launcher profile selection and asks only for its devices", () => {
+  for (const [selection, record] of Object.entries(CONFIGS)) {
+    if (!selection.startsWith("profile:")) continue;
+    const view = profileRecipe(record, SITE_PARAMETERS);
+    const result = renderRecipe(view, { parameters: parametersFor(view), settings: {}, environment: {}, target: "lws", image: IMAGE });
+    const docs = documents(result.files[0].body);
+    const collective = record.topology.nodes > 1;
+    const workload = onlyDoc(docs, collective ? "LeaderWorkerSet" : "Deployment");
+    const pod = collective ? workload.spec.leaderWorkerTemplate.workerTemplate.spec : workload.spec.template.spec;
+    const server = pod.containers[0];
+
+    // The identity the container resolves its own defaults from: `launch.py.parse()`
+    // takes --hardware with --profile, and --preset only when the record names one.
+    const expected = ["launch", "--profile", record.selection.profile, "--hardware", record.selection.hardware];
+    if (record.selection.preset) expected.push("--preset", record.selection.preset);
+    expected.push("--topology", collective ? "lws" : "single", "--");
+    assert.deepEqual(server.args, expected, `${selection} selects the upstream profile, not a recipe`);
+    assert.ok(!server.args.includes("--model-sync"), `${selection} downloads its engine's weights itself`);
+
+    const width = record.settings["tensor-parallel-size"].value;
+    assert.equal(width % record.topology.nodes, 0, `${selection} splits its group across its nodes`);
+    assert.equal(server.resources.requests["nvidia.com/gpu"], String(width / record.topology.nodes));
+    assert.deepEqual(Object.keys(server.resources.requests), ["nvidia.com/gpu"], `${selection} claims no unmeasured cpu or memory request`);
+    assert.deepEqual(Object.keys(server.resources.limits), ["nvidia.com/gpu"], `${selection} claims no unmeasured limit`);
+    assert.equal(pod.initContainers.find((container) => container.name === "probe").resources, undefined, `${selection}'s probe carries no borrowed reservation`);
+    assert.deepEqual(server.securityContext, { runAsUser: 0 }, `${selection} runs as the user the image is built for`);
+    assert.deepEqual(
+      pod.volumes.filter((volume) => volume.hostPath).map((volume) => volume.hostPath.type),
+      ["DirectoryOrCreate", "DirectoryOrCreate"],
+      `${selection} types both node paths`,
+    );
+    if (!collective) {
+      // One pod, no group: no rank identity to inject, no collective to attach, and
+      // no node labels this site can claim for hardware it has never run.
+      assert.deepEqual(server.env.map((entry) => entry.name), ["HF_TOKEN"], `${selection} injects no collective network environment`);
+      assert.equal(pod.nodeSelector, undefined, `${selection} pins nothing it was not told to`);
+      assert.equal(pod.tolerations, undefined);
+      assert.equal(workload.spec.template.metadata.annotations, undefined, `${selection} attaches no secondary network`);
+    }
+  }
+});
+
+test("one shared set per shape: a recipe overrides values and never re-declares fields", () => {
+  const single = profileRecipe(CONFIGS["recipe:qwen38-27b"], SITE_PARAMETERS, recipeDocument("qwen38-27b"));
+  assert.deepEqual(
+    Object.keys(single.deployment.parameters).sort(),
+    Object.keys(SITE_PARAMETERS.single).sort(),
+    "the single-node shape asks exactly the fields the shared set declares",
+  );
+  const group = profileRecipe(CONFIGS["recipe:qwen38-flash-next-gb10-tp2"], SITE_PARAMETERS, recipeDocument("qwen38-flash-next-gb10-tp2"));
+  assert.deepEqual(
+    Object.keys(group.deployment.parameters).sort(),
+    Object.keys(SITE_PARAMETERS.multi).sort(),
+    "a group asks for the collective fields on top, from the same source",
+  );
+  // The recipe's measured answers survive the merge; the shape's explanations too.
+  assert.equal(single.deployment.parameters.namespace.default, "openai");
+  assert.equal(single.deployment.parameters.name.default, "qwen38-27b");
+  assert.equal(single.deployment.parameters.model_storage_path.default, "/var/lib/vllm-models/qwen38-27b");
+  assert.equal(single.deployment.parameters.jit_storage_path.default, "/var/lib/vllm-qwen38-cache");
+  assert.equal(single.deployment.parameters.model_storage_path.label, SITE_PARAMETERS.single.model_storage_path.label);
+  assert.equal(group.deployment.parameters.name.default, "qwen38-flash-next");
+  // Measured cluster fields win over inference: the accepted group's device-plugin
+  // count is not its tensor-parallel width.
+  assert.equal(group.deployment.gpu, 4);
+  assert.equal(group.deployment.groups, 3);
+  assert.equal(profileRecipe(CONFIGS["profile:ds41-flash#gb10-roce"], SITE_PARAMETERS).deployment.inferred, true);
+});
+
+// The rule the flow's "Fill in ..." banner and its empty-panel behaviour both read:
+// what a deployment asks its operator for is decided by the shape's field set, so a
+// question the output never uses cannot appear on the form.
+test("the fill-in question list follows the shape, and never asks a single node for its fabric", () => {
+  const profileView = profileRecipe(CONFIGS["profile:ds41-flash#gb10-roce"], SITE_PARAMETERS);
+  assert.deepEqual(
+    Object.keys(profileView.deployment.parameters).sort(),
+    Object.keys(SITE_PARAMETERS.single).sort(),
+    "an upstream single-node selection is asked exactly the single-node fields",
+  );
+  for (const field of ["hca", "gid_index", "network_attachment", "topology_key", "topology_values", "rdma_resource", "rdma_units", "control_interface", "leader_ip", "worker_ip"]) {
+    assert.equal(profileView.deployment.parameters[field], undefined, `${field} belongs to a group, not to one node`);
+  }
+  assert.deepEqual(
+    requiredSiteFields(profileView, {}),
+    [{ name: "gateway_class", label: SITE_PARAMETERS.single.gateway_class.label }],
+    "everything else the single-node shape needs already has a usable answer",
+  );
+  assert.deepEqual(requiredSiteFields(profileView, { gateway_class: "ai-gateway" }), [], "answering it empties the list");
+
+  const groupView = profileRecipe(CONFIGS["recipe:deepseek-v4-flash-vision-gb10-tp2"], SITE_PARAMETERS, documentFor("recipe:deepseek-v4-flash-vision-gb10-tp2"));
+  assert.deepEqual(
+    requiredSiteFields(groupView, {}).map((entry) => entry.name).sort(),
+    ["control_interface", "gateway_class", "leader_ip", "topology_key", "topology_values", "worker_ip"],
+    "a group adds the collective fields the shared set leaves blank, and the route its GatewayClass",
+  );
+});
+
+// The record, not the renderer, decides whether a layout has a cache tier: a profile
+// the resolver gave a `cache_service` must go to Compose, and the reader's own
+// `cache-mode` edit must be able to take it back.
+test("a profile layout the resolver cached is handed to Compose, and its reader can take it back", () => {
+  const base = CONFIGS["profile:ds4-flash#native"];
+  const cached = {
+    ...base,
+    cache_service: { role: "cache" },
+    settings: {
+      ...base.settings,
+      "cache-mode": { source: "common:single-node-vllm", value: "lmcache" },
+      "cache-l1-gib": { source: "common:single-node-vllm", value: 32 },
+    },
+  };
+  const view = profileRecipe(cached, SITE_PARAMETERS);
+  assert.equal(view.deployment.cache_service, true, "the record's cache plan reaches the built shape");
+  const render = (target, settings = {}) => renderRecipe(view, { parameters: parametersFor(view), settings, environment: {}, target, image: IMAGE });
+  for (const target of ["lws", "compose", "routing"]) {
+    assert.ok(render(target).files[0].body.length > 0, `${target} renders a cached layout`);
+  }
+  assert.throws(() => render("docker"), /Compose/, "a cache needs a service graph, so docker refuses it");
+  const compose = parseAllDocuments(render("compose").files[0].body)[0].toJS();
+  assert.ok(compose.services.cache, "the cache joins Compose");
+  assert.equal(compose.services.cache.deploy.resources.reservations.memory, `${Math.ceil(cached.settings["cache-l1-gib"].value)}G`, "its memory tracks the resolved L1");
+  assert.ok(render("docker", { "cache-mode": "vram" }).files[0].body.includes("docker"), "the reader can take the cache away");
 });

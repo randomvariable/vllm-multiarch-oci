@@ -491,11 +491,29 @@ deployment:
   # No storage_root, model_path, storage_min_free_gib, download_workers,
   # ignore_patterns or required_files: engine-download mode, so the launcher
   # publishes nothing and there is no free-space gate or truncation list to
-  # enforce before exec. The node-local hostPaths the live definition mounts are
-  # /var/lib/vllm-models/qwen38-27b at /models and /var/lib/vllm-qwen38-cache at
-  # /cache (qwen38-27b.yaml:415-428); they are recorded under `guide` because
-  # this recipe has no manifest target to parameterise yet.
-  parameters: {}
+  # enforce before exec.
+  # -- site fields ---------------------------------------------------------------
+  # A single-node shape asks the operator for eight fields -- namespace, name, the
+  # two host paths, the Hugging Face Secret and its key, the node selector and the
+  # GatewayClass -- and `recipes-site/src/data/site-parameters.js` declares every one
+  # of them with its label, type and explanation. A recipe therefore overrides only
+  # the values that belong to it. Source of truth for the four below: the GitOps
+  # repository, src/rv/k8s/clusters/home/llm-d/qwen38-27b.yaml -- the Deployment's
+  # namespace (:98) and name (:97), and the two node-local NVMe hostPaths it mounts
+  # (:419-422 for the model cache at /models, :425-428 for the JIT cache at /cache).
+  # The live pod's own nodeSelector (:115-116) names a single host; that is the
+  # operator's `node_selector` field, never a host written into this recipe. The
+  # Secret name and key are the site convention the shared set already carries, and
+  # this deployment has no collective network to attach (see `guide.networking`).
+  parameters:
+    namespace:
+      default: openai
+    name:
+      default: qwen38-27b
+    model_storage_path:
+      default: /var/lib/vllm-models/qwen38-27b
+    jit_storage_path:
+      default: /var/lib/vllm-qwen38-cache
 # The measured panel the recipe page renders. These are the live definition's own
 # observations, with the run they came from named in every case; nothing here is
 # a benchmark-harness result, and the one projected figure is marked as such.

@@ -7,6 +7,9 @@ import { parse as parseYaml } from "yaml";
 // validators gate them here: one rule, checked at generation and again at build.
 import { assertNoPrivateReference, RELEASE_TAG, validateReleases } from "./resolve-releases.mjs";
 import { recipeInventory, validateConfigs, validateOptions } from "./resolve-configs.mjs";
+// The same shared field set the renderer and the flow read, so a recipe is gated on
+// the definitions it will actually be shown -- not on a copy of them.
+import { SITE_PARAMETERS, siteParameterDefinitions } from "../src/data/site-parameters.js";
 
 const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const REPOSITORY_ROOT = resolve(SITE_ROOT, "..");
@@ -380,8 +383,19 @@ function validateRecipe(recipe, source) {
     // revision from the one the recipe names: one checkout, one identity.
     assert(String(launch.options.revision) === recipe.model.revision, `${source}: launch.options.revision must be model.revision`);
   }
-  assert(recipe.deployment.parameters && typeof recipe.deployment.parameters === "object", `${source}: parameter mapping is required`);
-  for (const [name, parameter] of Object.entries(recipe.deployment.parameters)) {
+  // The fields a deployment asks its operator for come from the shared set for its
+  // shape; the recipe below it overrides values only. Validating the MERGED result is
+  // what makes that safe: an override cannot drop a label, a type or an explanation,
+  // and a name that exists in neither the shared set nor the recipe is a typo that
+  // would silently never reach the form.
+  if (recipe.deployment.parameters !== undefined && recipe.deployment.parameters !== null) {
+    assert(typeof recipe.deployment.parameters === "object" && !Array.isArray(recipe.deployment.parameters), `${source}: deployment.parameters must be a mapping`);
+  }
+  const shape = launch.topology.kind === "lws" ? "multi" : "single";
+  for (const name of Object.keys(recipe.deployment.parameters ?? {})) {
+    assert(name in SITE_PARAMETERS[shape], `${source}: ${name} is not a ${shape}-node site parameter; a recipe overrides a field its own shape asks for and never invents one`);
+  }
+  for (const [name, parameter] of Object.entries(siteParameterDefinitions(recipe))) {
     assert(typeof parameter.label === "string" && PARAMETER_TYPES.has(parameter.type) && typeof parameter.required === "boolean" && Object.hasOwn(parameter, "default") && typeof parameter.description === "string", `${source}: malformed parameter ${name}`);
     if (parameter.type === "string") assert(typeof parameter.default === "string", `${source}: ${name} default must be a string`);
     if (parameter.type === "integer") assert(Number.isSafeInteger(parameter.default), `${source}: ${name} default must be an integer`);

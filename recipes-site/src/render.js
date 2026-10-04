@@ -1,4 +1,5 @@
 import { stringify as stringifyYaml } from "yaml";
+import { SITE_PARAMETERS, siteParameterDefinitions } from "./data/site-parameters.js";
 
 // The site renders the LAUNCHER form of a deployment: every container runs
 // `/opt/venv/bin/vllm-image launch ...`, never a hand-written `vllm serve`. That
@@ -17,10 +18,12 @@ const RESOURCE_NAME = /^(?:[a-z0-9](?:[-a-z0-9.]*[a-z0-9])?\/)?[A-Za-z0-9](?:[-A
 const SAFE_INTERFACE = /^[A-Za-z0-9_.:,=-]+$/;
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-// The manifest is only ever requested for a validated recipe (the caller shows the
-// other tabs only when a recipe exists), so the launcher selection is always
-// `--recipe <name>`; a bare `--profile/--hardware` would resolve WITHOUT this
-// recipe's option and environment layer, which is a different deployment.
+// Two selections reach this module. A validated recipe carries `--recipe <name>`,
+// because a bare `--profile/--hardware` would resolve WITHOUT that recipe's option
+// and environment layer, which is a different deployment. An upstream profile
+// selection carries `--profile/--hardware/--preset` exactly as `launch.py.parse()`
+// takes them, because there is no recipe file for the launcher to read; its
+// deployment shape is inferred from the resolved record (see `profileRecipe`).
 const TARGET_FIELDS = {
   lws: [
     "namespace", "name", "model_storage_path", "jit_storage_path", "hf_secret", "hf_secret_key",
@@ -31,17 +34,56 @@ const TARGET_FIELDS = {
   compose: ["name", "model_storage_path", "jit_storage_path", "hca", "gid_index", "control_interface"],
   routing: ["namespace", "name", "gateway_class"],
 };
+const TARGET_KEYS = Object.keys(TARGET_FIELDS);
 
-// The site fields each manifest target dereferences unconditionally. A recipe that
-// declares no parameters (an engine-download recipe with `deployment.parameters: {}`)
-// renders nothing here; the caller refuses these targets for it, and the renderer refuses
-// with a named reason so the output can never carry `undefined` names or host paths.
+// The site fields each manifest target dereferences unconditionally. The renderer
+// refuses rather than emit `undefined` names or host paths, so a field is only ever
+// demanded when the output actually reads it: `collective` fields belong to a
+// deployment whose ranks form one group, `rdma` fields to one that opens the RoCE
+// device. A single-node pod has neither, and asking its operator for a Multus
+// attachment, a topology label, an HCA list and an RDMA resource -- four values
+// that never reach its manifest -- would be a form full of noise.
 const REQUIRED_PRESENT = {
   lws: ["namespace", "name", "model_storage_path", "jit_storage_path", "hf_secret", "hf_secret_key", "network_attachment", "topology_key", "topology_values", "rdma_resource", "rdma_units", "hca", "gid_index"],
   docker: ["name", "model_storage_path", "jit_storage_path", "hca", "gid_index", "control_interface"],
   compose: ["name", "model_storage_path", "jit_storage_path", "hca", "gid_index", "control_interface"],
   routing: ["namespace", "name", "gateway_class"],
 };
+
+// Each field's scope; a field with no entry is asked of every shape.
+const FIELD_SCOPES = {
+  network_attachment: "collective",
+  topology_key: "collective",
+  topology_values: "collective",
+  control_interface: "collective",
+  leader_ip: "collective",
+  worker_ip: "collective",
+  rdma_resource: "rdma",
+  rdma_units: "rdma",
+  hca: "rdma",
+  gid_index: "rdma",
+};
+
+// The group's ranks form one engine: more than one pod, so the collective network,
+// the topology label and the host interfaces all matter.
+function isCollective(recipe) {
+  return recipe?.launch?.topology?.kind === "lws";
+}
+
+function usesRdma(recipe) {
+  return Boolean(recipe?.deployment?.rdma);
+}
+
+function fieldInScope(recipe, field) {
+  const scope = FIELD_SCOPES[field] ?? "always";
+  if (scope === "collective") return isCollective(recipe);
+  if (scope === "rdma") return usesRdma(recipe);
+  return true;
+}
+
+function scopedFields(recipe, fields) {
+  return fields.filter((field) => fieldInScope(recipe, field));
+}
 
 // Ports the launcher falls back to when the recipe states none; `launch.py` defines
 // DEFAULT_RENDEZVOUS_PORT = 25000 and DEFAULT_PROBE_PORT = 8890.
@@ -128,18 +170,25 @@ function validateRecipe(recipe) {
   if (!hasValue(served, "string")) fail("the served model name is required for routing and the model header");
 }
 
+// A supplied value, or the definition's own default, checked against the
+// definition's type. The `required` check belongs to the caller, because required
+// is per target: the same field is asked of the lws output and ignored by compose.
+function parameterValue(name, definition, supplied) {
+  if (!["string", "integer", "stringMap"].includes(definition.type)) fail(`invalid parameter type for ${name}`);
+  const value = Object.hasOwn(supplied, name) ? supplied[name] : definition.default;
+  if (definition.type === "integer" && hasValue(value, definition.type) && (!Number.isSafeInteger(Number(value)) || Number(value) < 0)) fail(`${name} must be a non-negative integer`);
+  if (definition.type === "stringMap" && value !== undefined && (value === null || typeof value !== "object" || Array.isArray(value) || !Object.values(value).every((entry) => typeof entry === "string"))) fail(`${name} must be a string mapping`);
+  return definition.type === "integer" && hasValue(value, definition.type) ? Number(value) : value;
+}
+
 function normalizedParameters(recipe, supplied, target) {
   if (!(target in TARGET_FIELDS)) fail(`unsupported render target: ${target}`);
-  const definitions = recipe.deployment?.parameters;
-  if (!definitions || typeof definitions !== "object" || Array.isArray(definitions)) fail("deployment.parameters must be a mapping");
+  const definitions = siteParameterDefinitions(recipe);
   const values = {};
   for (const [name, definition] of Object.entries(definitions)) {
-    if (!["string", "integer", "stringMap"].includes(definition.type)) fail(`invalid parameter type for ${name}`);
-    const value = Object.hasOwn(supplied, name) ? supplied[name] : definition.default;
-    if (TARGET_FIELDS[target].includes(name) && definition.required && !hasValue(value, definition.type)) fail(`${name} is required for ${target}`);
-    if (definition.type === "integer" && hasValue(value, definition.type) && (!Number.isSafeInteger(Number(value)) || Number(value) < 0)) fail(`${name} must be a non-negative integer`);
-    if (definition.type === "stringMap" && value !== undefined && (value === null || typeof value !== "object" || Array.isArray(value) || !Object.values(value).every((entry) => typeof entry === "string"))) fail(`${name} must be a string mapping`);
-    values[name] = definition.type === "integer" && hasValue(value, definition.type) ? Number(value) : value;
+    const value = parameterValue(name, definition, supplied);
+    if (scopedFields(recipe, TARGET_FIELDS[target]).includes(name) && definition.required && !hasValue(value, definition.type)) fail(`${name} is required for ${target}`);
+    values[name] = value;
   }
   if (hasValue(values.name, "string") && !DNS_LABEL.test(values.name)) fail("name must be a DNS label");
   if (hasValue(values.namespace, "string") && !DNS_LABEL.test(values.namespace)) fail("namespace must be a DNS label");
@@ -157,14 +206,39 @@ function normalizedParameters(recipe, supplied, target) {
     if (hasValue(values[field], "string") && !SAFE_INTERFACE.test(values[field])) fail(`${field} contains unsupported characters`);
   }
   // A manifest target dereferences these site fields directly (names, mounts, the
-  // Secret reference, the resource names). A recipe that declares none of them — an
-  // engine-download recipe with `deployment.parameters: {}` — cannot produce a manifest,
-  // so refuse rather than emit `undefined` paths and names.
-  const structural = REQUIRED_PRESENT[target];
-  for (const field of structural) {
-    if (!hasValue(values[field], "string")) fail(`${field} is required for the ${target} target but this recipe declares no such parameter`);
+  // Secret reference, the resource names), so the output cannot be produced without
+  // them. Their definitions come from the shared set for this deployment's shape
+  // rather than from the recipe, which is why a recipe with `deployment.parameters:
+  // {}` still renders: the fields exist by construction and only the defaults are
+  // authored.
+  for (const field of scopedFields(recipe, REQUIRED_PRESENT[target])) {
+    if (!hasValue(values[field], "string")) fail(`${field} is required for the ${target} target but this deployment has no answer for it`);
   }
   return values;
+}
+
+// The fields this deployment asks the operator for and has no usable answer for
+// yet. `deployment-flow.js` drives its "Fill in ..." guidance from here so the
+// panel never shows a raw renderer error for a value the reader simply has not
+// typed: one rule about what counts as required, in one place.
+export function requiredSiteFields(recipe, supplied = {}) {
+  const definitions = siteParameterDefinitions(recipe);
+  const asked = new Set(TARGET_KEYS.flatMap((target) => scopedFields(recipe, TARGET_FIELDS[target])));
+  const missing = [];
+  for (const [name, definition] of Object.entries(definitions)) {
+    if (!asked.has(name) || !definition.required) continue;
+    let value;
+    try {
+      value = parameterValue(name, definition, supplied);
+    } catch {
+      // A malformed answer is an unanswered one; the renderer still reports what
+      // is wrong with it when the field is filled in.
+      missing.push({ name, label: definition.label ?? name });
+      continue;
+    }
+    if (!hasValue(value, definition.type)) missing.push({ name, label: definition.label ?? name });
+  }
+  return missing;
 }
 
 function validateImageReference(imageReference) {
@@ -186,7 +260,182 @@ function recipeName(recipe) {
 }
 
 function selectionArgs(recipe) {
-  return ["--recipe", recipeName(recipe)];
+  // A recipe file exists for `--recipe` to load; an upstream profile selection has
+  // no file, so it names the three identifiers `launch.py.parse()` takes for that
+  // form -- and `--hardware` is required with `--profile` there, which is why the
+  // inferred recipe keeps both on `launch` rather than reading them back out of the
+  // selection string.
+  if (typeof recipe.meta?.slug === "string") return ["--recipe", recipeName(recipe)];
+  const args = ["--profile", recipe.launch.profile, "--hardware", recipe.launch.hardware];
+  if (recipe.launch.preset) args.push("--preset", recipe.launch.preset);
+  return args;
+}
+
+// -- inference from a resolved record -------------------------------------------
+//
+// The deployment shape is a consequence of what the launcher resolved, so the site
+// reads it from the record the image produced rather than from a hand-written block
+// per selection: node count and tensor-parallel width come from the resolution, the
+// topology follows it (a group of pods is an lws, one pod is not), and the RDMA
+// device is asked for only when a group actually spans hosts and needs the
+// collective. A recipe overrides this -- its `deployment` is what was measured on
+// live hardware, down to the device-plugin GPU count, which is not tp/nodes.
+//
+// What inference does NOT do is invent a number nobody measured. Upstream profile
+// selections have never run on a cluster this site documents, so an inferred
+// deployment carries no cpu, memory or ephemeral-storage request or limit: the
+// container gets its devices and nothing else is claimed, and the flow says so in
+// the run panel. The same rule retires a probe or cache CPU reservation for an
+// inferred shape.
+const INFERRED_SETTINGS = ["port", "tensor-parallel-size", "replicas", "cache-mode", "cache-l1-gib", "served-model-name"];
+
+function settingValue(record, key) {
+  const entry = record?.settings?.[key];
+  const value = entry?.value;
+  return value === undefined || value === null ? null : value;
+}
+
+function positiveInt(value, where) {
+  const number = Number(value);
+  if (!Number.isSafeInteger(number) || number < 1) fail(`${where} must be a positive integer, got ${value}`);
+  return number;
+}
+
+// The resource name an upstream selection gets by default: its own three identifiers,
+// spelled the way Kubernetes wants them. Derived from the selection, so it is a
+// label the reader can overwrite in the field rather than a name this page made up.
+function selectionName(profile, hardware, preset) {
+  const name = [profile, hardware, preset]
+    .filter(Boolean)
+    .join("-")
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 57)
+    .replace(/-+$/g, "");
+  if (!DNS_LABEL.test(name)) fail(`the selection ${[profile, hardware, preset].join("/")} does not spell a DNS label for a deployment name`);
+  return name;
+}
+
+// The set this deployment's fields come from, carried on the built recipe so the
+// renderer, the form and the fill-in guidance all read the same definitions the
+// caller supplied. `siteParameterDefinitions()` falls back to the shipped set when a
+// recipe -- a file on disk, or a hand-built one in a test -- names none. The merged
+// definitions are written back onto the recipe: the object the flow builds its site
+// fields from is the object the renderer validates, so the two cannot disagree about
+// which fields a deployment has.
+function withSiteParameters(recipe, siteParameters) {
+  const stamped = { ...recipe, deployment: { ...recipe.deployment, siteParameters } };
+  return { ...stamped, deployment: { ...stamped.deployment, parameters: siteParameterDefinitions(stamped) } };
+}
+
+export function profileRecipe(record, siteParameters = SITE_PARAMETERS, recipe = null) {
+  if (!record || typeof record !== "object" || Array.isArray(record)) fail("a resolved configuration record is required to infer a deployment");
+  const selection = record.selection ?? {};
+  const profile = selection.profile ?? record.profile;
+  const hardware = selection.hardware ?? record.hardware;
+  const preset = selection.preset ?? record.preset ?? null;
+  if (typeof profile !== "string" || !profile) fail("the record names no model profile to select");
+  if (typeof hardware !== "string" || !hardware) fail("a --profile selection needs a hardware profile");
+  if (preset !== null && typeof preset !== "string") fail("the record's preset must be a string or null");
+
+  const nodes = positiveInt(record.topology?.nodes, "topology.nodes");
+  const tensorParallel = settingValue(record, "tensor-parallel-size");
+  if (tensorParallel === null) fail("the record resolved no tensor-parallel-size, so the group width is unknown");
+  const width = positiveInt(tensorParallel, "settings['tensor-parallel-size']");
+  if (width % nodes !== 0) {
+    fail(`tensor-parallel-size ${width} does not divide across ${nodes} nodes; every rank of the group needs a whole GPU`);
+  }
+  const collective = nodes > 1;
+  const served = settingValue(record, "served-model-name");
+
+  const options = {};
+  for (const key of INFERRED_SETTINGS) {
+    const value = settingValue(record, key);
+    if (value !== null) options[key] = value;
+  }
+  const inferred = {
+    meta: {
+      title: [profile, hardware, preset].filter(Boolean).join(" · "),
+      description: "Inferred from the configuration the image resolved for this selection; not validated on this image.",
+    },
+    model: served === null ? {} : { served_name: String(served) },
+    launch: {
+      profile,
+      hardware,
+      preset,
+      options,
+      environment: {},
+      topology: {
+        kind: collective ? "lws" : "single",
+        nodes,
+        rendezvous_port: record.topology?.rendezvous_port ?? null,
+      },
+      probe_port: record.topology?.probe_port ?? null,
+    },
+    deployment: {
+      nodes,
+      tensor_parallel_size: width,
+      // The device count per pod. A recipe replaces this with what its node's
+      // device plugin actually reports -- the accepted GB10 groups ask for four
+      // time-sliced devices per rank at TP=2 -- which is exactly why the number is
+      // inferred only in the absence of a measured one.
+      gpu: width / nodes,
+      rdma: collective,
+      // The image declares no USER and its JIT paths derive from HOME, so a pod
+      // that set its own uid dies importing flashinfer; root is what the accepted
+      // groups run as and the only setting this site can claim without a
+      // measurement of its own.
+      securityContext: { runAsUser: 0 },
+      volumes: { hostPathType: "DirectoryOrCreate" },
+      // The record, not the renderer, is what says whether this layout has a cache:
+      // `resolver.py` attaches a cache service exactly when the effective
+      // cache-mode is not vram, and the docker refusal has to follow the plan.
+      cache_service: Boolean(record.cache_service),
+      inferred: true,
+      parameters: {},
+    },
+  };
+  if (collective) {
+    // One group of `nodes` pods is what the record describes. The rollout is the
+    // smallest admissible one -- a group at a time, never a surge, no held
+    // partition -- because anything wider is a claim about fleet capacity this
+    // site has not measured.
+    inferred.deployment.groups = 1;
+    inferred.deployment.rollout = { type: "RollingUpdate", maxUnavailable: 1, maxSurge: 0, partition: 0 };
+  }
+
+  // The one site field the selection itself can answer is the resource name: an
+  // upstream profile takes its profile, hardware and preset, a recipe takes its
+  // slug. Anything the recipe declares for its parameters wins over that, so a
+  // recipe only ever writes the values that are specific to it.
+  const parameters = { ...recipe?.deployment?.parameters ?? {} };
+  if (!hasValue(parameters.name?.default, "string")) {
+    parameters.name = { ...parameters.name, default: recipe?.meta?.slug ?? selectionName(profile, hardware, preset) };
+  }
+
+  if (!recipe) return withSiteParameters({ ...inferred, deployment: { ...inferred.deployment, parameters } }, siteParameters);
+
+  // A validated recipe is the inferred shape plus its measured overrides: every
+  // `deployment` field it carries wins, its own `launch` layer and checkpoint facts
+  // replace the inferred ones, and its parameter entries override only the values
+  // that are specific to it.
+  return withSiteParameters(
+    {
+      ...inferred,
+      meta: recipe.meta ?? inferred.meta,
+      model: { ...inferred.model, ...recipe.model ?? {} },
+      launch: {
+        ...inferred.launch,
+        ...recipe.launch ?? {},
+        options: { ...inferred.launch.options, ...recipe.launch?.options ?? {} },
+        environment: { ...recipe.launch?.environment ?? {} },
+        topology: { ...inferred.launch.topology, ...recipe.launch?.topology ?? {} },
+      },
+      deployment: { ...inferred.deployment, ...recipe.deployment ?? {}, parameters },
+    },
+    siteParameters,
+  );
 }
 
 // The container path the node's model cache is mounted at is the recipe's
@@ -245,7 +494,12 @@ function effectiveCacheMode(recipe, settings) {
 }
 
 function hasCache(recipe, settings) {
-  return effectiveCacheMode(recipe, settings) !== "vram";
+  // The reader's own `cache-mode` edit has the last word, exactly as it does in the
+  // container. Without one, an inferred upstream layout follows the resolver's
+  // answer carried on the record (`record.cache_service`), and a recipe follows its
+  // effective cache-mode -- which is what `resolver.py.configure_cache` decides.
+  if (settings && hasValue(settings["cache-mode"], "string")) return String(settings["cache-mode"]) !== "vram";
+  return recipe.deployment?.cache_service === true || effectiveCacheMode(recipe, settings) !== "vram";
 }
 
 // The cache arena and its memory come from the resolved L1, `cache-l1-gib`
@@ -302,12 +556,16 @@ function envList(environment) {
 // the manifest must inject because no policy file knows the operator's fabric. The
 // HF token is never inlined: it comes from a Secret the reader names in `parameters`.
 function siteEnvironment(recipe, parameters, controlInterface) {
-  return {
-    NCCL_IB_HCA: parameters.hca,
-    NCCL_IB_GID_INDEX: String(parameters.gid_index),
-    NCCL_SOCKET_IFNAME: controlInterface,
-    GLOO_SOCKET_IFNAME: controlInterface,
-  };
+  const environment = {};
+  if (usesRdma(recipe)) {
+    environment.NCCL_IB_HCA = parameters.hca;
+    environment.NCCL_IB_GID_INDEX = String(parameters.gid_index);
+  }
+  if (isCollective(recipe)) {
+    environment.NCCL_SOCKET_IFNAME = controlInterface;
+    environment.GLOO_SOCKET_IFNAME = controlInterface;
+  }
+  return environment;
 }
 
 function hfTokenEnv(parameters) {
@@ -315,10 +573,13 @@ function hfTokenEnv(parameters) {
 }
 
 // The rank identity the launcher reads from `os.environ` in `launch.py.read_rank`:
-// the LWS controller stamps these labels onto every pod, so the manifest sources them
-// through the downward API rather than hard-coding a per-rank template. POD_IP names
-// the pod network address the InferencePool advertises.
-function rankDownwardEnv() {
+// the LWS controller stamps these labels onto every pod of a group, so the manifest
+// sources them through the downward API rather than hard-coding a per-rank template.
+// POD_IP names the pod network address the InferencePool advertises. A single-node
+// pod is not in a group: it has no worker index to read and no leader to reach, and
+// the accepted live pod for that shape carries none of these, so nothing is injected.
+function rankDownwardEnv(recipe) {
+  if (!isCollective(recipe)) return [];
   return [
     { name: "LWS_WORKER_INDEX", valueFrom: { fieldRef: { fieldPath: "metadata.labels['leaderworkerset.sigs.k8s.io/worker-index']" } } },
     { name: "LWS_GROUP_SIZE", valueFrom: { fieldRef: { fieldPath: "metadata.labels['leaderworkerset.sigs.k8s.io/group-size']" } } },
@@ -413,7 +674,7 @@ function modelServerContainer(recipe, parameters, imageReference, settings, envi
   const env = [
     ...envList(siteEnvironment(recipe, parameters, "eth0")),
     hfTokenEnv(parameters),
-    ...rankDownwardEnv(),
+    ...rankDownwardEnv(recipe),
     ...environmentEdits(environment),
   ];
   const securityContext = containerSecurityContext(deployment);
@@ -466,17 +727,13 @@ function modelServerContainer(recipe, parameters, imageReference, settings, envi
 // initContainers carries restartPolicy Always — the old blocking model-sync and
 // rendezvous-wait init containers are gone because the launcher does both in-process.
 function probeSidecar(recipe, settings) {
-  return {
+  const container = {
     name: "probe",
     image: null, // filled by the pod builder so every container shares the digest
     imagePullPolicy: "IfNotPresent",
     restartPolicy: "Always",
     command: ["/opt/venv/bin/vllm-image"],
     args: launcherArgs(recipe, {}, { role: "probe" }),
-    // The probe answers liveness for the engine, so it needs its own CPU and memory
-    // reservation: sharing the engine's cgroup let a spin-heavy rank starve the probe
-    // and kubelet kill a healthy group (the reason liveness left modelserver).
-    resources: { requests: { cpu: "2", memory: "256Mi" }, limits: { memory: "512Mi" } },
     ports: [{ name: "probe", containerPort: probePort(recipe), protocol: "TCP" }],
     volumeMounts: [
       { name: "shm", mountPath: "/dev/shm" },
@@ -486,6 +743,27 @@ function probeSidecar(recipe, settings) {
       { name: "launch-record", mountPath: "/run/vllm-image" },
     ],
   };
+  // The probe answers liveness for the engine, so it needs its own CPU and memory
+  // reservation: sharing the engine's cgroup let a spin-heavy rank starve the probe
+  // and kubelet kill a healthy group (the reason liveness left modelserver). Those
+  // figures are measurements taken on the accepted GB10 groups. An inferred shape
+  // has no measurement, so it gets no reservation at all rather than a borrowed one.
+  if (recipe.deployment?.inferred !== true) {
+    container.resources = { requests: { cpu: "2", memory: "256Mi" }, limits: { memory: "512Mi" } };
+  }
+  return container;
+}
+
+// The cache tier's reservation. Memory tracks the resolved L1 arena, which
+// `resolver.py` sizes from `cache-l1-gib`; the CPU figure is the accepted GB10
+// measurement, so an inferred shape asks for memory alone.
+function cacheResources(recipe, l1) {
+  const resources = {
+    requests: { memory: l1 ? `${l1 + 4}Gi` : "8Gi" },
+    limits: { memory: l1 ? `${l1 + 8}Gi` : "16Gi" },
+  };
+  if (recipe.deployment?.inferred !== true) resources.requests.cpu = "4";
+  return resources;
 }
 
 function cacheSidecar(recipe, parameters, settings, environment) {
@@ -504,11 +782,10 @@ function cacheSidecar(recipe, parameters, settings, environment) {
     args: launcherArgs(recipe, {}, { role: "cache" }),
     env,
     // The cache owns no GPU: it is a RAM/LMCache tier process, and requesting a GPU
-    // would take the engine's only device on a one-GPU node.
-    resources: {
-      requests: { cpu: "4", memory: l1 ? `${l1 + 4}Gi` : "8Gi" },
-      limits: { memory: l1 ? `${l1 + 8}Gi` : "16Gi" },
-    },
+    // would take the engine's only device on a one-GPU node. Its memory follows the
+    // resolved L1; the CPU reservation is a GB10 measurement, so an inferred shape
+    // gets none.
+    resources: cacheResources(recipe, l1),
     startupProbe: { httpGet: { path: "/healthcheck", port: cachePort }, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 60 },
     volumeMounts: [
       { name: "shm", mountPath: "/dev/shm" },
@@ -585,11 +862,17 @@ function workerPodSpec(recipe, parameters, imageReference, settings, environment
   };
 }
 
-function podMetadata(parameters) {
-  return {
+function podMetadata(recipe, parameters) {
+  const metadata = {
     labels: { app: parameters.name, "llm-d.ai/model": parameters.name, "llm-d.ai/engine-type": "vllm" },
-    annotations: { "k8s.v1.cni.cncf.io/networks": parameters.network_attachment },
   };
+  // The Multus attachment is the group's secondary collective network; a single-node
+  // pod opens none, and the accepted live pod for that shape carries no such
+  // annotation, so the key is left off rather than emitted with an empty value.
+  if (fieldInScope(recipe, "network_attachment") && hasValue(parameters.network_attachment, "string")) {
+    metadata.annotations = { "k8s.v1.cni.cncf.io/networks": parameters.network_attachment };
+  }
+  return metadata;
 }
 
 // -- LWS ------------------------------------------------------------------------
@@ -605,8 +888,10 @@ function renderLws(recipe, parameters, imageReference, settings, environment) {
     metadata: { name: `${parameters.name}-serve`, namespace: parameters.namespace, labels: { app: parameters.name } },
     spec: {
       // Only rank zero serves the API (the others are headless in topology_args), so
-      // the debug Service selects the worker-index-0 pods.
-      selector: { app: parameters.name, "leaderworkerset.sigs.k8s.io/worker-index": "0" },
+      // a group's debug Service selects its worker-index-0 pods. A single-node pod is
+      // not in a group and carries no such label -- that selector would match nothing
+      // -- so the shape decides, exactly as the accepted live Service does.
+      selector: lws ? { app: parameters.name, "leaderworkerset.sigs.k8s.io/worker-index": "0" } : { app: parameters.name },
       ports: [{ name: "modelserver", port, targetPort: "modelserver" }],
     },
   };
@@ -643,7 +928,7 @@ function renderLws(recipe, parameters, imageReference, settings, environment) {
             startupPolicy: "LeaderCreated",
             networkConfig: { subdomainPolicy: "Shared" },
             rolloutStrategy: { type: rollout.type, rollingUpdateConfiguration: { maxUnavailable: rollout.maxUnavailable, maxSurge: rollout.maxSurge, partition: rollout.partition } },
-            leaderWorkerTemplate: { size: nodes, restartPolicy: deployment.restartPolicy ?? "RecreateGroupAfterStart", workerTemplate: { metadata: podMetadata(parameters), spec: podSpec } },
+            leaderWorkerTemplate: { size: nodes, restartPolicy: deployment.restartPolicy ?? "RecreateGroupAfterStart", workerTemplate: { metadata: podMetadata(recipe, parameters), spec: podSpec } },
           },
         };
       })()
@@ -655,7 +940,7 @@ function renderLws(recipe, parameters, imageReference, settings, environment) {
           replicas: effectiveReplicas(recipe, settings),
           strategy: { type: "Recreate" },
           selector: { matchLabels: { app: parameters.name } },
-          template: { metadata: podMetadata(parameters), spec: podSpec },
+          template: { metadata: podMetadata(recipe, parameters), spec: podSpec },
         },
       };
 
@@ -690,18 +975,23 @@ function renderDocker(recipe, parameters, imageReference, settings, environment)
   const nodes = lws ? recipe.launch.topology.nodes : 1;
   const port = servingPort(recipe, settings);
 
-  const commonRun = (rank) => {
-    const args = [
-      "docker", "run", "--detach", "--name", `${parameters.name}-rank${rank}`, "--user", "0",
-      "--network", "host", "--gpus", "all", "--device", "/dev/infiniband",
-      "--cap-add", "IPC_LOCK", "--ulimit", "memlock=-1", "--shm-size", "64g", "--stop-timeout", "120",
+  // One builder for both layouts, so the single-node run and the per-rank run can
+  // not disagree about anything but the rank identity.
+  const run = ({ name, rm = false, rank = null }) => {
+    const args = ["docker", "run", rm ? "--rm" : "--detach", "--name", name, "--user", "0", "--network", "host", "--gpus", "all"];
+    // The RoCE device and the page-locking capability belong to the collective. A
+    // single-node run opens no HCA, and asking docker for a /dev/infiniband the host
+    // does not have fails the run outright.
+    if (usesRdma(recipe)) args.push("--device", "/dev/infiniband", "--cap-add", "IPC_LOCK");
+    args.push(
+      "--ulimit", "memlock=-1", "--shm-size", "64g", "--stop-timeout", "120",
       "-v", modelMount(recipe, parameters),
       "-v", `${parameters.jit_storage_path}:/cache`,
       "-e", "HF_TOKEN", "-e", "HF_XET_HIGH_PERFORMANCE=1",
-    ];
-    for (const [name, value] of Object.entries(siteEnvironment(recipe, parameters, parameters.control_interface))) args.push("-e", `${name}=${value}`);
+    );
+    for (const [variable, value] of Object.entries(siteEnvironment(recipe, parameters, parameters.control_interface))) args.push("-e", `${variable}=${value}`);
     for (const edit of environmentEdits(environment)) args.push("-e", `${edit.name}=${edit.value}`);
-    if (lws) {
+    if (rank !== null) {
       args.push("-e", `LWS_WORKER_INDEX=${rank}`, "-e", `LWS_GROUP_SIZE=${nodes}`, "-e", `LWS_LEADER_ADDRESS=${rank === 0 ? "127.0.0.1" : parameters.leader_ip}`);
     }
     args.push("--entrypoint", "/opt/venv/bin/vllm-image", imageReference, ...launcherArgs(recipe, settings));
@@ -709,19 +999,24 @@ function renderDocker(recipe, parameters, imageReference, settings, environment)
   };
 
   const lines = ["#!/bin/sh", "set -eu", ""];
+  const containers = [];
   if (nodes === 1) {
-    lines.push(shellCommand(["docker", "run", "--rm", "--name", `${parameters.name}-once`, "--user", "0", "--network", "host", "--gpus", "all", "--device", "/dev/infiniband", "--cap-add", "IPC_LOCK", "--ulimit", "memlock=-1", "--shm-size", "64g", "--stop-timeout", "120", "-v", modelMount(recipe, parameters), "-v", `${parameters.jit_storage_path}:/cache`, "-e", "HF_TOKEN", "--entrypoint", "/opt/venv/bin/vllm-image", imageReference, ...launcherArgs(recipe, settings)]), "");
+    const once = `${parameters.name}-once`;
+    containers.push(once);
+    lines.push(shellCommand(run({ name: once, rm: true })), "");
   } else {
     for (let rank = 0; rank < nodes; rank += 1) {
+      const container = `${parameters.name}-rank${rank}`;
+      containers.push(container);
       const host = rank === 0 ? parameters.leader_ip : parameters.worker_ip;
-      lines.push(`# rank ${rank} on ${host}`, shellCommand(commonRun(rank)), "");
+      lines.push(`# rank ${rank} on ${host}`, shellCommand(run({ name: container, rank })), "");
     }
   }
   const files = [{ name: "serve.sh", body: lines.join("\n") }];
   const steps = [
     shellCommand(["sh", "serve.sh"]),
-    shellCommand(["docker", "logs", "--follow", `${parameters.name}-rank0`]),
-    shellCommand(["docker", "stop", "--time", "120", ...Array.from({ length: nodes }, (_, rank) => `${parameters.name}-rank${rank}`)]),
+    shellCommand(["docker", "logs", "--follow", containers[0]]),
+    shellCommand(["docker", "stop", "--time", "120", ...containers]),
   ];
   void port;
   return { files, steps };
@@ -937,7 +1232,9 @@ function routingResources(recipe, parameters, servedModel) {
     } } },
   };
   const service = { apiVersion: "v1", kind: "Service", metadata: { name: eppName, namespace, labels: { app: eppName } }, spec: { selector: { app: eppName }, ports: [{ name: "grpc", port: 9002, targetPort: "grpc", protocol: "TCP" }, { name: "metrics", port: 9090, targetPort: "metrics", protocol: "TCP" }] } };
-  const pool = { apiVersion: "inference.networking.k8s.io/v1", kind: "InferencePool", metadata: { name: poolName, namespace }, spec: { appProtocol: "http", selector: { matchLabels: { app: name, "leaderworkerset.sigs.k8s.io/worker-index": "0" } }, targetPorts: [{ number: servingPort(recipe, {}) }], endpointPickerRef: { name: eppName, port: { number: 9002 }, failureMode: "FailClose" } } };
+  // The pool fronts the pods that serve: rank zero of each group for a group, every
+  // pod of a single-node Deployment (its replicas are independent engines).
+  const pool = { apiVersion: "inference.networking.k8s.io/v1", kind: "InferencePool", metadata: { name: poolName, namespace }, spec: { appProtocol: "http", selector: { matchLabels: isCollective(recipe) ? { app: name, "leaderworkerset.sigs.k8s.io/worker-index": "0" } : { app: name } }, targetPorts: [{ number: servingPort(recipe, {}) }], endpointPickerRef: { name: eppName, port: { number: 9002 }, failureMode: "FailClose" } } };
   const gateway = { apiVersion: "gateway.networking.k8s.io/v1", kind: "Gateway", metadata: { name: gatewayName, namespace }, spec: { gatewayClassName: parameters.gateway_class, listeners: [{ name: "http", protocol: "HTTP", port: 10080 }] } };
   const route = { apiVersion: "aigateway.envoyproxy.io/v1beta1", kind: "AIGatewayRoute", metadata: { name: routeName, namespace }, spec: { parentRefs: [{ name: gatewayName, namespace }], rules: [{ matches: [{ headers: [{ type: "Exact", name: "x-ai-eg-model", value: servedModel }] }], backendRefs: [{ group: "inference.networking.k8s.io", kind: "InferencePool", name: poolName }], timeouts: { request: "3600s" } }] } };
   const backendTimeouts = { apiVersion: "gateway.envoyproxy.io/v1alpha1", kind: "BackendTrafficPolicy", metadata: { name: `${name}-backend-timeouts`, namespace }, spec: { targetRefs: [{ group: "gateway.networking.k8s.io", kind: "HTTPRoute", name: routeName }], timeout: { http: { requestTimeout: "3600s" } } } };

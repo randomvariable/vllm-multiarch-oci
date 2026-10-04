@@ -17,6 +17,13 @@ the page: the published releases, the launcher's own resolved configuration, the
 pinned upstream parameter documentation, and this repository's recipe files. A value
 you see is a value the container will use.
 
+The deployment shape comes from the resolution too: node count, the device count each
+pod asks for, and whether the collective network is needed at all. Every selection the
+flow lists therefore renders Kubernetes, Docker, Compose and routing output -- a recipe
+contributes the values it measured on live hardware, and an upstream profile nobody has
+measured here is rendered without any cpu, memory or storage claim, labelled as
+unvalidated.
+
 - [Recipes](./recipes/) document each deployment, why its settings are what they
   are, and what was measured.
 - [Image releases](./image-releases/) covers architecture support, and every build
