@@ -882,8 +882,14 @@ def entrypoint(argv: list[str] | None = None) -> int:
     if arguments[0] in LAUNCHER_OPTIONS:
         return run(arguments)
     environment = dict(os.environ)
-    environment.setdefault("PYTHONPATH", SITE_PACKAGES)
-    environment.setdefault("LD_LIBRARY_PATH", NATIVE_LIBRARY_PATH)
+    # Prepend, never setdefault: a pod or docker run that supplies its own
+    # LD_LIBRARY_PATH would otherwise lose /opt/nccl/lib entirely, and one that
+    # supplies PYTHONPATH would lose the venv's site-packages. Same rule as
+    # child_environment, which builds the launched engine's environment.
+    environment["PYTHONPATH"] = _prepend_path(environment.get("PYTHONPATH", ""), SITE_PACKAGES)
+    environment["LD_LIBRARY_PATH"] = _prepend_path(
+        environment.get("LD_LIBRARY_PATH", ""), NATIVE_LIBRARY_PATH
+    )
     os.execve(
         INTERPRETER, [INTERPRETER, "-m", "vllm.entrypoints.cli.main", *arguments], environment
     )

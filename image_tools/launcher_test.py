@@ -20,11 +20,21 @@ import yaml
 
 from image_tools.launcher import cache_runtime, launch, probe_server, resolver
 from image_tools.launcher.probes import ProbeConfig, write_config
-
-REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
-UPSTREAM_RUNTIME = Path(
-    "/home/naadir/go/src/github.com/local-inference-lab/blackwell-llm-docker/runtime"
+from image_tools.upstream_runtime import (
+    REPOSITORY_ROOT,
+    UPSTREAM_RUNTIME,
+    UpstreamTree,
 )
+
+# The launcher reads its policy data from VLLM_IMAGE_DATA_ROOT, whose default
+# /opt/vllm-image/runtime exists only inside the image, so every case that
+# resolves something points the resolver at the pinned upstream checkout
+# instead. LIL_RUNTIME_CHECKOUT says where that checkout is, and where the lane
+# declares it mandatory -- LIL_RUNTIME_REQUIRED, as the image_tools host lane of
+# .github/workflows/recipes-pages.yaml does -- an absent tree fails rather than
+# skipping. Both rules come from image_tools/upstream_runtime.py.
+TREE = UpstreamTree("options.yaml")
+upstream_only = TREE.gate
 
 BASE_VALUES = {
     "port": 8888,
@@ -424,6 +434,7 @@ class EntrypointTests(unittest.TestCase):
             env=environment,
         )
 
+    @upstream_only
     def test_launcher_options_select_the_launcher(self):
         result = self.invoke(
             "launch", "--profile", "qwen38-flash-next", "--hardware", "native", "--print-config"
@@ -472,7 +483,7 @@ class EntrypointTests(unittest.TestCase):
         self.assertIn("--recipe", result.stderr)
         self.assertIn("--profile", result.stderr)
 
-    @unittest.skipUnless(UPSTREAM_RUNTIME.is_dir(), "pinned upstream policy data is not checked out")
+    @upstream_only
     def test_probe_role_serves_the_endpoints(self):
         # In-process, so the data root has to be pointed at the pinned policy tree
         # the way `invoke` points the subprocess at it: the default is the image's
@@ -501,6 +512,7 @@ class EntrypointTests(unittest.TestCase):
                 "--headless",
             )
 
+    @upstream_only
     def test_cache_role_without_a_cache_is_refused(self):
         result = self.invoke(
             "launch", "--profile", "qwen38-flash-next", "--hardware", "native", "--role", "cache",
@@ -509,7 +521,7 @@ class EntrypointTests(unittest.TestCase):
         self.assertIn("--cache-mode", result.stderr)
 
 
-@unittest.skipUnless(UPSTREAM_RUNTIME.is_dir(), "pinned upstream policy data is not checked out")
+@upstream_only
 class ResolutionTests(unittest.TestCase):
     """The launcher must add rank and probe wiring without disturbing policy."""
 

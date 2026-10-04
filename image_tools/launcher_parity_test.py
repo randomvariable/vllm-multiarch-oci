@@ -22,18 +22,17 @@ declares the pin mandatory -- ``LIL_RUNTIME_REQUIRED=1``, which is what the
 launcher-tests job of ``.github/workflows/recipes-pages.yaml`` sets -- since a
 gate that has only ever passed by skipping never caught the drift it exists to
 catch. A workstation run without that switch is the one case allowed to skip,
-with a message naming the path and the commit to clone. Every comparison set
-also asserts that the cases it planned ran, and ``tearDownModule`` prints the
-number that was actually compared.
+with a message naming the path and the commit to clone. That resolution and
+that rule live in ``image_tools/upstream_runtime.py``, shared with
+``launcher_test.py`` and ``launcher_data_test.py`` rather than restated here.
+Every comparison set also asserts that the cases it planned ran, and
+``tearDownModule`` prints the number that was actually compared.
 """
 
 from __future__ import annotations
 
 import ast
-import functools
 import json
-import os
-import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -41,97 +40,27 @@ from pathlib import Path
 from image_tools.launcher import ConfigError
 from image_tools.launcher import resolver
 
-DEFAULT_CHECKOUT = Path(
-    "/home/naadir/go/src/github.com/local-inference-lab/blackwell-llm-docker"
-)
-UPSTREAM_CHECKOUT = Path(os.environ.get("LIL_RUNTIME_CHECKOUT") or DEFAULT_CHECKOUT)
-UPSTREAM_RUNTIME = UPSTREAM_CHECKOUT / "runtime"
-UPSTREAM_LAUNCHER = UPSTREAM_RUNTIME / "launcher.py"
-# The pin belongs to the profile, not to this file:
-# scripts/refresh-vllmb12x.py moves it together with the vLLM and B12X pins,
-# and a duplicate literal here would quietly compare the port against a tree
-# that nothing else claims is pinned.
-PROFILE = Path(__file__).resolve().parents[1] / "profiles" / "vllmb12x" / "profile.json"
-LIL_RUNTIME = json.loads(PROFILE.read_text())["sources"]["lil_runtime"]
-UPSTREAM_REMOTE = LIL_RUNTIME["remote"]
-UPSTREAM_COMMIT = LIL_RUNTIME["commit"]
-# Where the absence of the tree is a defect rather than a convenience: the CI
-# lane is the only place a pinned upstream can drift out from under the port.
-REQUIRED = os.environ.get("LIL_RUNTIME_REQUIRED", "").strip().lower() in ("1", "true", "yes")
-
-
-def _revision() -> str | None:
-    """HEAD of the checkout, or None when it cannot be read."""
-    result = subprocess.run(
-        ["git", "-C", str(UPSTREAM_CHECKOUT), "rev-parse", "HEAD"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    return result.stdout.strip() or None
-
-
-# Only a tree that is there is asked for its commit: an absent checkout is
-# reported by its own reason, not as a mismatch. A tree whose commit cannot be
-# read is unverified, and an unverified tree is what this gate exists to rule
-# out, so a missing ``git`` is a failure rather than a pass.
-UPSTREAM_PRESENT = UPSTREAM_LAUNCHER.is_file()
-UPSTREAM_HEAD = _revision() if UPSTREAM_PRESENT else None
-UPSTREAM_MISMATCH = UPSTREAM_PRESENT and UPSTREAM_HEAD != UPSTREAM_COMMIT
-UPSTREAM_AVAILABLE = UPSTREAM_PRESENT and not UPSTREAM_MISMATCH
-
-SKIP_REASON = (
-    f"pinned upstream checkout is absent: {UPSTREAM_CHECKOUT} @ {UPSTREAM_COMMIT} "
-    f"(clone {UPSTREAM_REMOTE} at that commit, or point LIL_RUNTIME_CHECKOUT at it)"
-)
-REQUIRED_REASON = (
-    f"{SKIP_REASON}; LIL_RUNTIME_REQUIRED says this lane must have it, so an "
-    "absent checkout is a broken gate and not a passing one"
-)
-MISMATCH_REASON = (
-    f"{UPSTREAM_CHECKOUT} is at "
-    f"{UPSTREAM_HEAD or 'an unreadable commit'}, not the pinned {UPSTREAM_COMMIT} "
-    "from profiles/vllmb12x/profile.json: comparing the port against a tree that "
-    "is not the pin proves nothing"
+from image_tools.upstream_runtime import (
+    UPSTREAM_CHECKOUT,
+    UPSTREAM_COMMIT,
+    UPSTREAM_RUNTIME,
+    UpstreamTree,
 )
 
 # What the gate actually compared, so a run that compared nothing cannot print
 # the same OK as a run that compared the whole matrix.
 COMPARISONS = {"count": 0}
 
-
-def upstream_barrier() -> BaseException:
-    """What the gate raises when the pinned tree is not usable.
-
-    An ``AssertionError`` wherever the checkout is at the wrong commit or the
-    lane declared it mandatory -- both mean the comparison silently stopped
-    happening -- and a ``SkipTest`` only for the developer who genuinely has not
-    cloned upstream yet.
-    """
-    if UPSTREAM_MISMATCH:
-        return AssertionError(MISMATCH_REASON)
-    if REQUIRED:
-        return AssertionError(REQUIRED_REASON)
-    return unittest.SkipTest(SKIP_REASON)
-
-
-def upstream_only(item):
-    """Gate one case, or a whole class of them, on the pinned checkout."""
-    if UPSTREAM_AVAILABLE:
-        return item
-    if isinstance(item, type):
-
-        def setUpClass(cls):
-            raise upstream_barrier()
-
-        item.setUpClass = classmethod(setUpClass)
-        return item
-
-    @functools.wraps(item)
-    def gate(self, *args, **kwargs):
-        raise upstream_barrier()
-
-    return gate
+# The pinned tree this module compares the port against. ``launcher.py`` is the
+# file it imports, so that is what a usable checkout means here.
+TREE = UpstreamTree("launcher.py")
+UPSTREAM_PRESENT = TREE.present
+UPSTREAM_HEAD = TREE.head
+UPSTREAM_MISMATCH = TREE.mismatch
+UPSTREAM_AVAILABLE = TREE.available
+SKIP_REASON = TREE.skip_reason
+upstream_barrier = TREE.barrier
+upstream_only = TREE.gate
 
 
 if UPSTREAM_AVAILABLE:  # depends on the pinned checkout, not on this repository
