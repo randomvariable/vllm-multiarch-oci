@@ -334,6 +334,61 @@ docs:
 deployment:
   nodes: 2
   tensor_parallel_size: 2
+
+  # -- cluster shape -------------------------------------------------------------
+  # DeepSeek is the second tenant of the same two-node RoCE GB10 fleet and has not
+  # been accepted on a group of its own yet, so its manifest shape inherits the
+  # accepted GB10 TP=2 envelope the sibling Qwen recipe documents: three groups, a
+  # no-surge rolling rollout, the dgx placement/taint, four GPUs with the RDMA
+  # allocator, root plus IPC_LOCK, group fsGroup 0, DirectoryOrCreate hostPaths, and
+  # the two-hour startup / 6x15s readiness httpGet windows with no liveness. Every
+  # number traces to the live manifest the Qwen recipe cites --
+  # src/rv/k8s/clusters/home/llm-d/qwen38-flash-next.yaml (groups 138, rollout
+  # 142-151, nodeSelector 169-171, tolerations 191-195, requests/limits 675-689,
+  # securityContext 327-332, pod fsGroup 199-200, hostPaths 754-765, probes
+  # 711/715/727-732) -- and is recorded here, not invented.
+  groups: 3
+  restartPolicy: RecreateGroupAfterStart
+  rollout:
+    type: RollingUpdate
+    maxUnavailable: 1
+    maxSurge: 0
+    partition: 0
+  nodeSelector:
+    kubernetes.io/arch: arm64
+    node-role.kubernetes.io/dgx: ""
+  tolerations:
+    - key: dgx
+      operator: Equal
+      value: "true"
+      effect: NoSchedule
+  gpu: 4
+  rdma: true
+  resources:
+    requests:
+      cpu: "8"
+      memory: 96Gi
+      ephemeral-storage: 128Gi
+    limits: {}
+  securityContext:
+    runAsUser: 0
+    capabilities:
+      add: [IPC_LOCK]
+  podSecurityContext:
+    fsGroup: 0
+  volumes:
+    hostPathType: DirectoryOrCreate
+  # No livenessProbe: inherited with the rest of the accepted GB10 shape, and the
+  # live group carries none (an invented window killed healthy groups before).
+  probes:
+    startup:
+      periodSeconds: 30
+      timeoutSeconds: 5
+      failureThreshold: 240
+    readiness:
+      periodSeconds: 15
+      timeoutSeconds: 5
+      failureThreshold: 6
   # The HF cache root the launcher downloads into before it publishes; the
   # engine only ever reads `model_path`. One volume, one identity: the published
   # root is `<storage_root>/<served-model-name>`, which
@@ -416,10 +471,10 @@ deployment:
     node_selector:
       label: GPU node selector
       type: stringMap
-      required: true
+      required: false
       default: {}
       targets: [lws]
-      description: Site-specific labels selecting the two GB10 nodes; arm64 is enforced separately.
+      description: Operator-added node labels for the two GB10 nodes; the architecture and dgx role come from the recipe's `deployment.nodeSelector`.
       help: {label: Find node labels, href: guides/deploy-tp2/#node-placement}
     topology_key:
       label: Exclusive topology key

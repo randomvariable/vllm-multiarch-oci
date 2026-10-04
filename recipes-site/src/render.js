@@ -48,6 +48,14 @@ const REQUIRED_PRESENT = {
 const DEFAULT_PORT = 8888;
 const DEFAULT_RENDEZVOUS_PORT = 25000;
 const DEFAULT_PROBE_PORT = 8890;
+
+// The httpGet probe windows the accepted single-node Deployment falls back to when a
+// recipe declares none. These are the launcher-form windows already carried for the
+// accepted GB10 groups (see the TP=2 recipe `deployment.probes`); a recipe that names
+// its own windows overrides them, so no cluster value is invented here -- it is the
+// value the accepted manifests already used.
+const DEFAULT_STARTUP_PROBE = { periodSeconds: 30, timeoutSeconds: 5, failureThreshold: 240 };
+const DEFAULT_READINESS_PROBE = { periodSeconds: 15, timeoutSeconds: 5, failureThreshold: 6 };
 // The engine stop budget the accepted manifests carry, plus the cache stop grace
 // from `resolver.py`: STOP_GRACE_SECONDS = 10 and CHECKPOINT_SHUTDOWN_FLUSH_SECONDS
 // = 30. The pod must outlive a graceful engine drain and a RAM-checkpoint flush.
@@ -320,30 +328,99 @@ function rankDownwardEnv() {
   ];
 }
 
-function gpuAndRdmaRequests(parameters) {
-  return {
-    cpu: "8",
-    memory: "96Gi",
-    "ephemeral-storage": "128Gi",
-    "nvidia.com/gpu": "1",
-    [parameters.rdma_resource]: String(parameters.rdma_units),
-  };
+// -- cluster shape read from `deployment` ---------------------------------------
+//
+// Every value below is the live cluster's, not the renderer's: the GPU count, the
+// resource maps, the container and pod security context, the tolerations, the node
+// placement and the hostPath type all come from the recipe's `deployment` block, so
+// the generated manifest carries no hand-written cluster literal. A manifest target
+// reads them with `fail()` when the recipe omitted one it needs, rather than defaulting
+// to a value the operator never chose.
+function deploymentSection(recipe) {
+  const deployment = recipe.deployment;
+  if (!deployment || typeof deployment !== "object" || Array.isArray(deployment)) fail("deployment is required for a manifest target");
+  return deployment;
+}
+
+// The non-device resources (cpu, memory, ephemeral-storage) come straight from the
+// recipe. A slashed extended-resource name is refused here because the GPU and RDMA
+// entries are injected from the single sources below, not written into a map: this is
+// what makes requests and limits agree by construction rather than by convention.
+function resourceMap(map, where) {
+  if (map === undefined || map === null) return {};
+  if (typeof map !== "object" || Array.isArray(map)) fail(`${where} must be a mapping`);
+  const out = {};
+  for (const [name, value] of Object.entries(map)) {
+    if (name.includes("/")) fail(`${where}.${name}: nvidia.com/gpu and the RDMA resource are set from deployment.gpu and deployment.rdma, not from a resource map`);
+    if (value === undefined || value === null || String(value).trim() === "") fail(`${where}.${name} must carry a value`);
+    out[name] = String(value);
+  }
+  return out;
+}
+
+// The scheduler admits a pod on the request and the container's device visibility
+// comes from the limit, so those two MUST name the same GPU count -- a pod admitted
+// for N GPUs and handed M devices is a silent, expensive failure. This is the one
+// cross-map rule, and it is enforced structurally: `deployment.gpu` (and, for a
+// RoCE recipe, `parameters.rdma_units`) is written into BOTH maps here, so a recipe
+// cannot express a disagreement. Nothing else is required to match between them --
+// the single-node recipe caps memory and storage below its request, for example.
+function gpuAndRdmaResources(deployment, parameters, base) {
+  const out = { ...base };
+  if (!Number.isSafeInteger(deployment.gpu) || deployment.gpu < 1) fail("deployment.gpu must be a positive integer");
+  out["nvidia.com/gpu"] = String(deployment.gpu);
+  if (deployment.rdma) out[parameters.rdma_resource] = String(parameters.rdma_units);
+  return out;
+}
+
+function containerSecurityContext(deployment) {
+  const context = deployment.securityContext;
+  if (context === undefined || context === null) return undefined;
+  if (typeof context !== "object" || Array.isArray(context)) fail("deployment.securityContext must be a mapping");
+  const out = {};
+  for (const key of ["runAsUser", "runAsGroup", "runAsNonRoot"]) {
+    if (context[key] !== undefined && context[key] !== null) out[key] = context[key];
+  }
+  const capabilities = context.capabilities;
+  if (capabilities !== undefined && capabilities !== null) {
+    if (typeof capabilities !== "object" || Array.isArray(capabilities)) fail("deployment.securityContext.capabilities must be a mapping");
+    const add = capabilities.add ?? [];
+    const drop = capabilities.drop ?? [];
+    if (!add.length && !drop.length) fail("deployment.securityContext.capabilities is empty; omit it instead of declaring no capabilities");
+    out.capabilities = {};
+    if (add.length) out.capabilities.add = add;
+    if (drop.length) out.capabilities.drop = drop;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+function httpGetProbe(window, path, port, where) {
+  const source = window ?? {};
+  const probe = { httpGet: { path, port } };
+  for (const key of ["periodSeconds", "timeoutSeconds", "failureThreshold"]) {
+    const value = source[key];
+    if (!Number.isSafeInteger(value) || value < 1) fail(`${where}.${key} must be a positive integer`);
+    probe[key] = value;
+  }
+  return probe;
 }
 
 function modelServerContainer(recipe, parameters, imageReference, settings, environment) {
   const port = servingPort(recipe, settings);
   const probe = probePort(recipe);
+  const deployment = deploymentSection(recipe);
+  const probes = deployment.probes ?? {};
   const env = [
     ...envList(siteEnvironment(recipe, parameters, "eth0")),
     hfTokenEnv(parameters),
     ...rankDownwardEnv(),
     ...environmentEdits(environment),
   ];
-  return {
+  const securityContext = containerSecurityContext(deployment);
+  const container = {
     name: "modelserver",
     image: imageReference,
     imagePullPolicy: "IfNotPresent",
-    securityContext: { runAsUser: 0, capabilities: { add: ["IPC_LOCK"] } },
     command: ["/opt/venv/bin/vllm-image"],
     args: launcherArgs(recipe, settings),
     env,
@@ -352,12 +429,15 @@ function modelServerContainer(recipe, parameters, imageReference, settings, envi
       ...(recipe.launch.topology.kind === "lws" ? [{ name: "rdzv", containerPort: rendezvousPort(recipe), protocol: "TCP" }] : []),
     ],
     resources: {
-      requests: gpuAndRdmaRequests(parameters),
-      limits: { "nvidia.com/gpu": "1", [parameters.rdma_resource]: String(parameters.rdma_units) },
+      requests: gpuAndRdmaResources(deployment, parameters, resourceMap(deployment.resources?.requests, "deployment.resources.requests")),
+      limits: gpuAndRdmaResources(deployment, parameters, resourceMap(deployment.resources?.limits, "deployment.resources.limits")),
     },
-    startupProbe: { httpGet: { path: "/readyz", port: probe }, periodSeconds: 30, timeoutSeconds: 5, failureThreshold: 240 },
-    readinessProbe: { httpGet: { path: "/readyz", port: probe }, periodSeconds: 15, timeoutSeconds: 5, failureThreshold: 6 },
-    livenessProbe: { httpGet: { path: "/livez", port: probe }, periodSeconds: 20, timeoutSeconds: 5, failureThreshold: 6 },
+    // startupProbe and readinessProbe are httpGet on the probe sidecar's /readyz, with
+    // the windows the recipe declares (the accepted GB10 groups carry 30/5/240 and
+    // 15/5/6). A recipe that declares none -- a single-node Deployment -- takes the
+    // accepted launcher-form defaults, so nothing is invented here.
+    startupProbe: httpGetProbe(probes.startup ?? DEFAULT_STARTUP_PROBE, "/readyz", probe, "deployment.probes.startup"),
+    readinessProbe: httpGetProbe(probes.readiness ?? DEFAULT_READINESS_PROBE, "/readyz", probe, "deployment.probes.readiness"),
     volumeMounts: [
       { name: "shm", mountPath: "/dev/shm" },
       { name: "jit-cache", mountPath: "/cache" },
@@ -369,6 +449,16 @@ function modelServerContainer(recipe, parameters, imageReference, settings, envi
       { name: "launch-record", mountPath: "/run/vllm-image" },
     ],
   };
+  if (securityContext) container.securityContext = securityContext;
+  // A livenessProbe is emitted ONLY when the recipe declares one and marks its window
+  // measured. The measurement is the worst /livez response during a 1M-token prefill on
+  // both ranks; inventing a window is exactly what previously killed healthy groups, so
+  // an unmeasured or absent liveness block leaves the key off entirely.
+  if (probes.liveness) {
+    if (probes.liveness.measured !== true) fail("deployment.probes.liveness declares a window but is not marked measured; omit it until /livez is measured on both ranks");
+    container.livenessProbe = httpGetProbe(probes.liveness, "/livez", probe, "deployment.probes.liveness");
+  }
+  return container;
 }
 
 // A native sidecar is an initContainer whose restartPolicy is Always; the acceptance
@@ -429,28 +519,43 @@ function cacheSidecar(recipe, parameters, settings, environment) {
 
 function workerPodSpec(recipe, parameters, imageReference, settings, environment, { single = false } = {}) {
   const cache = hasCache(recipe, settings);
+  const deployment = deploymentSection(recipe);
   const initContainers = [probeSidecar(recipe, settings)];
   if (cache) initContainers.push(cacheSidecar(recipe, parameters, settings, environment));
   for (const container of initContainers) container.image = imageReference;
+  // The hostPath type is a per-deployment choice the recipe makes (every accepted
+  // manifest so far uses DirectoryOrCreate); the two host paths themselves come from
+  // the site parameters, so no node path is invented here.
+  const hostPathType = deployment.volumes?.hostPathType;
+  if (typeof hostPathType !== "string" || !hostPathType) fail("deployment.volumes.hostPathType must name the hostPath type the accepted manifest uses");
   const volumes = [
     // The cache arena and the engine's shm_broadcast share one tmpfs: the launcher
     // opens the LMCache arena under /dev/shm (cache_runtime.SHM_ROOT) and the engine
     // reads it, so both mount the SAME volume rather than two private ones.
     { name: "shm", emptyDir: { medium: "Memory", sizeLimit: cache ? `${(cacheL1GiB(recipe, settings) ?? 64) + 8}Gi` : "64Gi" } },
-    { name: "jit-cache", hostPath: { path: parameters.jit_storage_path, type: "DirectoryOrCreate" } },
-    { name: "model-weights", hostPath: { path: parameters.model_storage_path, type: "DirectoryOrCreate" } },
+    { name: "jit-cache", hostPath: { path: parameters.jit_storage_path, type: hostPathType } },
+    { name: "model-weights", hostPath: { path: parameters.model_storage_path, type: hostPathType } },
     // Carries the launcher record both the engine and the probe read, and the cache
     // validates against; shared so the sidecars see what the engine published.
     { name: "launch-record", emptyDir: {} },
   ];
   const grace = ENGINE_STOP_GRACE_SECONDS + (cache ? CACHE_STOP_GRACE_SECONDS : 0);
+  // Node placement is entirely recipe-driven: the accepted GB10 groups carry the
+  // arm64 architecture and the dgx node role here, while a single-host recipe pins
+  // only the site parameter (a hostname) and names no architecture at all. An empty
+  // merged map renders as no nodeSelector key, never as `{}`.
+  const nodeSelector = { ...(deployment.nodeSelector ?? {}), ...(parameters.node_selector ?? {}) };
+  const tolerations = Array.isArray(deployment.tolerations) ? deployment.tolerations : [];
+  if (deployment.tolerations !== undefined && deployment.tolerations !== null && !tolerations.length) fail("deployment.tolerations is an empty list; omit the key instead of declaring no tolerations");
+  const podSecurityContext = deployment.podSecurityContext;
+  if (podSecurityContext !== undefined && podSecurityContext !== null && !Object.keys(podSecurityContext).length) fail("deployment.podSecurityContext is empty; omit the key instead of declaring no pod security context");
   return {
     runtimeClassName: single ? undefined : "nvidia",
     enableServiceLinks: false,
     subdomain: parameters.name,
     shareProcessNamespace: true,
+    ...(Object.keys(nodeSelector).length ? { nodeSelector } : {}),
     ...(single ? {} : {
-      nodeSelector: { "kubernetes.io/arch": "arm64", ...parameters.node_selector },
       affinity: {
         nodeAffinity: {
           requiredDuringSchedulingIgnoredDuringExecution: {
@@ -471,8 +576,9 @@ function workerPodSpec(recipe, parameters, imageReference, settings, environment
         },
       },
     }),
+    ...(tolerations.length ? { tolerations } : {}),
     terminationGracePeriodSeconds: grace,
-    securityContext: { fsGroup: 0 },
+    ...(podSecurityContext ? { securityContext: podSecurityContext } : {}),
     initContainers,
     containers: [modelServerContainer(recipe, parameters, imageReference, settings, environment)],
     volumes,
@@ -491,6 +597,7 @@ function podMetadata(parameters) {
 function renderLws(recipe, parameters, imageReference, settings, environment) {
   const lws = recipe.launch.topology.kind === "lws";
   const nodes = recipe.launch.topology.nodes;
+  const deployment = deploymentSection(recipe);
   const port = servingPort(recipe, settings);
   const service = {
     apiVersion: "v1",
@@ -508,23 +615,38 @@ function renderLws(recipe, parameters, imageReference, settings, environment) {
   // single-node recipe is not a group at all: it becomes one plain Deployment pod.
   const podSpec = workerPodSpec(recipe, parameters, imageReference, settings, environment, { single: !lws });
   const workload = lws
-    ? {
-        apiVersion: "leaderworkerset.x-k8s.io/v1",
-        kind: "LeaderWorkerSet",
-        metadata: {
-          name: parameters.name,
-          namespace: parameters.namespace,
-          labels: { app: parameters.name, "llm-d.ai/model": parameters.name },
-          ...(parameters.topology_key ? { annotations: { "leaderworkerset.sigs.k8s.io/exclusive-topology": parameters.topology_key } } : {}),
-        },
-        spec: {
-          replicas: 1,
-          startupPolicy: "LeaderCreated",
-          networkConfig: { subdomainPolicy: "Shared" },
-          rolloutStrategy: { type: "RollingUpdate", rollingUpdateConfiguration: { maxUnavailable: 1, maxSurge: 0 } },
-          leaderWorkerTemplate: { size: nodes, restartPolicy: "RecreateGroupAfterStart", workerTemplate: { metadata: podMetadata(parameters), spec: podSpec } },
-        },
-      }
+    ? (() => {
+        // The group count, rollout window and restart policy are the live cluster's:
+        // `deployment.groups` is how many TP groups the fleet runs, and `deployment.rollout`
+        // is the accepted RollingUpdate window. The restart policy is a fixed group rule the
+        // recipe may name (the accepted manifests all use RecreateGroupAfterStart).
+        if (!Number.isSafeInteger(deployment.groups) || deployment.groups < 1) fail("deployment.groups must be a positive integer");
+        const rollout = deployment.rollout;
+        if (!rollout || typeof rollout !== "object" || Array.isArray(rollout)) fail("deployment.rollout is required for an lws deployment");
+        for (const key of ["type", "maxUnavailable", "maxSurge", "partition"]) {
+          if (rollout[key] === undefined || rollout[key] === null || rollout[key] === "") fail(`deployment.rollout.${key} is required for an lws deployment`);
+        }
+        for (const key of ["maxUnavailable", "maxSurge", "partition"]) {
+          if (!Number.isSafeInteger(rollout[key]) || rollout[key] < 0) fail(`deployment.rollout.${key} must be a non-negative integer`);
+        }
+        return {
+          apiVersion: "leaderworkerset.x-k8s.io/v1",
+          kind: "LeaderWorkerSet",
+          metadata: {
+            name: parameters.name,
+            namespace: parameters.namespace,
+            labels: { app: parameters.name, "llm-d.ai/model": parameters.name },
+            ...(parameters.topology_key ? { annotations: { "leaderworkerset.sigs.k8s.io/exclusive-topology": parameters.topology_key } } : {}),
+          },
+          spec: {
+            replicas: deployment.groups,
+            startupPolicy: "LeaderCreated",
+            networkConfig: { subdomainPolicy: "Shared" },
+            rolloutStrategy: { type: rollout.type, rollingUpdateConfiguration: { maxUnavailable: rollout.maxUnavailable, maxSurge: rollout.maxSurge, partition: rollout.partition } },
+            leaderWorkerTemplate: { size: nodes, restartPolicy: deployment.restartPolicy ?? "RecreateGroupAfterStart", workerTemplate: { metadata: podMetadata(parameters), spec: podSpec } },
+          },
+        };
+      })()
     : {
         apiVersion: "apps/v1",
         kind: "Deployment",

@@ -504,6 +504,80 @@ docs:
 deployment:
   nodes: 2
   tensor_parallel_size: 2
+
+  # -- cluster shape -------------------------------------------------------------
+  # These are the live cluster's values the renderer used to hardcode; the generated
+  # LeaderWorkerSet reads every one of them from here. Source of truth: the GitOps
+  # repository, src/rv/k8s/clusters/home/llm-d/qwen38-flash-next.yaml, line ranges
+  # cited per value. The fleet runs three TP=2 groups; one group is recreated as a
+  # unit on failure, and the rollout takes one group down at a time with no surge,
+  # holding at partition 0 (qwen38-flash-next.yaml:138, 142-151).
+  groups: 3
+  restartPolicy: RecreateGroupAfterStart
+  rollout:
+    type: RollingUpdate
+    maxUnavailable: 1
+    maxSurge: 0
+    # Pair C verified the pinned hybrid checkpoint before releasing this hold.
+    partition: 0
+  # The two GB10 nodes are arm64 and carry the dgx node role; the arch key is a
+  # recipe choice now, not a renderer default, so a single-host recipe can omit it
+  # (qwen38-flash-next.yaml:169-171). The site parameter `node_selector` layers the
+  # operator's extra labels on top.
+  nodeSelector:
+    kubernetes.io/arch: arm64
+    node-role.kubernetes.io/dgx: ""
+  # The dgx taint keeps everything else off the GPU nodes (qwen38-flash-next.yaml:191-195).
+  tolerations:
+    - key: dgx
+      operator: Equal
+      value: "true"
+      effect: NoSchedule
+  # A single GPU count feeds requests and limits alike, so the two can never disagree
+  # (nvidia.com/gpu 4 at qwen38-flash-next.yaml:685, 688). rdma: true adds the RDMA
+  # allocator resource (rdma/dgx_roce 63 at qwen38-flash-next.yaml:686, 689) from the
+  # rdma_resource/rdma_units parameters, also into both maps.
+  gpu: 4
+  rdma: true
+  # The non-device resources are the accepted request; there is deliberately no memory
+  # or cpu limit -- these unified-memory GB10 nodes OOM-killed this model's loader
+  # under the previous 120Gi cap, and GPU/RDMA are the only guarded resources
+  # (qwen38-flash-next.yaml:675-689).
+  resources:
+    requests:
+      cpu: "8"
+      memory: 96Gi
+      ephemeral-storage: 128Gi
+    limits: {}
+  # Root for effective IPC_LOCK so RDMA can pin pages (qwen38-flash-next.yaml:327-332).
+  securityContext:
+    runAsUser: 0
+    capabilities:
+      add: [IPC_LOCK]
+  # The pod runs the fetched weights under group 0 (qwen38-flash-next.yaml:199-200).
+  podSecurityContext:
+    fsGroup: 0
+  # The two hostPath volumes are DirectoryOrCreate on the node's NVMe; their paths come
+  # from the jit_storage_path/model_storage_path parameters, the type from here
+  # (qwen38-flash-next.yaml:754-765).
+  volumes:
+    hostPathType: DirectoryOrCreate
+  # httpGet probes on the probe sidecar's /readyz. The startup window is the two-hour
+  # first-boot budget the live manifest carries (failureThreshold 240 at
+  # qwen38-flash-next.yaml:715, period 30 at line 711); the readiness window is the live
+  # 6 x 15s tolerance (qwen38-flash-next.yaml:727-732). No livenessProbe: the container
+  # execs vLLM as PID 1 and the accepted manifests carry none -- a liveness window that
+  # timed out under a long prefill is what previously killed healthy groups, so it is
+  # only emitted once /livez is measured on both ranks.
+  probes:
+    startup:
+      periodSeconds: 30
+      timeoutSeconds: 5
+      failureThreshold: 240
+    readiness:
+      periodSeconds: 15
+      timeoutSeconds: 5
+      failureThreshold: 6
   # The HF cache root the launcher downloads into before it publishes; the
   # engine only ever reads `model_path`. One volume, one identity: the published
   # root is `<storage_root>/<served-model-name>`, which
@@ -581,10 +655,10 @@ deployment:
     node_selector:
       label: GPU node selector
       type: stringMap
-      required: true
+      required: false
       default: {}
       targets: [lws]
-      description: Site-specific labels selecting the two GB10 nodes; arm64 is enforced separately.
+      description: Operator-added node labels for the two GB10 nodes; the architecture and dgx role come from the recipe's `deployment.nodeSelector`.
       help: {label: Find node labels, href: guides/deploy-tp2/#node-placement}
     topology_key:
       label: Exclusive topology key

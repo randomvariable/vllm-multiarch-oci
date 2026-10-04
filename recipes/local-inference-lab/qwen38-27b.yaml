@@ -446,6 +446,48 @@ deployment:
   # because one discrete sm_120 GPU owns the whole model.
   nodes: 1
   tensor_parallel_size: 1
+
+  # -- cluster shape -------------------------------------------------------------
+  # The single-node Deployment's live values the renderer must read rather than
+  # hardcode. Source of truth: the GitOps repository,
+  # src/rv/k8s/clusters/home/llm-d/qwen38-27b.yaml, cited per value below. This is a
+  # plain single-replica Deployment (replicas 1 at :102, Recreate strategy at :103-106
+  # -- one GPU and one node-local model directory cannot admit a surge replica), so it
+  # has no group count, no rollout window and no tolerations.
+  # Node placement names only the host the pod is pinned to; there is NO architecture
+  # key here (:115-116), unlike the GB10 groups -- the site `node_selector` parameter
+  # carries the hostname, and the recipe adds nothing.
+  nodeSelector: {}
+  # A single physical GPU on server21; the device plugin reports 4 by time-slicing
+  # (nvidia.com/gpu 1 at :389 requests, :393 limits). No RDMA: this box never opens
+  # the RoCE device, so rdma is false and the allocator resource is absent from both
+  # maps. Requests and limits are two maps and differ -- memory 48Gi requested against
+  # a 72Gi cap, ephemeral-storage 4Gi against 8Gi (:385-393) -- so they are modelled
+  # independently; the only value the two must share is the GPU count, which the
+  # renderer injects into both from this one field.
+  gpu: 1
+  rdma: false
+  resources:
+    requests:
+      cpu: "8"
+      memory: 48Gi
+      ephemeral-storage: 4Gi
+    limits:
+      memory: 72Gi
+      ephemeral-storage: 8Gi
+  # Root, but NO IPC_LOCK: it never touches the RDMA device. runAsGroup 0 as the live
+  # container sets it (:143-150). Capabilities are omitted entirely, not declared empty.
+  securityContext:
+    runAsUser: 0
+    runAsGroup: 0
+  # The two hostPaths are DirectoryOrCreate on the node; their paths come from the
+  # model_storage_path/jit_storage_path parameters (:415-434). No pod-level
+  # securityContext -- the live pod sets none (:114).
+  volumes:
+    hostPathType: DirectoryOrCreate
+  # No `probes` block: the launcher-form startup/readiness httpGet windows are the
+  # single-node defaults, and the live container declares no livenessProbe (:394-407),
+  # matching the accepted rule that an unmeasured liveness window is never emitted.
   # No storage_root, model_path, storage_min_free_gib, download_workers,
   # ignore_patterns or required_files: engine-download mode, so the launcher
   # publishes nothing and there is no free-space gate or truncation list to

@@ -212,6 +212,132 @@ function validateDeploymentAndLaunch(recipe, launch, source) {
   assert(options.model === deployment.model_path, `${where}: the engine must load the snapshot the launcher publishes`);
 }
 
+// The manifest cluster shape the renderer reads from `deployment`. Every value here is
+// what the live cluster carries and the renderer used to hardcode; requiring it in the
+// recipe is what keeps the generated manifest free of a hand-written cluster literal.
+// "Absent is meaningful": an omitted tolerations/capabilities/securityContext key renders
+// as no key, so a recipe that declares one must declare it with content -- a no-op empty
+// list or empty map is refused rather than emitted.
+const PROBE_WINDOW_KEYS = ["periodSeconds", "timeoutSeconds", "failureThreshold"];
+const RESOURCE_KEYS = ["nvidia.com/gpu", "rdma"];
+
+function validateProbeWindow(window, where) {
+  keysAre(window, PROBE_WINDOW_KEYS, where);
+  for (const key of PROBE_WINDOW_KEYS) positiveInteger(window[key], `${where}.${key}`);
+}
+
+function validateResourceMap(map, where, { nonEmpty = false } = {}) {
+  const value = mapping(map, where);
+  const keys = Object.keys(value);
+  if (nonEmpty) assert(keys.length > 0, `${where}: must name at least one resource`);
+  for (const [name, quantity] of Object.entries(value)) {
+    // The GPU and RDMA counts are the renderer's to inject from deployment.gpu and the
+    // rdma parameters; a recipe that also wrote one into a map could make requests and
+    // limits disagree. Extended resources are exactly the slashed names, so reject those
+    // here: the remaining rules (cpu, memory, ephemeral-storage) are free to differ
+    // between the two maps.
+    assert(!name.includes("/"), `${where}.${name}: the GPU and RDMA resources come from deployment.gpu and deployment.rdma, not from a resource map`);
+    assert(typeof quantity === "string" && quantity.trim(), `${where}.${name}: must be a non-empty resource quantity string`);
+    assert(!RESOURCE_KEYS.includes(name), `${where}.${name}: reserved resource`);
+  }
+  return value;
+}
+
+function validateDeploymentCluster(recipe, launch, source) {
+  const where = `${source}: deployment`;
+  const deployment = recipe.deployment;
+  const isLws = launch.topology.kind === "lws";
+
+  positiveInteger(deployment.gpu, `${where}.gpu`);
+  if (deployment.rdma !== undefined) assert(typeof deployment.rdma === "boolean", `${where}.rdma must be a boolean`);
+
+  const resources = mapping(deployment.resources, `${where}.resources`);
+  keysAre(resources, ["requests"], `${where}.resources`, ["limits"]);
+  validateResourceMap(resources.requests, `${where}.resources.requests`, { nonEmpty: true });
+  if (resources.limits !== undefined) validateResourceMap(resources.limits, `${where}.resources.limits`);
+
+  if (deployment.nodeSelector !== undefined) {
+    const selector = mapping(deployment.nodeSelector, `${where}.nodeSelector`);
+    for (const [key, value] of Object.entries(selector)) assert(typeof value === "string", `${where}.nodeSelector.${key} must be a string`);
+  }
+
+  // A tolerations key that is present must be a real list; the empty-list form is a
+  // no-op the scheduler ignores, so tell the author to omit the key instead.
+  if (deployment.tolerations !== undefined) {
+    assert(Array.isArray(deployment.tolerations) && deployment.tolerations.length > 0, `${where}.tolerations: omit the key to declare no tolerations; do not carry an empty list`);
+    for (const [index, entry] of deployment.tolerations.entries()) {
+      const toleration = mapping(entry, `${where}.tolerations[${index}]`);
+      keysAre(toleration, ["key", "operator", "value", "effect"], `${where}.tolerations[${index}]`);
+      for (const field of ["key", "operator", "value", "effect"]) nonEmptyString(toleration[field], `${where}.tolerations[${index}].${field}`);
+    }
+  }
+
+  if (deployment.securityContext !== undefined) {
+    const context = mapping(deployment.securityContext, `${where}.securityContext`);
+    for (const field of ["runAsUser", "runAsGroup"]) {
+      if (context[field] !== undefined) assert(Number.isSafeInteger(context[field]) && context[field] >= 0, `${where}.securityContext.${field} must be a non-negative integer`);
+    }
+    if (context.capabilities !== undefined) {
+      const capabilities = mapping(context.capabilities, `${where}.securityContext.capabilities`);
+      keysAre(capabilities, [], `${where}.securityContext.capabilities`, ["add", "drop"]);
+      const add = capabilities.add ?? [];
+      const drop = capabilities.drop ?? [];
+      assert(add.length + drop.length > 0, `${where}.securityContext.capabilities: omit it to declare no capabilities; do not carry an empty object`);
+      for (const field of ["add", "drop"]) if (capabilities[field] !== undefined) stringList(capabilities[field], `${where}.securityContext.capabilities.${field}`, { nonEmpty: true });
+    }
+  }
+
+  if (deployment.podSecurityContext !== undefined) {
+    const context = mapping(deployment.podSecurityContext, `${where}.podSecurityContext`);
+    assert(Object.keys(context).length > 0, `${where}.podSecurityContext: omit the key to declare no pod security context`);
+  }
+
+  const volumes = mapping(deployment.volumes, `${where}.volumes`);
+  keysAre(volumes, ["hostPathType"], `${where}.volumes`);
+  nonEmptyString(volumes.hostPathType, `${where}.volumes.hostPathType`);
+
+  if (isLws) {
+    positiveInteger(deployment.groups, `${where}.groups`);
+    if (deployment.restartPolicy !== undefined) nonEmptyString(deployment.restartPolicy, `${where}.restartPolicy`);
+    const rollout = mapping(deployment.rollout, `${where}.rollout`);
+    keysAre(rollout, ["type", "maxUnavailable", "maxSurge", "partition"], `${where}.rollout`);
+    nonEmptyString(rollout.type, `${where}.rollout.type`);
+    for (const field of ["maxUnavailable", "maxSurge", "partition"]) {
+      assert(Number.isSafeInteger(rollout[field]) && rollout[field] >= 0, `${where}.rollout.${field} must be a non-negative integer`);
+    }
+    // An lws group must name its startup and readiness windows explicitly: the whole
+    // point is that no probe budget is a renderer literal. A zero or missing field in a
+    // declared window is refused by validateProbeWindow.
+    const probes = mapping(deployment.probes, `${where}.probes`);
+    keysAre(probes, ["startup", "readiness"], `${where}.probes`, ["liveness"]);
+    validateProbeWindow(probes.startup, `${where}.probes.startup`);
+    validateProbeWindow(probes.readiness, `${where}.probes.readiness`);
+    if (probes.liveness !== undefined) {
+      // A liveness window has to be MEASURED against the worst /livez response during a
+      // long prefill on both ranks; an unmeasured one is the failure mode that killed
+      // healthy groups, so it is only valid when the recipe says it was measured.
+      assert(probes.liveness.measured === true, `${where}.probes.liveness: refuse an unmeasured liveness window -- omit the block until /livez is measured on both ranks`);
+      const window = { ...probes.liveness };
+      delete window.measured;
+      validateProbeWindow(window, `${where}.probes.liveness`);
+    }
+  } else {
+    // A single-node Deployment may rely on the accepted launcher-form defaults, but if
+    // it names windows they must be complete.
+    if (deployment.probes !== undefined) {
+      const probes = mapping(deployment.probes, `${where}.probes`);
+      keysAre(probes, [], `${where}.probes`, ["startup", "readiness", "liveness"]);
+      for (const field of ["startup", "readiness"]) if (probes[field] !== undefined) validateProbeWindow(probes[field], `${where}.probes.${field}`);
+      if (probes.liveness !== undefined) {
+        assert(probes.liveness.measured === true, `${where}.probes.liveness: refuse an unmeasured liveness window -- omit the block until /livez is measured`);
+        const window = { ...probes.liveness };
+        delete window.measured;
+        validateProbeWindow(window, `${where}.probes.liveness`);
+      }
+    }
+  }
+}
+
 function validateRecipe(recipe, source) {
   assert(recipe && typeof recipe === "object" && !Array.isArray(recipe), `${source}: recipe must be a mapping`);
   assert(JSON.stringify(Object.keys(recipe)) === JSON.stringify(TOP_LEVEL_KEYS), `${source}: top-level keys must be exactly ${TOP_LEVEL_KEYS.join(", ")}`);
@@ -247,6 +373,7 @@ function validateRecipe(recipe, source) {
   validateDocs(recipe.docs, launch, source);
   validateBenchmark(recipe.benchmark, source);
   validateDeploymentAndLaunch(recipe, launch, source);
+  validateDeploymentCluster(recipe, launch, source);
   assert(recipe.model.served_name === launch.options["served-model-name"], `${source}: model.served_name and launch.options['served-model-name'] must be one value`);
   if (launch.options.revision !== undefined) {
     // The engine may pin the snapshot it downloads, but it cannot pin a different

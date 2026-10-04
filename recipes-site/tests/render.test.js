@@ -12,7 +12,8 @@ import { renderRecipe } from "../src/render.js";
 // `image_tools/launcher/launch.py.Recipe.from_dict`, which the parity test below checks
 // this module against. The shape is: `launch` (profile, hardware, preset, options,
 // environment, topology, probe_port), `model` (model_id, served_name), and `deployment`
-// (model_path + storage_root for a sync deployment, parameters for the site fields).
+// (model_path + storage_root for a sync deployment, the cluster shape the renderer reads,
+// and parameters for the site fields).
 
 const siteRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const REPOSITORY_ROOT = resolve(siteRoot, "..");
@@ -45,8 +46,57 @@ function parametersMap() {
   };
 }
 
+// The GB10 TP=2 cluster shape, read straight from the accepted live manifest: three
+// groups, a no-surge rolling rollout, the dgx placement/taint, four GPUs plus the RDMA
+// allocator on both maps, root with IPC_LOCK, pod group 0, DirectoryOrCreate hostPaths
+// and the two-hour startup / 6x15s readiness httpGet windows. The renderer owns none of
+// these as a literal; every value here is what the recipe must carry.
+function gb10Cluster(overrides = {}) {
+  return {
+    groups: 3,
+    restartPolicy: "RecreateGroupAfterStart",
+    rollout: { type: "RollingUpdate", maxUnavailable: 1, maxSurge: 0, partition: 0 },
+    nodeSelector: { "kubernetes.io/arch": "arm64", "node-role.kubernetes.io/dgx": "" },
+    tolerations: [{ key: "dgx", operator: "Equal", value: "true", effect: "NoSchedule" }],
+    gpu: 4,
+    rdma: true,
+    resources: {
+      requests: { cpu: "8", memory: "96Gi", "ephemeral-storage": "128Gi" },
+      limits: {},
+    },
+    securityContext: { runAsUser: 0, capabilities: { add: ["IPC_LOCK"] } },
+    podSecurityContext: { fsGroup: 0 },
+    volumes: { hostPathType: "DirectoryOrCreate" },
+    probes: {
+      startup: { periodSeconds: 30, timeoutSeconds: 5, failureThreshold: 240 },
+      readiness: { periodSeconds: 15, timeoutSeconds: 5, failureThreshold: 6 },
+    },
+    ...overrides,
+  };
+}
+
+// The single-node Deployment cluster shape (qwen38-27b): one GPU, no RDMA, requests and
+// limits that legitimately differ on memory and storage, a hostname-only selector with NO
+// architecture key, root plus runAsGroup 0 and NO capabilities, and no liveness.
+function singleCluster(overrides = {}) {
+  return {
+    nodeSelector: {},
+    gpu: 1,
+    rdma: false,
+    resources: {
+      requests: { cpu: "8", memory: "48Gi", "ephemeral-storage": "4Gi" },
+      limits: { memory: "72Gi", "ephemeral-storage": "8Gi" },
+    },
+    securityContext: { runAsUser: 0, runAsGroup: 0 },
+    volumes: { hostPathType: "DirectoryOrCreate" },
+    ...overrides,
+  };
+}
+
 // A two-node RoCE TP=2 recipe in launcher form: sync mode (deployment.model_path set),
-// no external cache (the reader can add one with `cache-mode`).
+// no external cache (the reader can add one with `cache-mode`). The GPU count and RDMA
+// units are kept at 1 so the pre-existing GPU/RDMA assertions still hold against the
+// parametersMap defaults, while the cluster shape is otherwise the accepted GB10 one.
 function tp2Recipe(overrides = {}) {
   return {
     meta: { slug: "qwen38-flash-next-gb10-tp2", title: "t", description: "d" },
@@ -64,6 +114,13 @@ function tp2Recipe(overrides = {}) {
       model_path: "/models/qwen38-flash-next",
       storage_root: "/models",
       parameters: parametersMap(),
+      ...gb10Cluster({
+        gpu: 1,
+        probes: {
+          startup: { periodSeconds: 30, timeoutSeconds: 5, failureThreshold: 240 },
+          readiness: { periodSeconds: 15, timeoutSeconds: 5, failureThreshold: 6 },
+        },
+      }),
     },
     ...overrides,
   };
@@ -71,14 +128,25 @@ function tp2Recipe(overrides = {}) {
 
 // An engine-download single-node recipe: no model_path, so no `--model-sync`, and no
 // sync-only deployment facts at all — the renderer must tolerate their absence.
-function singleRecipe() {
-  const recipe = tp2Recipe();
-  recipe.meta.slug = "qwen38-27b";
-  recipe.launch.topology = { kind: "single", nodes: 1, rendezvous_port: null, kv_events: null, replica_port_base: null };
-  recipe.launch.options = { port: 8888, "served-model-name": "qwen3.8-27b", model: "local-inference-lab/Qwen3.8-27B-NVFP4-QAD" };
-  recipe.launch.environment = { HF_HOME: "/models" };
-  recipe.deployment = { parameters: parametersMap() };
-  return recipe;
+function singleRecipe(overrides = {}) {
+  return {
+    meta: { slug: "qwen38-27b", title: "t", description: "d" },
+    model: { model_id: "local-inference-lab/Qwen3.8-27B-NVFP4-QAD", revision: "f40a31cd813a6746067e7d6446ff2cb708dbb779", served_name: "qwen3.8-27b" },
+    launch: {
+      profile: "qwen38-flash-next",
+      hardware: "gb10-roce",
+      preset: null,
+      options: { port: 8888, "served-model-name": "qwen3.8-27b", model: "local-inference-lab/Qwen3.8-27B-NVFP4-QAD" },
+      environment: { HF_HOME: "/models" },
+      topology: { kind: "single", nodes: 1, rendezvous_port: null, kv_events: null, replica_port_base: null },
+      probe_port: 8890,
+    },
+    deployment: {
+      parameters: parametersMap(),
+      ...singleCluster(),
+    },
+    ...overrides,
+  };
 }
 
 function documents(body) {
@@ -102,8 +170,12 @@ function podSpec(docs) {
   return lws.spec.leaderWorkerTemplate.workerTemplate.spec;
 }
 
+function renderLws(recipe, parameters = {}, target = "lws") {
+  return renderRecipe(recipe, { parameters: { node_selector: { gpu: "gb10" }, ...parameters }, settings: {}, environment: {}, target, image: IMAGE });
+}
+
 test("LWS renders the launcher form with one worker template and no hand-written command", () => {
-  const result = renderRecipe(tp2Recipe(), { parameters: { node_selector: { gpu: "gb10" } }, settings: {}, environment: {}, target: "lws", image: IMAGE });
+  const result = renderLws(tp2Recipe());
   assert.deepEqual(result.files.map((file) => file.name), ["lws.yaml"]);
   const docs = documents(result.files[0].body);
   const lws = onlyDoc(docs, "LeaderWorkerSet");
@@ -134,7 +206,7 @@ test("LWS renders the launcher form with one worker template and no hand-written
 });
 
 test("every pod initContainer is a native sidecar with restartPolicy Always", () => {
-  const result = renderRecipe(tp2Recipe(), { parameters: { node_selector: { gpu: "gb10" } }, settings: {}, environment: {}, target: "lws", image: IMAGE });
+  const result = renderLws(tp2Recipe());
   const spec = podSpec(documents(result.files[0].body));
   assert.ok(spec.initContainers.length > 0, "the probe sidecar must be present");
   for (const container of spec.initContainers) {
@@ -151,26 +223,130 @@ test("every pod initContainer is a native sidecar with restartPolicy Always", ()
   assert.equal(probe.resources.requests["nvidia.com/gpu"], undefined, "probe requests no gpu");
 });
 
-test("probes are httpGet on the probe port with /readyz and /livez paths", () => {
-  const spec = podSpec(documents(renderRecipe(tp2Recipe(), { parameters: { node_selector: { gpu: "gb10" } }, settings: {}, environment: {}, target: "lws", image: IMAGE }).files[0].body));
+test("startup and readiness probes are httpGet on the recipe's declared /readyz window", () => {
+  const spec = podSpec(documents(renderLws(tp2Recipe()).files[0].body));
   const server = spec.containers[0];
   assert.deepEqual(server.startupProbe.httpGet, { path: "/readyz", port: 8890 });
   assert.deepEqual(server.readinessProbe.httpGet, { path: "/readyz", port: 8890 });
-  assert.deepEqual(server.livenessProbe.httpGet, { path: "/livez", port: 8890 });
-  assert.equal(server.startupProbe.exec, undefined);
-  assert.equal(server.livenessProbe.exec, undefined);
+  // The windows come from the recipe, not a renderer literal.
+  assert.deepEqual(
+    { periodSeconds: server.startupProbe.periodSeconds, timeoutSeconds: server.startupProbe.timeoutSeconds, failureThreshold: server.startupProbe.failureThreshold },
+    { periodSeconds: 30, timeoutSeconds: 5, failureThreshold: 240 },
+  );
+  assert.deepEqual(
+    { periodSeconds: server.readinessProbe.periodSeconds, timeoutSeconds: server.readinessProbe.timeoutSeconds, failureThreshold: server.readinessProbe.failureThreshold },
+    { periodSeconds: 15, timeoutSeconds: 5, failureThreshold: 6 },
+  );
+  assert.equal(server.startupProbe.exec, undefined, "no exec probe");
+  assert.equal(server.readinessProbe.exec, undefined, "no exec probe");
+});
+
+test("no livenessProbe is emitted unless the recipe declares a measured one", () => {
+  // The accepted recipe carries no liveness block: its window has to be measured on both
+  // ranks, and an invented one killed healthy groups, so absence is the correct output.
+  const spec = podSpec(documents(renderLws(tp2Recipe()).files[0].body));
+  assert.equal(spec.containers[0].livenessProbe, undefined, "no livenessProbe without a measured declaration");
+
+  // A measured liveness window is honoured.
+  const measured = tp2Recipe();
+  measured.deployment.probes = { ...measured.deployment.probes, liveness: { measured: true, periodSeconds: 20, timeoutSeconds: 5, failureThreshold: 6 } };
+  const measuredServer = podSpec(documents(renderLws(measured).files[0].body)).containers[0];
+  assert.deepEqual(measuredServer.livenessProbe.httpGet, { path: "/livez", port: 8890 });
+  assert.equal(measuredServer.livenessProbe.failureThreshold, 6);
+
+  // A declared-but-unmeasured liveness window is refused before any output.
+  const unmeasured = tp2Recipe();
+  unmeasured.deployment.probes = { ...unmeasured.deployment.probes, liveness: { periodSeconds: 20, timeoutSeconds: 5, failureThreshold: 6 } };
+  assert.throws(() => renderLws(unmeasured), /not marked measured|measured/);
 });
 
 test("the modelserver carries the GPU and RDMA requests and IPC_LOCK", () => {
-  const spec = podSpec(documents(renderRecipe(tp2Recipe(), { parameters: { node_selector: { gpu: "gb10" } }, settings: {}, environment: {}, target: "lws", image: IMAGE }).files[0].body));
+  const spec = podSpec(documents(renderLws(tp2Recipe()).files[0].body));
   const server = spec.containers[0];
   assert.equal(server.resources.requests["nvidia.com/gpu"], "1");
   assert.equal(server.resources.requests["rdma.example.com/roce"], "1");
   assert.deepEqual(server.securityContext.capabilities.add, ["IPC_LOCK"]);
 });
 
+test("requests and limits carry the same GPU count from one recipe field", () => {
+  const spec = podSpec(documents(renderLws(tp2Recipe()).files[0].body));
+  const { requests, limits } = spec.containers[0].resources;
+  assert.equal(requests["nvidia.com/gpu"], limits["nvidia.com/gpu"], "the GPU count cannot disagree between the maps");
+  assert.equal(requests["rdma.example.com/roce"], limits["rdma.example.com/roce"], "the RDMA resource cannot disagree between the maps");
+});
+
+test("the rendered Qwen LWS equals the accepted GB10 live manifest on every contract field", () => {
+  // Rendered against the live site parameters so the comparison is on parsed values,
+  // not text -- the `1` versus `"1"` quantity spelling can never bite a value check.
+  const recipe = tp2Recipe();
+  recipe.deployment.gpu = 4;
+  const result = renderRecipe(recipe, {
+    parameters: {
+      namespace: "openai", name: "qwen38-flash-next",
+      model_storage_path: "/var/lib/vllm-models/qwen38-flash-next-lil-qad",
+      jit_storage_path: "/var/lib/vllm-qwen38-flash-next-cache",
+      hf_secret: "llm-d-hf-token", hf_secret_key: "HF_TOKEN",
+      network_attachment: "dspark-roce", node_selector: { "node-role.kubernetes.io/dgx": "" },
+      topology_key: "dspark.rv/roce-pair", topology_values: "a,b,c",
+      rdma_resource: "rdma/dgx_roce", rdma_units: 63,
+      hca: "rocep1s0f1,roceP2p1s0f1", gid_index: 3,
+    },
+    settings: {}, environment: {}, target: "lws", image: IMAGE,
+  });
+  const lws = onlyDoc(documents(result.files[0].body), "LeaderWorkerSet");
+  const pod = lws.spec.leaderWorkerTemplate.workerTemplate.spec;
+  const server = pod.containers[0];
+
+  assert.equal(lws.spec.replicas, 3, "spec.replicas is the group count");
+  assert.equal(lws.spec.leaderWorkerTemplate.size, 2, "the TP group is two nodes");
+  assert.equal(lws.spec.leaderWorkerTemplate.restartPolicy, "RecreateGroupAfterStart");
+  assert.deepEqual(lws.spec.rolloutStrategy, {
+    type: "RollingUpdate",
+    rollingUpdateConfiguration: { maxUnavailable: 1, maxSurge: 0, partition: 0 },
+  }, "the four rollout fields the live group carries");
+  assert.deepEqual(pod.nodeSelector, { "kubernetes.io/arch": "arm64", "node-role.kubernetes.io/dgx": "" });
+  assert.deepEqual(pod.tolerations, [{ key: "dgx", operator: "Equal", value: "true", effect: "NoSchedule" }]);
+  assert.deepEqual(pod.securityContext, { fsGroup: 0 }, "the pod group the weights run under");
+  assert.deepEqual(server.resources.requests, {
+    cpu: "8", memory: "96Gi", "ephemeral-storage": "128Gi", "nvidia.com/gpu": "4", "rdma/dgx_roce": "63",
+  });
+  assert.deepEqual(server.resources.limits, { "nvidia.com/gpu": "4", "rdma/dgx_roce": "63" });
+  assert.deepEqual(server.securityContext, { runAsUser: 0, capabilities: { add: ["IPC_LOCK"] } });
+  assert.deepEqual(server.startupProbe.httpGet, { path: "/readyz", port: 8890 });
+  assert.deepEqual(server.readinessProbe.httpGet, { path: "/readyz", port: 8890 });
+  assert.equal(server.livenessProbe, undefined, "no liveness window until /livez is measured");
+  // The hostPaths are the live node paths, typed by the recipe.
+  assert.deepEqual(pod.volumes.find((volume) => volume.name === "jit-cache").hostPath, { path: "/var/lib/vllm-qwen38-flash-next-cache", type: "DirectoryOrCreate" });
+  assert.deepEqual(pod.volumes.find((volume) => volume.name === "model-weights").hostPath, { path: "/var/lib/vllm-models/qwen38-flash-next-lil-qad", type: "DirectoryOrCreate" });
+  // And the GPU count that feeds both maps traces to one field.
+  assert.equal(server.resources.requests["nvidia.com/gpu"], server.resources.limits["nvidia.com/gpu"]);
+});
+
+test("the single-node Deployment drops the group shape the live pod does not carry", () => {
+  // qwen38-27b lives on one host: no arch key, no tolerations, no capabilities, and its
+  // limits legitimately differ from its requests on memory and storage.
+  const result = renderRecipe(singleRecipe(), {
+    parameters: { node_selector: { "kubernetes.io/hostname": "server21" } },
+    settings: {}, environment: {}, target: "lws", image: IMAGE,
+  });
+  const deployment = onlyDoc(documents(result.files[0].body), "Deployment");
+  const pod = deployment.spec.template.spec;
+  const server = pod.containers[0];
+  assert.deepEqual(pod.nodeSelector, { "kubernetes.io/hostname": "server21" }, "no architecture key is injected");
+  assert.equal(pod.tolerations, undefined, "no tolerations key when the recipe declares none");
+  assert.equal(pod.securityContext, undefined, "no pod security context when the recipe declares none");
+  assert.deepEqual(server.securityContext, { runAsUser: 0, runAsGroup: 0 }, "root, no IPC_LOCK");
+  assert.deepEqual(server.resources.requests, { cpu: "8", memory: "48Gi", "ephemeral-storage": "4Gi", "nvidia.com/gpu": "1" });
+  assert.deepEqual(server.resources.limits, { memory: "72Gi", "ephemeral-storage": "8Gi", "nvidia.com/gpu": "1" });
+  assert.equal(server.resources.requests["nvidia.com/gpu"], server.resources.limits["nvidia.com/gpu"], "the GPU count still agrees");
+  assert.equal(server.resources.requests["rdma/dgx_roce"], undefined, "no RDMA resource on a node that never opens the device");
+  // No declared probes: the launcher-form single-node defaults apply, and there is no liveness.
+  assert.equal(server.startupProbe.httpGet.path, "/readyz");
+  assert.equal(server.livenessProbe, undefined);
+});
+
 test("the reader's settings become -- changes and defaults stay absent", () => {
-  const plain = renderRecipe(tp2Recipe(), { parameters: { node_selector: { gpu: "gb10" } }, settings: {}, environment: {}, target: "lws", image: IMAGE });
+  const plain = renderLws(tp2Recipe());
   // Nothing the reader did not change may appear: the launcher resolves it.
   for (const flag of ["--max-num-seqs", "--tensor-parallel-size", "--gpu-memory-utilization", "--served-model-name", "--port"]) {
     assert.ok(!renderedText(plain).includes(flag), `${flag} must be absent when unchanged`);
@@ -188,7 +364,7 @@ test("the reader's settings become -- changes and defaults stay absent", () => {
 });
 
 test("the cache sidecar appears only with a cache and shares /dev/shm and /cache with the engine", () => {
-  const noCache = renderRecipe(tp2Recipe(), { parameters: { node_selector: { gpu: "gb10" } }, settings: {}, environment: {}, target: "lws", image: IMAGE });
+  const noCache = renderLws(tp2Recipe());
   const plainSpec = podSpec(documents(noCache.files[0].body));
   assert.equal(plainSpec.initContainers.find((container) => container.name === "cache"), undefined, "no cache sidecar without a cache");
 
@@ -211,7 +387,7 @@ test("the cache sidecar appears only with a cache and shares /dev/shm and /cache
 });
 
 test("the pod drain covers the engine stop plus the cache stop grace", () => {
-  const noCache = podSpec(documents(renderRecipe(tp2Recipe(), { parameters: { node_selector: { gpu: "gb10" } }, settings: {}, environment: {}, target: "lws", image: IMAGE }).files[0].body));
+  const noCache = podSpec(documents(renderLws(tp2Recipe()).files[0].body));
   const withCache = podSpec(documents(renderRecipe(tp2Recipe(), { parameters: { node_selector: { gpu: "gb10" } }, settings: { "cache-mode": "lmcache", "cache-l1-gib": "32" }, environment: {}, target: "lws", image: IMAGE }).files[0].body));
   assert.ok(noCache.terminationGracePeriodSeconds >= 120, "at least the engine stop budget");
   assert.ok(withCache.terminationGracePeriodSeconds > noCache.terminationGracePeriodSeconds, "the cache stop grace extends the budget");
@@ -229,7 +405,7 @@ test("an engine-download single-node recipe omits --model-sync and the group sch
 });
 
 test("the launcher arguments match launch.py's own ordering", () => {
-  const server = podSpec(documents(renderRecipe(tp2Recipe(), { parameters: { node_selector: { gpu: "gb10" } }, settings: {}, environment: {}, target: "lws", image: IMAGE }).files[0].body)).containers[0];
+  const server = podSpec(documents(renderLws(tp2Recipe()).files[0].body)).containers[0];
   const launch = readFileSync(LAUNCH_PY, "utf8");
   // The container builds the resolved argv, then appends topology_args, then --middleware.
   const topologyAt = launch.indexOf("argv += topology_args(");
@@ -301,6 +477,18 @@ test("invalid input throws TypeError before any output", () => {
   assert.throws(() => renderRecipe(tp2Recipe(), { parameters: {}, settings: {}, environment: {}, target: "lws", image: IMAGE }), TypeError, "a missing required site field");
   assert.throws(() => renderRecipe({ meta: {}, launch: {}, model: {}, deployment: {} }, base), TypeError, "a malformed launch section");
   assert.throws(() => renderRecipe(tp2Recipe(), { ...base, target: "kubernetes" }), TypeError, "an unknown target");
+
+  // A manifest target reads its cluster shape from the recipe; a recipe that omits the
+  // GPU count or the hostPath type cannot render, and must fail rather than emit an
+  // undefined or invented value. (An absent resource map is tolerated: the pod simply
+  // requests its devices, and inventing no cpu/memory default is the point.)
+  const noGpu = tp2Recipe();
+  delete noGpu.deployment.gpu;
+  assert.throws(() => renderLws(noGpu), TypeError, "the GPU count must come from the recipe");
+  const noHostPathType = tp2Recipe();
+  delete noHostPathType.deployment.volumes;
+  assert.throws(() => renderLws(noHostPathType), TypeError, "the hostPath type must come from the recipe");
+
   // qwen38-27b ships `deployment.parameters: {}`: no manifest target can render it, so
   // every one must refuse rather than emit undefined names and host paths.
   const bare = singleRecipe();
