@@ -113,6 +113,19 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Install the resolver's PyYAML
+        if: github.event_name != 'pull_request'
+        # configs.json is produced by running the launcher's own resolver under
+        # the runner's Python, and that resolver needs exactly one third-party
+        # module. The version is the one the image locks in
+        # profiles/vllmb12x/requirements.lock and the one prepare-pyodide.mjs
+        # packages for the browser, so all three resolve a recipe identically.
+        # Pull requests skip it because they read committed fixtures instead.
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check --no-input pyyaml==6.0.3
+          python3 -c 'import yaml; print("pyyaml", yaml.__version__)'
+
       - name: Resolve releases, configurations and option documentation
         if: github.event_name != 'pull_request'
         env:
