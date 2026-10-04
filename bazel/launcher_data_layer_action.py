@@ -139,11 +139,18 @@ def install_plan(
     }
 
     if not recipes:
-        raise SystemExit("no launcher recipes to install; check //image_tools/data:recipes")
+        raise SystemExit("no launcher recipes to install; check //recipes:all_yaml_files")
     for path in recipes:
         if path.suffix != ".yaml":
             raise SystemExit(f"launcher recipe must be YAML: {path}")
         installed = f"{INSTALL_ROOT}/{RECIPES}/{path.name}"
+        # The layer installs one recipe per name, so the name has to identify one
+        # file. Two owners shipping the same stem would otherwise reach the image
+        # as one silently winning, and `--recipe` resolves by name alone.
+        if installed in plan:
+            raise SystemExit(
+                f"{installed} is declared twice: by {plan[installed]} and by {path}"
+            )
         plan[installed] = path
 
     if not hardware:

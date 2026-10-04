@@ -1,11 +1,11 @@
-import { readFile, readdir, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
 
 // The deployment-flow artefacts are produced by these two scripts, so the same
 // validators gate them here: one rule, checked at generation and again at build.
-import { assertNoPrivateReference, validateReleases } from "./resolve-releases.mjs";
+import { assertNoPrivateReference, RELEASE_TAG, validateReleases } from "./resolve-releases.mjs";
 import { recipeInventory, validateConfigs, validateOptions } from "./resolve-configs.mjs";
 
 const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -14,11 +14,34 @@ const RECIPES_ROOT = join(REPOSITORY_ROOT, "recipes");
 const PUBLIC_ROOT = join(SITE_ROOT, "public");
 const RUNTIME_CONFIGURATION_SOURCE = join(REPOSITORY_ROOT, "docs/reference/vllmb12x-runtime-configuration.md");
 const RUNTIME_CONFIGURATION_PAGE = join(SITE_ROOT, "src/content/docs/reference/vllmb12x-runtime-configuration.md");
+const BUILDS_DIRECTORY = join(SITE_ROOT, "src/content/docs/builds");
 const COMMIT = /^[0-9a-f]{40}$/;
 const DIGEST_REFERENCE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*(?::[0-9]+)?(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)+@sha256:[0-9a-f]{64}$/;
 const DNS_LABEL = /^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$/;
 const IMMUTABLE_TAG = /^vllmb12x-[a-z0-9][a-z0-9-]*-[0-9a-f]{12}-[0-9a-f]{12}-[0-9]{8}-n[1-9][0-9]*$/;
-const TOP_LEVEL_KEYS = ["meta", "model", "runtime", "deployment", "validation", "guide"];
+// One file per deployment: the launcher's sections and the site's sections in
+// one document, so a deployment cannot be described twice. `launch`, `docs` and
+// `benchmark` are read by `vllm-image launch` and the recipe page; the rest is
+// what the site renders.
+const TOP_LEVEL_KEYS = ["meta", "model", "runtime", "launch", "docs", "deployment", "benchmark", "validation", "guide"];
+// Mirrored from image_tools/launcher/launch.py. A recipe carrying a key the
+// launcher refuses, or missing one it requires, would pass the site build and
+// fail at container start; `model_sync` is on this list's absence rather than
+// its presence because that block was the duplicate copy of `model` and
+// `deployment`, and a recipe must not grow one back.
+const LAUNCH_KEYS = ["profile", "hardware", "preset", "options", "environment", "topology", "probe_port"];
+const TOPOLOGY_KEYS = ["kind", "nodes", "rendezvous_port", "kv_events", "replica_port_base"];
+const KV_EVENT_KEYS = ["publisher", "endpoint", "replay_endpoint"];
+// The checkpoint facts, which live in `deployment` exactly together or not at
+// all: their presence is what distinguishes model sync from engine download.
+const SYNC_DEPLOYMENT_KEYS = ["storage_root", "model_path", "storage_min_free_gib", "download_workers", "ignore_patterns", "required_files"];
+const DOC_KEYS = ["group", "summary", "why"];
+const TABLE_KEYS = ["id", "title", "aria_label", "columns", "rows"];
+const CELL_KEYS = ["text"];
+const CELL_OPTIONAL_KEYS = ["unit", "primary", "notes"];
+const GUIDE_KEYS = ["hardware", "fixed_tuning", "networking", "safety"];
+const VALIDATION_STATUSES = new Set(["verified", "unverified"]);
+const RECIPE_NAME = /^[a-z][a-z0-9-]*$/;
 const PARAMETER_TYPES = new Set(["string", "integer", "stringMap"]);
 const REQUIRED_DEPENDENCY_FIELDS = ["id", "name", "version", "source", "owner", "depends_on", "readiness", "tested"];
 
@@ -36,10 +59,170 @@ async function recipeFiles(directory) {
   return paths.sort();
 }
 
+function mapping(value, where) {
+  assert(value && typeof value === "object" && !Array.isArray(value), `${where}: must be a mapping`);
+  return value;
+}
+
+function keysAre(value, required, where, optional = []) {
+  const present = Object.keys(mapping(value, where));
+  const missing = required.filter((key) => !present.includes(key));
+  const extra = present.filter((key) => !required.includes(key) && !optional.includes(key));
+  assert(missing.length === 0, `${where}: missing ${missing.join(", ")}`);
+  assert(extra.length === 0, `${where}: unexpected ${extra.join(", ")}`);
+  return value;
+}
+
+function nonEmptyString(value, where) {
+  assert(typeof value === "string" && value.trim(), `${where}: must be a non-empty string`);
+  return value;
+}
+
+function positiveInteger(value, where) {
+  assert(Number.isSafeInteger(value) && value > 0, `${where}: must be a positive integer`);
+  return value;
+}
+
+function stringList(value, where, { nonEmpty = false } = {}) {
+  assert(
+    Array.isArray(value) && (!nonEmpty || value.length > 0) && value.every((entry) => typeof entry === "string" && entry),
+    `${where}: must be ${nonEmpty ? "a non-empty" : "a"} string array`,
+  );
+  return value;
+}
+
+function portOrNull(value, where) {
+  assert(value === null || (Number.isSafeInteger(value) && value >= 1 && value <= 65535), `${where}: must be a port or null`);
+  return value;
+}
+
+// `launch` is what the container reads, so its shape is the launcher's own: the
+// exact key set of image_tools/launcher/launch.py, checked here rather than at
+// pod start. `model_sync` is refused by being absent from the list, because that
+// block restated `model` and `deployment` and is what this consolidation deleted.
+function validateLaunch(launch, source) {
+  const where = `${source}: launch`;
+  keysAre(launch, LAUNCH_KEYS, where);
+  nonEmptyString(launch.profile, `${where}.profile`);
+  nonEmptyString(launch.hardware, `${where}.hardware`);
+  mapping(launch.options, `${where}.options`);
+  const environment = mapping(launch.environment, `${where}.environment`);
+  for (const [name, value] of Object.entries(environment)) {
+    assert(typeof value === "string", `${where}.environment.${name} must be a string`);
+  }
+  const topology = keysAre(launch.topology, TOPOLOGY_KEYS, `${where}.topology`);
+  assert(["single", "lws"].includes(topology.kind), `${where}.topology.kind must be single or lws`);
+  positiveInteger(topology.nodes, `${where}.topology.nodes`);
+  if (topology.kind === "lws") assert(topology.nodes >= 2, `${where}: an lws topology needs at least two nodes`);
+  for (const field of ["rendezvous_port", "replica_port_base"]) portOrNull(topology[field], `${where}.topology.${field}`);
+  if (topology.kv_events !== null) {
+    const events = keysAre(topology.kv_events, KV_EVENT_KEYS, `${where}.topology.kv_events`);
+    for (const field of KV_EVENT_KEYS) nonEmptyString(events[field], `${where}.topology.kv_events.${field}`);
+  }
+  portOrNull(launch.probe_port, `${where}.probe_port`);
+  return launch;
+}
+
+// A docs entry explains a value this recipe itself sets, beyond what upstream's
+// parameter-docs.yaml already carries. The completeness half of the rule -- every
+// value must be documented somewhere -- is resolve-configs.mjs's job, because only
+// it has the upstream tree to compare against.
+function validateDocs(docs, launch, source) {
+  const set = new Set([...Object.keys(launch.options), ...Object.keys(launch.environment)]);
+  for (const [name, entry] of Object.entries(mapping(docs, `${source}: docs`))) {
+    assert(set.has(name), `${source}: docs.${name} documents a value the recipe never sets`);
+    keysAre(entry, DOC_KEYS, `${source}: docs.${name}`);
+    for (const field of DOC_KEYS) nonEmptyString(entry[field], `${source}: docs.${name}.${field}`);
+  }
+}
+
+// The measured panel, in data rather than in markup so a page cannot show a
+// figure the recipe does not carry. `primary`, `notes` and `degraded` are how the
+// panel marked the emphasised column, the small suffix and the incomplete wave.
+function validateBenchmark(benchmark, source) {
+  const where = `${source}: benchmark`;
+  keysAre(benchmark, ["context", "tables", "notes"], where, ["tool", "version"]);
+  for (const field of ["tool", "version"]) {
+    if (benchmark[field] !== undefined) nonEmptyString(benchmark[field], `${where}.${field}`);
+  }
+  stringList(benchmark.context, `${where}.context`, { nonEmpty: true });
+  assert(Array.isArray(benchmark.tables) && benchmark.tables.length > 0, `${where}: at least one table is required`);
+  const ids = new Set();
+  for (const table of benchmark.tables) {
+    keysAre(table, TABLE_KEYS, `${where}.table`);
+    nonEmptyString(table.id, `${where}.table.id`);
+    assert(!ids.has(table.id), `${where}: table id ${table.id} is declared twice`);
+    ids.add(table.id);
+    for (const field of ["title", "aria_label"]) nonEmptyString(table[field], `${where}.${table.id}.${field}`);
+    const columns = stringList(table.columns, `${where}.${table.id}.columns`, { nonEmpty: true });
+    assert(Array.isArray(table.rows) && table.rows.length > 0, `${where}.${table.id}: at least one row is required`);
+    for (const row of table.rows) {
+      keysAre(row, ["cells"], `${where}.${table.id}.row`, ["degraded"]);
+      assert(row.degraded === undefined || typeof row.degraded === "boolean", `${where}.${table.id}.row.degraded must be a boolean`);
+      assert(Array.isArray(row.cells) && row.cells.length === columns.length, `${where}.${table.id}: a row must carry exactly ${columns.length} cells`);
+      for (const cell of row.cells) {
+        keysAre(cell, CELL_KEYS, `${where}.${table.id}.cell`, CELL_OPTIONAL_KEYS);
+        nonEmptyString(cell.text, `${where}.${table.id}.cell.text`);
+        if (cell.unit !== undefined) nonEmptyString(cell.unit, `${where}.${table.id}.cell.unit`);
+        if (cell.primary !== undefined) assert(typeof cell.primary === "boolean", `${where}.${table.id}.cell.primary must be a boolean`);
+        if (cell.notes !== undefined) stringList(cell.notes, `${where}.${table.id}.cell.notes`, { nonEmpty: true });
+      }
+    }
+  }
+  assert(Array.isArray(benchmark.notes) && benchmark.notes.length > 0, `${where}: the method and its caveats belong in notes`);
+  for (const note of benchmark.notes) {
+    keysAre(note, ["body"], `${where}.note`, ["title"]);
+    nonEmptyString(note.body, `${where}.note.body`);
+    if (note.title !== undefined) nonEmptyString(note.title, `${where}.note.title`);
+  }
+}
+
+// The checkpoint facts are stated once, in `model` and `deployment`, and their
+// presence together is what distinguishes the two ways a container can get its
+// weights. With a published root the launcher syncs it before exec; with none the
+// engine resolves the repository id itself, and no storage field may pretend
+// otherwise.
+function validateDeploymentAndLaunch(recipe, launch, source) {
+  const where = `${source}: deployment`;
+  const deployment = recipe.deployment;
+  positiveInteger(deployment.nodes, `${where}.nodes`);
+  positiveInteger(deployment.tensor_parallel_size, `${where}.tensor_parallel_size`);
+  assert(deployment.nodes === launch.topology.nodes, `${where}.nodes must be launch.topology.nodes (${launch.topology.nodes})`);
+  const options = launch.options;
+  if (options["tensor-parallel-size"] !== undefined) {
+    assert(options["tensor-parallel-size"] === deployment.tensor_parallel_size, `${where}.tensor_parallel_size must be launch.options['tensor-parallel-size'] (${options["tensor-parallel-size"]})`);
+  }
+  nonEmptyString(options.model, `${source}: launch.options.model must name what the engine loads`);
+  const sync = SYNC_DEPLOYMENT_KEYS.filter((field) => Object.hasOwn(deployment, field));
+  assert(sync.length === 0 || sync.length === SYNC_DEPLOYMENT_KEYS.length, `${where}: the storage fields come together; ${sync.join(", ")} without the rest`);
+  if (sync.length === 0) {
+    assert(options.model === recipe.model.model_id, `${where}: an engine-download recipe serves model.model_id, not a published path`);
+    return;
+  }
+  nonEmptyString(deployment.storage_root, `${where}.storage_root`);
+  assert(deployment.model_path.startsWith("/"), `${where}.model_path must be absolute`);
+  assert(
+    deployment.model_path === `${deployment.storage_root}/${recipe.model.served_name}`,
+    `${where}.model_path must be the storage root plus the served name (${deployment.storage_root}/${recipe.model.served_name})`,
+  );
+  positiveInteger(deployment.storage_min_free_gib, `${where}.storage_min_free_gib`);
+  positiveInteger(deployment.download_workers, `${where}.download_workers`);
+  stringList(deployment.ignore_patterns, `${where}.ignore_patterns`);
+  stringList(deployment.required_files, `${where}.required_files`, { nonEmpty: true });
+  assert(options.model === deployment.model_path, `${where}: the engine must load the snapshot the launcher publishes`);
+}
+
 function validateRecipe(recipe, source) {
   assert(recipe && typeof recipe === "object" && !Array.isArray(recipe), `${source}: recipe must be a mapping`);
   assert(JSON.stringify(Object.keys(recipe)) === JSON.stringify(TOP_LEVEL_KEYS), `${source}: top-level keys must be exactly ${TOP_LEVEL_KEYS.join(", ")}`);
-  assert(typeof recipe.meta.title === "string" && typeof recipe.meta.slug === "string" && typeof recipe.meta.description === "string", `${source}: meta fields are required`);
+  // The route, the selection string `--recipe` takes and the file's stem are one
+  // name: load_recipe resolves a name across recipes/** by stem, so a slug that
+  // drifted from its file would publish a page for a recipe the launcher cannot
+  // find and a command line that no longer matches the page.
+  const name = basename(source).replace(/\.ya?ml$/, "");
+  assert(RECIPE_NAME.test(name), `${source}: recipe name ${name} is not a lower-case identifier`);
+  assert(typeof recipe.meta.title === "string" && typeof recipe.meta.description === "string", `${source}: meta title and description are required`);
+  assert(recipe.meta.slug === name, `${source}: meta.slug must be ${name}, the file stem the launcher resolves`);
   assert(typeof recipe.model.model_id === "string" && COMMIT.test(recipe.model.revision) && typeof recipe.model.served_name === "string", `${source}: model id, full commit OID and served name are required`);
   assert(recipe.model.serves_native_messages === undefined || typeof recipe.model.serves_native_messages === "boolean", `${source}: model.serves_native_messages must be a boolean`);
   assert(Array.isArray(recipe.runtime.command) && recipe.runtime.command.every((value) => typeof value === "string"), `${source}: runtime.command must be a string array`);
@@ -60,11 +243,16 @@ function validateRecipe(recipe, source) {
     assert(recipe.runtime.leader_args.some((value) => value.includes('"enable_kv_cache_events":true') && value.includes(topic)), `${source}: the KV-event topic must carry the serving port and the served model name (${topic})`);
     assert(leaderPorts.some((entry) => entry.name === "kv-events"), `${source}: a publishing recipe must declare the kv-events container port`);
   }
-  assert(recipe.deployment.nodes === 2 && recipe.deployment.tensor_parallel_size === 2, `${source}: seed topology must remain two-node TP=2`);
-  assert(typeof recipe.deployment.model_path === "string" && recipe.deployment.model_path.startsWith("/"), `${source}: deployment.model_path must be absolute`);
-  assert(Number.isSafeInteger(recipe.deployment.storage_min_free_gib) && recipe.deployment.storage_min_free_gib > 0, `${source}: storage minimum must be a positive integer`);
-  assert(Number.isSafeInteger(recipe.deployment.download_workers) && recipe.deployment.download_workers > 0, `${source}: download workers must be a positive integer`);
-  assert(Array.isArray(recipe.deployment.ignore_patterns) && recipe.deployment.ignore_patterns.every((value) => typeof value === "string"), `${source}: ignore patterns must be strings`);
+  const launch = validateLaunch(recipe.launch, source);
+  validateDocs(recipe.docs, launch, source);
+  validateBenchmark(recipe.benchmark, source);
+  validateDeploymentAndLaunch(recipe, launch, source);
+  assert(recipe.model.served_name === launch.options["served-model-name"], `${source}: model.served_name and launch.options['served-model-name'] must be one value`);
+  if (launch.options.revision !== undefined) {
+    // The engine may pin the snapshot it downloads, but it cannot pin a different
+    // revision from the one the recipe names: one checkout, one identity.
+    assert(String(launch.options.revision) === recipe.model.revision, `${source}: launch.options.revision must be model.revision`);
+  }
   assert(recipe.deployment.parameters && typeof recipe.deployment.parameters === "object", `${source}: parameter mapping is required`);
   for (const [name, parameter] of Object.entries(recipe.deployment.parameters)) {
     assert(typeof parameter.label === "string" && PARAMETER_TYPES.has(parameter.type) && typeof parameter.required === "boolean" && Object.hasOwn(parameter, "default") && typeof parameter.description === "string", `${source}: malformed parameter ${name}`);
@@ -78,8 +266,24 @@ function validateRecipe(recipe, source) {
       assert(parameter.type === "string" && Array.isArray(parameter.suggestions) && parameter.suggestions.length > 0 && parameter.suggestions.every((value) => typeof value === "string" && value), `${source}: ${name} suggestions must be non-empty strings for a string parameter`);
     }
   }
-  assert(DIGEST_REFERENCE.test(recipe.validation.image) && !recipe.validation.image.includes("internal.randomvariable"), `${source}: validation image must be a public digest-qualified reference`);
-  assert(recipe.validation.lws === "verified" && recipe.validation.docker === "unverified" && typeof recipe.validation.evidence === "string", `${source}: validation status and evidence are required`);
+  keysAre(recipe.guide, GUIDE_KEYS, `${source}: guide`);
+  for (const field of GUIDE_KEYS) nonEmptyString(recipe.guide[field], `${source}: guide.${field}`);
+  // A status is allowed to claim only what an image can be pointed at. `image` is
+  // required and public exactly when something was verified, and must be absent
+  // rather than empty or null otherwise, so a later edit cannot flip a status to
+  // `verified` around a placeholder digest.
+  mapping(recipe.validation, `${source}: validation`);
+  for (const field of ["kubernetes", "docker"]) {
+    assert(VALIDATION_STATUSES.has(recipe.validation[field]), `${source}: validation.${field} must be verified or unverified`);
+  }
+  const accepted = recipe.validation.kubernetes === "verified" || recipe.validation.docker === "verified";
+  if (accepted) {
+    nonEmptyString(recipe.validation.image, `${source}: a verified recipe must pin the image it was verified on`);
+    assert(DIGEST_REFERENCE.test(recipe.validation.image) && !recipe.validation.image.includes("internal.randomvariable"), `${source}: validation image must be a public digest-qualified reference`);
+  } else {
+    assert(recipe.validation.image === undefined, `${source}: an unverified recipe must not name an image`);
+  }
+  nonEmptyString(recipe.validation.evidence, `${source}: validation.evidence must record what was accepted`);
   assertNoPrivateReference(JSON.stringify(recipe), source);
   return recipe;
 }
@@ -137,11 +341,124 @@ export async function publishDeploymentData(publicRoot = PUBLIC_ROOT) {
     ["configs.json", (document, source) => validateConfigs(document, source, declarations)],
     ["options.json", (document, source) => validateOptions(document, source, values)],
   ];
+  const documents = {};
   for (const [name, validate] of artefacts) {
     const source = join(publicRoot, name);
     const document = JSON.parse(await readFile(source, "utf8"));
     validate(document, source);
     assertNoPrivateReference(JSON.stringify(document), source);
+    documents[name.replace(/\.json$/, "")] = document;
+  }
+  return documents;
+}
+
+function cell(value) {
+  // Table cells are the only place a release's own text can break the document:
+  // a pipe would end the row and a newline would end the table.
+  return String(value ?? "not recorded").replace(/\|/g, "\\|").replace(/\s+/g, " ").trim();
+}
+
+function buildPage(release, repository) {
+  const code = (value) => "`" + value + "`";
+  const short = (value) => code(String(value).slice(0, 12));
+  const pins = [
+    ["Digest", code(release.digest)],
+    ["Publication tag", code(release.publication_tag)],
+    ["vLLM", short(release.vllm_commit)],
+    ["B12X", short(release.b12x_commit)],
+    ["Runtime data", short(release.lil_runtime_commit)],
+    ["Builder", short(release.builder_commit)],
+  ];
+  const frontmatter = [
+    "---",
+    `title: "${release.tag} build"`,
+    `description: "The ${release.tag} publication: its digest, the revisions it was built from and the changes it carries."`,
+    "editUrl: false",
+    "---",
+  ].join("\n");
+  const lines = [
+    frontmatter,
+    `Published ${release.published_at.slice(0, 10)}.`,
+    "",
+    "Every build is assembled from pinned revisions of `local-inference-lab/vLLM` and its",
+    "dependencies. These are not generic upstream vLLM images, and the digest identifies",
+    "one build rather than a moving tag.",
+    "",
+    "## What this build was made from",
+    "",
+    "| Field | Value |",
+    "| --- | --- |",
+    ...pins.map(([label, value]) => `| ${label} | ${value} |`),
+    "",
+    "A field that reads `not recorded` predates the pin that would fill it. Treat it as",
+    "unknown rather than as matching the current source.",
+    "",
+    "## Carried by this build",
+    "",
+    ...(release.highlights.length
+      ? release.highlights.map((entry) => `- ${cell(entry)}`)
+      : ["No additions were recorded for this build."]),
+    "",
+    "## Included upstream changes",
+    "",
+    "The image is built from pinned fork revisions rather than from upstream branches, so",
+    "this records which upstream changes the current lock carries.",
+    "",
+    ...(release.included_changes.length
+      ? [
+          "| Component | Change | Included as |",
+          "| --- | --- | --- |",
+          ...release.included_changes.map(
+            (change) =>
+              `| ${cell(change.component)} | ${change.url ? `[${cell(change.change)}](${change.url})` : cell(change.change)} | ${cell(change.included_as)} |`,
+          ),
+        ]
+      : ["No upstream changes were recorded for this build."]),
+    "",
+    "## Run this build",
+    "",
+    "```bash",
+    `docker pull ${repository}@${release.digest}`,
+    "```",
+    "",
+    "The [deployment flow](../../) selects a build, a model and its settings, then renders",
+    "the manifest, the Docker command and the Compose file. Opening it with this build",
+    "keeps every other choice at its default.",
+    "",
+  ];
+  return `${lines.join("\n")}\n`;
+}
+
+// One page per published build, generated from releases.json the same way the
+// runtime configuration inventory is generated from its source: the site would
+// otherwise keep a second copy of the release record that can drift from the
+// GitHub data it came from. Markdown rather than MDX because a release body is
+// operator-written text, and `{` or `<` in it would be parsed as an expression.
+//
+// Each release becomes builds/<route>/index.md, where the route is the tag with
+// its dot replaced by a dash. Astro removes dots from a route segment entirely,
+// so builds/v20261003.1/index.md would be served at /builds/v202610031/ and the
+// URL would read as a different build. A dash survives, and the page still names
+// the exact tag in its title, heading and pull command.
+export function buildRoute(tag) {
+  assert(RELEASE_TAG.test(tag), `${tag}: not a vYYYYMMDD.N build tag`);
+  return tag.replace(/\./g, "-");
+}
+
+export async function publishBuildPages(document, repository, directory = BUILDS_DIRECTORY) {
+  await mkdir(directory, { recursive: true });
+  const written = new Set();
+  for (const release of document.releases) {
+    const route = buildRoute(release.tag);
+    written.add(route);
+    const target = join(directory, route);
+    await mkdir(target, { recursive: true });
+    await writeFile(join(target, "index.md"), buildPage(release, repository));
+  }
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    if (entry.isDirectory() && !written.has(entry.name)) {
+      await rm(join(directory, entry.name), { recursive: true });
+    }
   }
 }
 
@@ -151,10 +468,10 @@ async function main() {
   assert(recipes.length > 0, "no recipes were found");
   const slugs = recipes.map((recipe) => recipe.meta.slug);
   assert(new Set(slugs).size === slugs.length, "recipe slugs must be unique");
-  validateLatest(JSON.parse(await readFile(join(PUBLIC_ROOT, "latest-image.json"), "utf8")));
+  const latest = validateLatest(JSON.parse(await readFile(join(PUBLIC_ROOT, "latest-image.json"), "utf8")));
   validateDependencies(parseYaml(await readFile(join(SITE_ROOT, "src/data/platform-dependencies.yaml"), "utf8")));
-  await publishDeploymentData();
-  await publishRuntimeConfiguration();
+  const documents = await publishDeploymentData();
+  await publishBuildPages(documents.releases, latest.repository);
   const document = { recipes };
   assertNoPrivateReference(JSON.stringify(document), "recipes.json");
   await writeFile(join(PUBLIC_ROOT, "recipes.json"), `${JSON.stringify(document, null, 2)}\n`);

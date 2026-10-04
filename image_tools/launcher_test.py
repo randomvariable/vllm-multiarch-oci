@@ -179,23 +179,31 @@ class KvEventTests(unittest.TestCase):
 
 
 class RecipeTests(unittest.TestCase):
-    def recipe(self, **overrides):
+    """The recipe document is one file per deployment, and the launcher reads it whole.
+
+    ``launch`` is the launcher's own section; the checkpoint facts come from
+    ``model`` and ``deployment``, so a published path is stated once. Whether a
+    recipe syncs a checkpoint is the presence of ``deployment.model_path``, which is
+    what separates the two TP=2 groups from the engine-download single-node server.
+    """
+
+    MODEL = {"model_id": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4", "revision": "6" * 40}
+    DEPLOYMENT = {
+        "storage_root": "/models",
+        "model_path": "/models/qwen38-flash-next",
+        "storage_min_free_gib": 130,
+        "download_workers": 8,
+        "ignore_patterns": [],
+        "required_files": ["tokenizer_config.json"],
+    }
+
+    def launch_section(self, **overrides):
         base = {
             "profile": "qwen38-flash-next",
             "hardware": "gb10-roce",
             "preset": None,
             "options": {"tensor-parallel-size": 2},
             "environment": {"HF_HOME": "/models"},
-            "model_sync": {
-                "repo": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4",
-                "revision": "6" * 40,
-                "storage_root": "/models",
-                "publish": "/models/qwen38-flash-next",
-                "min_free_gib": 130,
-                "workers": 8,
-                "ignore_patterns": [],
-                "required_files": ["tokenizer_config.json"],
-            },
             "topology": {
                 "kind": "lws",
                 "nodes": 2,
@@ -208,18 +216,32 @@ class RecipeTests(unittest.TestCase):
         base.update(overrides)
         return base
 
+    def recipe(self, *, model=None, deployment=None, section=None, **overrides):
+        return {
+            "model": dict(self.MODEL if model is None else model),
+            "deployment": dict(self.DEPLOYMENT if deployment is None else deployment),
+            "launch": self.launch_section(**overrides) if section is None else section,
+        }
+
     def test_load_accepts_a_complete_recipe(self):
         recipe = launch.Recipe.from_dict("x", self.recipe())
         self.assertEqual(recipe.topology.kind, launch.TOPOLOGY_LWS)
         self.assertEqual(recipe.model_sync.min_free_gib, 130)
+        self.assertEqual(recipe.model_sync.repo, self.MODEL["model_id"])
+        self.assertEqual(recipe.model_sync.publish, Path("/models/qwen38-flash-next"))
         self.assertEqual(recipe.topology.kv_events.publisher, "zmq")
+
+    def test_no_published_path_means_the_engine_downloads(self):
+        deployment = {name: value for name, value in self.DEPLOYMENT.items() if name != "model_path"}
+        recipe = launch.Recipe.from_dict("x", self.recipe(deployment=deployment))
+        self.assertIsNone(recipe.model_sync)
 
     def test_load_recipe_reads_a_file_and_refuses_a_bad_one(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / "x.yaml").write_text(yaml.safe_dump({"launch": self.recipe()}, indent=2))
+            (root / "x.yaml").write_text(yaml.safe_dump(self.recipe(), indent=2))
             self.assertEqual(launch.load_recipe("x", root).profile, "qwen38-flash-next")
-            (root / "bare.yaml").write_text(yaml.safe_dump(self.recipe(), indent=2))
+            (root / "bare.yaml").write_text(yaml.safe_dump(self.MODEL, indent=2))
             with self.assertRaises(launch.ConfigError):
                 launch.load_recipe("bare", root)
             with self.assertRaises(launch.ConfigError) as caught:
@@ -228,37 +250,36 @@ class RecipeTests(unittest.TestCase):
 
     def test_unknown_or_missing_keys_are_refused_with_the_key_named(self):
         for key in ("profile", "hardware", "probe_port", "topology"):
-            broken = {name: value for name, value in self.recipe().items() if name != key}
+            broken = {name: value for name, value in self.launch_section().items() if name != key}
             with self.subTest(missing=key), self.assertRaises(launch.ConfigError) as caught:
-                launch.Recipe.from_dict("x", broken)
+                launch.Recipe.from_dict("x", self.recipe(section=broken))
             self.assertIn(key, str(caught.exception))
         with self.assertRaises(launch.ConfigError) as caught:
-            launch.Recipe.from_dict("x", self.recipe(extra=1))
+            launch.Recipe.from_dict("x", self.recipe(section={**self.launch_section(), "extra": 1}))
         self.assertIn("extra", str(caught.exception))
 
     def test_revision_must_be_a_full_commit_oid(self):
         for revision in ("main", "6" * 39, "6" * 41, "F" * 40):
-            sync = dict(self.recipe()["model_sync"], revision=revision)
             with self.subTest(revision=revision), self.assertRaises(launch.ConfigError):
-                launch.Recipe.from_dict("x", self.recipe(model_sync=sync))
+                launch.Recipe.from_dict("x", self.recipe(model=dict(self.MODEL, revision=revision)))
 
     def test_single_topology_needs_no_leader_flags(self):
-        recipe = launch.Recipe.from_dict("x", self.recipe(topology=TOPOLOGY_SINGLE))
+        recipe = launch.Recipe.from_dict("x", self.recipe(section=self.launch_section(topology=TOPOLOGY_SINGLE)))
         self.assertEqual(launch.read_rank(recipe.topology, {}), launch.Rank(0, 1, None))
 
     def test_worker_topology_below_two_nodes_is_refused(self):
-        broken = dict(self.recipe()["topology"], nodes=1)
+        broken = dict(self.launch_section()["topology"], nodes=1)
         with self.assertRaises(launch.ConfigError):
-            launch.Recipe.from_dict("x", self.recipe(topology=broken))
+            launch.Recipe.from_dict("x", self.recipe(section=self.launch_section(topology=broken)))
 
     def test_probe_port_must_be_a_port(self):
         for probe_port in (0, 70000, "8890"):
             with self.subTest(probe_port=probe_port), self.assertRaises(launch.ConfigError):
-                launch.Recipe.from_dict("x", self.recipe(probe_port=probe_port))
+                launch.Recipe.from_dict("x", self.recipe(section=self.launch_section(probe_port=probe_port)))
 
     def test_environment_values_must_be_strings(self):
         with self.assertRaises(launch.ConfigError):
-            launch.Recipe.from_dict("x", self.recipe(environment={"OMP_NUM_THREADS": 2}))
+            launch.Recipe.from_dict("x", self.recipe(section=self.launch_section(environment={"OMP_NUM_THREADS": 2})))
 
 
 class CacheRoleTests(unittest.TestCase):
@@ -338,25 +359,28 @@ class CacheRoleTests(unittest.TestCase):
 
 
 class SyncTests(unittest.TestCase):
-    def recipe(self, publish: Path) -> launch.Recipe:
+    def recipe(self, publish: Path | None) -> launch.Recipe:
+        deployment = {
+            "storage_root": "/models",
+            "storage_min_free_gib": 130,
+            "download_workers": 8,
+            "ignore_patterns": ["assets/*"],
+            "required_files": ["tokenizer_config.json"],
+        }
+        if publish is not None:
+            deployment["model_path"] = str(publish)
         return launch.Recipe.from_dict("x", {
-            "profile": "qwen38-flash-next",
-            "hardware": "gb10-roce",
-            "preset": None,
-            "options": {},
-            "environment": {},
-            "model_sync": {
-                "repo": "org/model",
-                "revision": "6" * 40,
-                "storage_root": "/models",
-                "publish": str(publish),
-                "min_free_gib": 130,
-                "workers": 8,
-                "ignore_patterns": ["assets/*"],
-                "required_files": ["tokenizer_config.json"],
+            "model": {"model_id": "org/model", "revision": "6" * 40},
+            "deployment": deployment,
+            "launch": {
+                "profile": "qwen38-flash-next",
+                "hardware": "gb10-roce",
+                "preset": None,
+                "options": {},
+                "environment": {},
+                "topology": TOPOLOGY_SINGLE,
+                "probe_port": 8890,
             },
-            "topology": TOPOLOGY_SINGLE,
-            "probe_port": 8890,
         })
 
     def test_sync_refuses_to_exec_without_a_published_index(self):
@@ -379,20 +403,11 @@ class SyncTests(unittest.TestCase):
             self.assertEqual(sync.call_args.kwargs["repo"], "org/model")
             self.assertEqual(sync.call_args.kwargs["min_free_bytes"], 130 * 1024**3)
 
-    def test_sync_without_a_model_sync_section_is_refused(self):
-        recipe = launch.Recipe.from_dict("x", {
-            "profile": "qwen38-flash-next",
-            "hardware": "gb10-roce",
-            "preset": None,
-            "options": {},
-            "environment": {},
-            "model_sync": None,
-            "topology": TOPOLOGY_SINGLE,
-            "probe_port": 8890,
-        })
+    def test_sync_without_a_published_path_is_refused(self):
         with self.assertRaises(launch.ConfigError) as caught:
-            launch.publish_model(recipe)
-        self.assertIn("model_sync", str(caught.exception))
+            launch.publish_model(self.recipe(None))
+        self.assertIn("deployment.model_path", str(caught.exception))
+        self.assertEqual(caught.exception.code, launch.EXIT_MODEL)
 
 
 class EntrypointTests(unittest.TestCase):
@@ -457,8 +472,15 @@ class EntrypointTests(unittest.TestCase):
         self.assertIn("--recipe", result.stderr)
         self.assertIn("--profile", result.stderr)
 
+    @unittest.skipUnless(UPSTREAM_RUNTIME.is_dir(), "pinned upstream policy data is not checked out")
     def test_probe_role_serves_the_endpoints(self):
-        with mock.patch.object(probe_server, "serve", return_value=0) as serve:
+        # In-process, so the data root has to be pointed at the pinned policy tree
+        # the way `invoke` points the subprocess at it: the default is the image's
+        # /opt/vllm-image/runtime, which exists only inside the image.
+        with (
+            mock.patch.dict(os.environ, {"VLLM_IMAGE_DATA_ROOT": str(UPSTREAM_RUNTIME)}),
+            mock.patch.object(probe_server, "serve", return_value=0) as serve,
+        ):
             self.assertEqual(
                 launch.run(
                     ["--profile", "qwen38-flash-next", "--hardware", "native", "--role", "probe"]

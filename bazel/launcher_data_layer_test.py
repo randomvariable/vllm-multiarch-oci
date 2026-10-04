@@ -68,10 +68,13 @@ EXCLUDED = (
     "kimi-k3-qsrt/source-overlay/sitecustomize.py",
 )
 
+# One file per deployment, in a directory per model owner: //recipes/<owner>/
+# <name>.yaml. The layer installs them flat, so the stem is the identity
+# `--recipe` resolves and no two owners may declare the same one.
 RECIPES = (
-    "qwen38-flash-next-gb10-tp2.yaml",
-    "deepseek-v4-flash-vision-gb10-tp2.yaml",
-    "qwen38-27b.yaml",
+    ("local-inference-lab", "qwen38-flash-next-gb10-tp2.yaml"),
+    ("deepseek-ai", "deepseek-v4-flash-vision-gb10-tp2.yaml"),
+    ("local-inference-lab", "qwen38-27b.yaml"),
 )
 OUR_HARDWARE = ("gb10-roce.yaml",)
 
@@ -82,7 +85,7 @@ def expected_paths() -> set[str]:
     installed |= {f"{ROOT}/{RUNTIME}/profiles/{name}" for name in PROFILES}
     installed |= {f"{ROOT}/{RUNTIME}/hardware/{name}" for name in HARDWARE + OUR_HARDWARE}
     installed |= {f"{ROOT}/{RUNTIME}/templates/{name}" for name in TEMPLATES}
-    installed |= {f"{ROOT}/recipes/{name}" for name in RECIPES}
+    installed |= {f"{ROOT}/recipes/{name}" for _, name in RECIPES}
     return installed
 
 
@@ -114,11 +117,15 @@ def data_dir(base: Path) -> Path:
     return base / "image_tools" / "data"
 
 
+def recipes_dir(base: Path) -> Path:
+    """Return the directory the fixture lays out like //recipes."""
+    return base / "recipes"
+
+
 def make_overlay(base: Path) -> tuple[list[Path], list[Path]]:
     """Materialise our recipe and hardware filegroups below *base*."""
-    data = data_dir(base)
-    recipes = [write(data / "recipes" / name) for name in RECIPES]
-    hardware = [write(data / "hardware" / name) for name in OUR_HARDWARE]
+    recipes = [write(recipes_dir(base) / owner / name) for owner, name in RECIPES]
+    hardware = [write(data_dir(base) / "hardware" / name) for name in OUR_HARDWARE]
     return recipes, hardware
 
 
@@ -183,7 +190,29 @@ class SelectionTests(unittest.TestCase):
         )
         self.assertEqual(
             plan[f"{ROOT}/recipes/qwen38-27b.yaml"],
-            self.base / "image_tools" / "data" / "recipes" / "qwen38-27b.yaml",
+            self.base / "recipes" / "local-inference-lab" / "qwen38-27b.yaml",
+        )
+
+    def test_the_layer_installs_recipes_flat_by_name(self):
+        # The owner directory is provenance in the repository and is gone in the
+        # image, which is what makes the stem the only thing `--recipe` can match.
+        plan = ACTION.install_plan(self.upstream, self.recipes, self.hardware)
+        self.assertEqual(
+            {name for name in plan if name.startswith(f"{ROOT}/recipes/")},
+            {f"{ROOT}/recipes/{name}" for _, name in RECIPES},
+        )
+
+    def test_two_owners_with_one_recipe_name_fails(self):
+        # Flat installation means one file per stem; the later copy must not win.
+        duplicate = write(recipes_dir(self.base) / "deepseek-ai" / "qwen38-27b.yaml")
+        with self.assertRaises(SystemExit) as raised:
+            ACTION.install_plan(self.upstream, [*self.recipes, duplicate], self.hardware)
+        message = str(raised.exception)
+        self.assertIn(f"{ROOT}/recipes/qwen38-27b.yaml", message)
+        self.assertIn(str(duplicate), message)
+        self.assertIn(
+            str(recipes_dir(self.base) / "local-inference-lab" / "qwen38-27b.yaml"),
+            message,
         )
 
     def test_plan_never_installs_unselected_upstream_paths(self):

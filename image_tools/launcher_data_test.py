@@ -74,7 +74,8 @@ SKIP_REASON = (
 )
 
 DATA = IMAGE_TOOLS / "data"
-RECIPE_DIR = DATA / "recipes"
+RECIPE_DIR = REPO / "recipes"
+ACCEPTED_DIR = DATA / "accepted"
 GOLDEN_DIR = DATA / "golden"
 HARDWARE = "gb10-roce"
 PROBE_PORT = 8890
@@ -109,81 +110,13 @@ NATIVE_ARGS: dict[str, list[str]] = {
         "--disable-access-log-for-endpoints", "/metrics,/v1/models",
     ],
     # The QAD checkpoint routes dense and MoE GEMMs through b12x with the
-    # FlashInfer autotuner off; --kernel-config is not a managed option
-    # (internal.randomvariable.co.uk qwen38-27b.yaml:171-179, 208).
+    # FlashInfer autotuner off; --kernel-config is not a managed option, so it
+    # arrives after `--` rather than as a recipe option (the GitOps repository,
+    # src/rv/k8s/clusters/home/llm-d/qwen38-27b.yaml:171-179, 208).
     "qwen38-27b": [
         "--kernel-config",
         '{"enable_flashinfer_autotune": false, "linear_backend": "b12x"}',
     ],
-}
-
-# Which file recorded each recipe's accepted command. The two TP=2 deployments
-# carry it in this repository's own recipe manifests; the single-node checkpoint
-# has no manifest, so its accepted names are listed inline below, quoted from
-# the live definition.
-ACCEPTED_MANIFEST: dict[str, Path] = {
-    "qwen38-flash-next-gb10-tp2": REPO / "recipes/local-inference-lab/Qwen3.8-Flash-Next-NVFP4.yaml",
-    "deepseek-v4-flash-vision-gb10-tp2": REPO / "recipes/deepseek-ai/DeepSeek-V4-Flash-Vision-Exp.yaml",
-}
-
-# The single-node checkpoint has no manifest in this repository, so its
-# accepted command is the live definition's own argv tail, quoted from
-# internal.randomvariable.co.uk src/rv/k8s/clusters/home/llm-d/qwen38-27b.yaml
-# lines 183-209 with the three shell variables the init script interpolated
-# replaced by the values the manifest gives them at lines 221-228, and its
-# accepted environment is lines 210-374 minus the variables the manifest
-# injects at run time (POD_IP, HF_TOKEN) and the rank arguments the launcher
-# appends itself.
-ACCEPTED_ARGUMENTS: dict[str, list[str]] = {
-    "qwen38-27b": [
-        "local-inference-lab/Qwen3.8-27B-NVFP4-QAD",
-        "--revision", "f40a31cd813a6746067e7d6446ff2cb708dbb779",
-        "--served-model-name", "qwen3.8-27b",
-        "--host", "0.0.0.0",
-        "--port", "8888",
-        "--tensor-parallel-size", "1",
-        "--dtype", "bfloat16",
-        "--quantization", "modelopt_mixed",
-        "--hf-overrides",
-        '{"text_config":{"max_position_embeddings":1048576,"rope_parameters":{"rope_type":"yarn","factor":4.0,"original_max_position_embeddings":262144}}}',
-        "--max-model-len", "1048576",
-        "--gpu-memory-utilization", "0.92",
-        "--max-num-seqs", "32",
-        "--max-cudagraph-capture-size", "128",
-        "--max-num-batched-tokens", "8192",
-        "--kv-cache-dtype", "fp8",
-        "--enable-prefix-caching",
-        "--mamba-cache-mode", "align",
-        "--prefix-match-unit", "16",
-        "--enable-chunked-prefill",
-        "--speculative-config",
-        '{"method":"mtp","num_speculative_tokens":3,"num_speculative_tokens_per_batch_size":[[1,2,3],[3,8,0]]}',
-        "--reasoning-parser", "qwen3",
-        "--tool-call-parser", "qwen3_xml",
-        "--enable-auto-tool-choice",
-        "--default-chat-template-kwargs", '{"preserve_thinking": true}',
-        "--override-generation-config",
-        '{"temperature":0.7,"top_p":0.95,"top_k":20,"repetition_penalty":1.05}',
-        "--kernel-config",
-        '{"enable_flashinfer_autotune": false, "linear_backend": "b12x"}',
-        "--limit-mm-per-prompt", '{"image":8}',
-    ],
-}
-
-ACCEPTED_ENVIRONMENT: dict[str, frozenset[str]] = {
-    "qwen38-27b": frozenset(
-        {
-            "HOME", "HF_HOME", "HF_HUB_OFFLINE", "HF_XET_HIGH_PERFORMANCE",
-            "HF_XET_CACHE", "TORCH_CUDA_ARCH_LIST", "FLASHINFER_CUDA_ARCH_LIST",
-            "CUTE_DSL_ARCH", "SAFETENSORS_FAST_GPU", "PYTORCH_CUDA_ALLOC_CONF",
-            "TRITON_CACHE_DIR", "TORCHINDUCTOR_CACHE_DIR",
-            "FLASHINFER_WORKSPACE_BASE", "VLLM_CACHE_ROOT",
-            "VLLM_USE_FLASHINFER_SAMPLER", "VLLM_DISABLED_KERNELS",
-            "B12X_COMPILE_CACHE_DIR", "VLLM_USE_RUST_FRONTEND",
-            "VLLM_WORKER_MULTIPROC_METHOD", "OMP_NUM_THREADS",
-            "NCCL_CUMEM_ENABLE",
-        }
-    ),
 }
 
 # Shell indirection the accepted deployment's init or serve script interpolated
@@ -419,18 +352,14 @@ def fold_arguments(tokens: list[str]) -> tuple[dict, list]:
 
 
 def accepted_arguments(name: str) -> tuple[dict, list]:
-    """The command the source of truth recorded for this recipe."""
-    manifest = ACCEPTED_MANIFEST.get(name)
-    if manifest is None:
-        return fold_arguments(ACCEPTED_ARGUMENTS[name])
-    document = resolver.read_yaml(manifest)
-    tokens = list(document["runtime"]["base_args"])
-    deployment = document.get("deployment", {})
-    if deployment.get("tensor_parallel_size"):
-        # The live manifest passes it from LWS_GROUP_SIZE, so it is part of the
-        # accepted command without appearing in base_args.
-        tokens += ["--tensor-parallel-size", str(deployment["tensor_parallel_size"])]
-    return fold_arguments(tokens)
+    """The command the recipe was accepted on, from its frozen record.
+
+    The record is separate from the golden because nothing else can hold it: the
+    accepted command came from the pre-launcher recipe file, and the consolidated recipe now states
+    its policy as ``launch.options``, which is the thing under test. Comparing a
+    recipe against itself would pass whatever it contained.
+    """
+    return fold_arguments(accepted_record(name)["argv_tokens"])
 
 
 def resolved_arguments(record_: dict) -> dict:
@@ -447,12 +376,7 @@ def accepted_environment(name: str) -> frozenset[str]:
     setting, and the shell variables the old init or serve script interpolated
     into its own command line, listed in RETIRED_SHELL_INDIRECTION.
     """
-    manifest = ACCEPTED_MANIFEST.get(name)
-    keys = (
-        ACCEPTED_ENVIRONMENT[name]
-        if manifest is None
-        else resolver.read_yaml(manifest)["runtime"]["base_env"]
-    )
+    keys = accepted_record(name)["environment_keys"]
     aliases = resolver.managed_environment_names(UPSTREAM_RUNTIME)
     retired = set(RETIRED_SHELL_INDIRECTION.get(name, {}))
     return frozenset(key for key in keys if key not in aliases and key not in retired)
@@ -521,7 +445,7 @@ def resolve_recipe(
     recipe: launch.Recipe, *, root: Path, env: dict[str, str] | None = None
 ) -> resolver.ResolvedPlan:
     """One recipe through the resolver, exactly as launch.resolved_plan does."""
-    environment = dict(env or {})
+    environment = env or {}
     return resolver.resolve(
         recipe.profile,
         recipe.hardware,
@@ -543,6 +467,17 @@ def record(plan: resolver.ResolvedPlan) -> dict:
 
 def golden_path(name: str) -> Path:
     return GOLDEN_DIR / f"{name}.json"
+
+
+def accepted_record(name: str) -> dict:
+    """The command and environment the recipe was accepted on.
+
+    Stored beside, not inside, the golden: the golden must contain exactly the
+    resolved record so `--update` can rewrite it wholesale and a stale key can
+    never survive, while the accepted evidence is frozen history that no
+    regeneration may touch.
+    """
+    return json.loads((ACCEPTED_DIR / f"{name}.json").read_text())["accepted"]
 
 
 def dump(record_: dict) -> str:

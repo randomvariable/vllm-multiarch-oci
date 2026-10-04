@@ -161,8 +161,12 @@ class LauncherDataLayerTarTests(unittest.TestCase):
         self.assertEqual(directory.mode, 0o755)
 
     def run_with_modes(self, file_mode: int, directory_mode: int, name: str) -> Path:
-        for path in LAYER.data_dir(self.base).rglob("*"):
-            path.chmod(directory_mode if path.is_dir() else file_mode)
+        # Both overlay trees: the hardware profiles live under //image_tools/data
+        # and the recipes under //recipes, and either one's on-disk mode would
+        # otherwise reach the layer digest.
+        for directory in (LAYER.data_dir(self.base), LAYER.recipes_dir(self.base)):
+            for path in directory.rglob("*"):
+                path.chmod(directory_mode if path.is_dir() else file_mode)
         return LAYER.run_action(self.base / name, self.archive, self.recipes, self.hardware)
 
 

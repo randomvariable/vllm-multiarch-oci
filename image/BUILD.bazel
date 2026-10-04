@@ -208,7 +208,7 @@ launcher_data_layer(
     name = "launcher_data",
     upstream_source = "@vllmb12x_lil_runtime//:source.tar",
     hardware = "//image_tools/data:hardware",
-    recipes = "//image_tools/data:recipes",
+    recipes = "//recipes:all_yaml_files",
     output = "launcher-data.tar",
 )
 

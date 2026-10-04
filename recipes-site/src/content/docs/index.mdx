@@ -1,55 +1,27 @@
 ---
 title: Build and deploy on NVIDIA DGX Spark
-description: Build and deployment recipes for the local-inference-lab vLLM fork on NVIDIA DGX Spark.
+description: Configure a vLLM deployment for NVIDIA DGX Spark, then copy the manifest, the container command or the Compose file.
 ---
 
-import ReleaseStrip from "../../components/ReleaseStrip.astro";
+import DeploymentFlow from "../../components/DeploymentFlow.astro";
 
-<ReleaseStrip />
+<DeploymentFlow />
+
+## About these images
 
 This project builds [`local-inference-lab/vLLM`](https://github.com/local-inference-lab/vllm) and its source dependencies for NVIDIA DGX Spark. It publishes an ARM64 OCI image and generates Kubernetes and Docker configuration for the two-node TP=2 deployments I run on two DGX Spark systems. It is not a builder or recipe catalog for upstream `vllm-project/vllm` releases.
 
-<section class="site-intro" aria-labelledby="site-purpose">
-  <div class="intro-copy">
-    <p class="eyebrow">Kubernetes and Docker</p>
-    <h2 id="site-purpose" class="large-copy">Generate Kubernetes and Docker configuration</h2>
-    <p>
-      Each page uses the DGX Spark image built from the pinned local-inference-lab/vLLM revision. It keeps the tested image separate from the newest publication, then renders Kubernetes and Docker artifacts from one authored definition. Site-specific network, storage, and resource values remain yours to supply.
-    </p>
-  </div>
-</section>
+The flow above renders from four generated documents rather than from text kept in
+the page: the published releases, the launcher's own resolved configuration, the
+pinned upstream parameter documentation, and this repository's recipe files. A value
+you see is a value the container will use.
 
-## Available recipes
-
-<div class="recipe-card-grid">
-  <article class="recipe-card">
-    <p class="recipe-status">Running on LWS</p>
-    <h3>DeepSeek V4 Flash Vision</h3>
-    <p>One million token context, tensor parallel size two, one DGX Spark system per node, and the exact digest accepted live.</p>
-    <div class="card-meta">
-      <span>TP 2</span><span>2 nodes</span><span>ARM64</span>
-    </div>
-    <a class="recipe-link" href={`${import.meta.env.BASE_URL}recipes/deepseek-v4-flash-vision-tp2/`}>Open recipe →</a>
-  </article>
-  <article class="recipe-card">
-    <p class="recipe-status">Running on LWS</p>
-    <h3>Qwen3.8 Flash Next</h3>
-    <p>NVFP4 weights, a 1,048,576-token context from a 4x YaRN override, MTP speculation at depth three, MXFP8 draft experts on B12X kernels, and PLE tables in page-locked host memory.</p>
-    <div class="card-meta">
-      <span>TP 2</span><span>2 nodes</span><span>ARM64</span>
-    </div>
-    <a class="recipe-link" href={`${import.meta.env.BASE_URL}recipes/qwen38-flash-next-tp2/`}>Open recipe →</a>
-  </article>
-  <article class="recipe-card">
-    <p class="recipe-status">k3s setup guide</p>
-    <h3>Install the Kubernetes dependencies</h3>
-    <p>A linear route through the 64 KiB kernel driver, Cilium, GPU and RDMA dependencies, LWS, and inference-aware routing.</p>
-    <div class="card-meta">
-      <span>Cilium</span><span>Multus</span><span>llm-d</span>
-    </div>
-    <a class="recipe-link" href={`${import.meta.env.BASE_URL}tutorials/k3s-to-deepseek/`}>Open setup guide →</a>
-  </article>
-</div>
+- [Recipes](./recipes/) document each deployment, why its settings are what they
+  are, and what was measured.
+- [Image releases](./image-releases/) covers architecture support, and every build
+  has its own page under `builds/`.
+- [Guides](./guides/) and [Explanations](./explanation/) hold the cluster setup and
+  the traffic-path reasoning that no generated document can carry.
 
 ## Open pull requests
 

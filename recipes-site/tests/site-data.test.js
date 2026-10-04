@@ -7,12 +7,12 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { publishDeploymentData } from "../scripts/build-data.mjs";
+import { buildRoute, publishBuildPages, publishDeploymentData } from "../scripts/build-data.mjs";
 import { assemble, pins, verifyPublished } from "../scripts/prepare-pyodide.mjs";
 import { assertNoPrivateReference, validateRecord, validateReleases } from "../scripts/resolve-releases.mjs";
 import { recipeInventory, validateConfigs, validateOptions } from "../scripts/resolve-configs.mjs";
@@ -303,4 +303,35 @@ test("the resolver the browser runs needs nothing the browser lacks", () => {
   const imports = [...source.matchAll(/^ *(?:import|from) ([A-Za-z0-9_.]+)/gm)].map((match) => match[1].split(".")[0]);
   const allowed = new Set(["__future__", "ast", "copy", "dataclasses", "hashlib", "importlib", "json", "math", "os", "pathlib", "re", "sys", "typing", "yaml", "image_tools"]);
   assert.deepEqual([...new Set(imports)].filter((name) => !allowed.has(name)).sort(), []);
+});
+
+test("a build route keeps a separator where a dot would be dropped", () => {
+  // Astro strips dots from a route segment, so /builds/v20261003.1/ is served
+  // nowhere and a plain file name collapses to v202610031. The dash is what the
+  // reader can bookmark.
+  assert.equal(buildRoute("v20261003.1"), "v20261003-1");
+  assert.throws(() => buildRoute("v20261003"), /not a vYYYYMMDD\.N build tag/);
+  assert.throws(() => buildRoute("../../etc"), /not a vYYYYMMDD\.N build tag/);
+});
+
+test("build pages are regenerated for the published set and stale ones removed", async () => {
+  const directory = scratch(".site-data-builds-");
+  const document = fixture("releases.json");
+  const repository = fixture("latest-image.json").repository;
+  mkdirSync(join(directory, "v20991231-1"), { recursive: true });
+  writeFileSync(join(directory, "v20991231-1", "index.md"), "---\ntitle: stale\n---\n\nGone.\n");
+
+  await publishBuildPages(document, repository, directory);
+
+  const routes = document.releases.map((release) => buildRoute(release.tag)).sort();
+  assert.deepEqual(
+    readdirSync(directory, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort(),
+    routes,
+  );
+  const page = readFileSync(join(directory, routes.at(-1), "index.md"), "utf8");
+  const newest = document.releases[0];
+  assert.ok(page.includes(`title: "${newest.tag} build"`), "the title carries the exact tag");
+  assert.ok(page.includes(`docker pull ${repository}@${newest.digest}`), "the pull command is digest-pinned");
+  assert.ok(page.includes(newest.publication_tag), "the publication tag is recorded");
+  assert.ok(!page.includes("harbor."), "a generated page holds no private registry");
 });

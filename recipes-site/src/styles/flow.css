@@ -1,0 +1,437 @@
+/* Deployment flow: four numbered steps, choice cards, grouped controls with
+   their reason beside them, and the rendered output last. Colours and type come
+   from the recipe palette in recipes.css; nothing here invents a token. Kept in
+   its own file because it is the only stylesheet the configurator needs and the
+   only one that is safe to change without touching the document pages. */
+
+.flow {
+  container-type: inline-size;
+  display: grid;
+  gap: 1.25rem;
+}
+
+.flow-intro {
+  color: var(--recipe-muted);
+  max-width: 68ch;
+}
+
+.flow-error {
+  border: 1px solid var(--recipe-rule-solid);
+  border-inline-start: 3px solid var(--recipe-accent);
+  padding: 0.75rem 1rem;
+  color: var(--recipe-ink);
+}
+
+.flow-error-hint {
+  display: block;
+  color: var(--recipe-soft);
+  font-size: 0.9rem;
+}
+
+.flow-steps {
+  display: grid;
+  gap: 1.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.flow-step {
+  border-block-start: 1px solid var(--recipe-rule-solid);
+  counter-increment: flow-step;
+  padding-block-start: 1rem;
+}
+
+.flow-step-title {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.flow-step-title::before {
+  content: counter(flow-step);
+  border: 1px solid var(--recipe-accent);
+  border-radius: 50%;
+  color: var(--recipe-accent);
+  display: inline-grid;
+  font-size: 0.8rem;
+  inline-size: 1.5rem;
+  place-items: center;
+}
+
+.flow-step-summary {
+  color: var(--recipe-soft);
+  max-width: 72ch;
+}
+
+.choice-group {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.choice-group-title {
+  color: var(--recipe-soft);
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.choice-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+}
+
+.choice-card {
+  align-items: start;
+  background: var(--recipe-paper);
+  border: 1px solid var(--recipe-rule-solid);
+  border-inline-start: 3px solid var(--recipe-rule-solid);
+  display: grid;
+  font: inherit;
+  gap: 0.35rem;
+  inline-size: 100%;
+  padding: 0.75rem 0.9rem;
+  text-align: start;
+}
+
+.choice-card[aria-pressed="true"] {
+  border-inline-start-color: var(--recipe-accent);
+  background: var(--recipe-accent-tint);
+}
+
+.choice-card-secondary {
+  color: var(--recipe-muted);
+}
+
+.choice-note {
+  color: var(--recipe-soft);
+  font-size: 0.9rem;
+}
+
+.choice-link {
+  font-size: 0.9rem;
+}
+
+.build-facts {
+  border: 1px solid var(--recipe-rule);
+  display: grid;
+  gap: 0.4rem;
+  margin-block-start: 0.75rem;
+  padding: 0.75rem 0.9rem;
+}
+
+.build-fact-title {
+  display: flex;
+  gap: 0.75rem;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.build-fact-published,
+.build-label {
+  color: var(--recipe-soft);
+  font-size: 0.85rem;
+}
+
+.build-pins {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.build-pin {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.build-highlights {
+  color: var(--recipe-muted);
+  margin: 0;
+  padding-inline-start: 1.1rem;
+}
+
+.build-history {
+  margin-block-start: 0.5rem;
+}
+
+.build-more {
+  color: var(--recipe-soft);
+}
+
+.link-button {
+  background: none;
+  border: 0;
+  color: var(--recipe-link);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+
+.control-groups {
+  display: grid;
+  gap: 1rem;
+  margin-block-start: 0.75rem;
+}
+
+.control-group {
+  border: 1px solid var(--recipe-rule);
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem 0.9rem;
+}
+
+.control-group-title {
+  color: var(--recipe-soft);
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.control {
+  display: grid;
+  gap: 0.25rem;
+  grid-template-columns: minmax(9rem, 14rem) minmax(8rem, 1fr);
+}
+
+.control-label {
+  align-items: center;
+  display: flex;
+  gap: 0.35rem;
+}
+
+.control-name {
+  font-family: var(--sl-font-mono);
+  font-size: 0.9rem;
+}
+
+.control-help {
+  border: 1px solid var(--recipe-rule-solid);
+  border-radius: 50%;
+  color: var(--recipe-soft);
+  cursor: help;
+  display: inline-grid;
+  font-size: 0.7rem;
+  inline-size: 1.05rem;
+  place-items: center;
+}
+
+.control-input,
+.advanced-input {
+  background: var(--recipe-paper);
+  border: 1px solid var(--recipe-rule-solid);
+  color: var(--recipe-ink);
+  font: inherit;
+  padding: 0.2rem 0.4rem;
+}
+
+.control-why {
+  grid-column: 1 / -1;
+}
+
+.control-why > summary {
+  color: var(--recipe-link);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.control-why p {
+  color: var(--recipe-muted);
+  font-size: 0.9rem;
+  margin: 0.2rem 0;
+}
+
+.control-default {
+  color: var(--recipe-soft);
+  font-size: 0.85rem;
+  margin-inline-start: 0.4rem;
+}
+
+.control-secondary .control-name {
+  color: var(--recipe-soft);
+}
+
+.control-advanced {
+  margin-block-start: 0.75rem;
+}
+
+.control-advanced > summary {
+  color: var(--recipe-link);
+  cursor: pointer;
+}
+
+.advanced-table,
+.build-history-table,
+.benchmark-table {
+  border-collapse: collapse;
+  inline-size: 100%;
+  margin-block-start: 0.5rem;
+}
+
+.advanced-table th,
+.advanced-table td,
+.build-history-table th,
+.build-history-table td,
+.benchmark-table th,
+.benchmark-table td {
+  border-block-end: 1px solid var(--recipe-rule);
+  padding: 0.3rem 0.5rem;
+  text-align: start;
+}
+
+.advanced-name {
+  font-family: var(--sl-font-mono);
+  font-size: 0.85rem;
+}
+
+.source-badge {
+  border: 1px solid var(--recipe-rule-solid);
+  color: var(--recipe-soft);
+  font-size: 0.75rem;
+  padding: 0.05rem 0.3rem;
+  white-space: nowrap;
+}
+
+.source-recipe,
+.source-preset {
+  border-color: var(--recipe-accent);
+  color: var(--recipe-accent);
+}
+
+.output-site-fields {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+}
+
+.site-field {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.site-field-label {
+  color: var(--recipe-muted);
+  font-size: 0.85rem;
+}
+
+.site-field-help {
+  color: var(--recipe-soft);
+  font-size: 0.8rem;
+}
+
+.output-changes {
+  margin-block-start: 0.75rem;
+}
+
+.output-changes-list {
+  color: var(--recipe-muted);
+  margin: 0;
+  padding-inline-start: 1.1rem;
+}
+
+.output-changes-none,
+.output-pending {
+  color: var(--recipe-soft);
+}
+
+.output-changes-warning,
+.output-blocked {
+  border-inline-start: 3px solid var(--recipe-accent);
+  color: var(--recipe-ink);
+  padding-inline-start: 0.6rem;
+}
+
+.benchmark-method {
+  color: var(--recipe-soft);
+  font-size: 0.9rem;
+}
+
+.flow-benchmark > summary {
+  color: var(--recipe-link);
+  cursor: pointer;
+}
+
+.output-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-block-start: 0.75rem;
+}
+
+.output-tab {
+  background: var(--recipe-paper-2);
+  border: 1px solid var(--recipe-rule-solid);
+  border-block-end-color: var(--recipe-paper);
+  color: var(--recipe-muted);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.3rem 0.7rem;
+}
+
+.output-tab[aria-selected="true"] {
+  background: var(--recipe-paper);
+  color: var(--recipe-ink);
+  font-weight: 600;
+}
+
+.output-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  min-block-size: 2rem;
+}
+
+.output-copy,
+.output-download,
+.output-share {
+  background: var(--recipe-paper);
+  border: 1px solid var(--recipe-rule-solid);
+  color: var(--recipe-link);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.25rem 0.6rem;
+}
+
+.output-code {
+  background: var(--recipe-paper);
+  border: 1px solid var(--recipe-rule-solid);
+  color: var(--recipe-ink);
+  font-size: 0.85rem;
+  overflow-x: auto;
+  padding: 0.75rem;
+  white-space: pre-wrap;
+}
+
+.output-step,
+.output-note {
+  color: var(--recipe-soft);
+  font-size: 0.9rem;
+}
+
+.output-error {
+  color: var(--recipe-accent);
+}
+
+.benchmark-title {
+  color: var(--recipe-muted);
+  font-weight: 600;
+}
+
+.benchmark-note {
+  color: var(--recipe-soft);
+  font-size: 0.9rem;
+}
+
+@container (width < 46rem) {
+  .control {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (forced-colors: active) {
+  .choice-card,
+  .output-tab,
+  .source-badge {
+    border: 1px solid ButtonText;
+  }
+}

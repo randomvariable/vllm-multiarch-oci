@@ -25,7 +25,7 @@ const ADDITIONS_HEADING = "## Base vLLM image additions";
 const CHANGES_HEADING = "## Included upstream changes";
 
 const COMMIT = /^[0-9a-f]{40}$/;
-const RELEASE_TAG = /^v\d{8}\.\d+$/;
+export const RELEASE_TAG = /^v\d{8}\.\d+$/;
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const ISO_8601 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
 const IMMUTABLE_TAG = /^vllmb12x-[a-z0-9][a-z0-9-]*-[0-9a-f]{12}-[0-9a-f]{12}-[0-9]{8}-n[1-9][0-9]*$/;

@@ -46,8 +46,10 @@ SOURCES_LOCK = Path("/opt/vllmb12x/sources.lock.json")
 def recipe_root() -> Path:
     """Where the recipe YAML files live.
 
-    The environment override lets the Pages build and the tests point at a
-    checkout of this repository instead of at an installed image.
+    One directory per owner in the repository (``recipes/<owner>/<name>.yaml``),
+    installed flat below ``/opt/vllm-image/recipes`` in the image, which is why
+    :func:`load_recipe` searches the tree by name rather than by path. The
+    environment override lets the Pages build and the tests point at a checkout.
     """
     return Path(os.environ.get("VLLM_IMAGE_RECIPE_ROOT", RECIPE_ROOT))
 
@@ -92,22 +94,37 @@ _RECIPE_KEYS = {
     "preset",
     "options",
     "environment",
-    "model_sync",
     "topology",
     "probe_port",
 }
-_MODEL_SYNC_KEYS = {
-    "repo",
-    "revision",
-    "storage_root",
-    "publish",
-    "min_free_gib",
-    "workers",
-    "ignore_patterns",
-    "required_files",
-}
+# The checkpoint facts a sync-mode deployment must state, grouped by how each is
+# validated and named by the section that carries it: ``model`` says which
+# checkpoint, ``deployment`` says where it lands on the node. A launcher-side
+# block restating these same seven values is what this table replaces.
+_SYNC_STRINGS = (("model", "model_id"), ("deployment", "storage_root"), ("deployment", "model_path"))
+_SYNC_POSITIVE_INTEGERS = (
+    ("deployment", "storage_min_free_gib"),
+    ("deployment", "download_workers"),
+)
+_SYNC_STRING_LISTS = (("deployment", "ignore_patterns"), ("deployment", "required_files"))
+# The two sections the launcher still owns outright: how a model is spread across
+# pods, and how rank zero publishes its KV events. Neither is a checkpoint fact, so
+# neither has a home outside ``launch``.
 _TOPOLOGY_KEYS = {"kind", "nodes", "rendezvous_port", "kv_events", "replica_port_base"}
 _KV_EVENT_KEYS = {"publisher", "endpoint", "replay_endpoint"}
+
+
+def _field(source: dict[str, Any], section: str, name: str, where: str) -> Any:
+    """One required recipe field, refused by name rather than raising a KeyError."""
+    if name not in source:
+        raise ConfigError(f"{where}: {section}.{name} is required")
+    return source[name]
+
+
+def _require_mapping(data: Any, where: str) -> dict[str, Any]:
+    if not isinstance(data, dict):
+        raise ConfigError(f"{where} must be a mapping")
+    return data
 
 
 def _require_keys(data: Any, allowed: set[str], where: str) -> dict[str, Any]:
@@ -140,32 +157,49 @@ class ModelSync:
     required_files: tuple[str, ...]
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any], where: str) -> ModelSync:
-        for name in ("repo", "storage_root", "publish"):
-            if not isinstance(data[name], str) or not data[name]:
-                raise ConfigError(f"{where}.{name} must be a non-empty string")
-        revision = data["revision"]
+    def from_dict(cls, model: Any, deployment: Any, where: str) -> ModelSync:
+        """Read the checkpoint facts from the two sections that carry them.
+
+        ``where`` names the recipe, so a refusal points at the file and the field
+        rather than at a block the file no longer has. The types checked here are
+        the ones the launcher-side block checked; only their spelling moved.
+        """
+        sections = {
+            "model": _require_mapping(model, f"{where}: model"),
+            "deployment": _require_mapping(deployment, f"{where}: deployment"),
+        }
+        values: dict[str, Any] = {}
+        for section, name in _SYNC_STRINGS:
+            value = _field(sections[section], section, name, where)
+            if not isinstance(value, str) or not value:
+                raise ConfigError(f"{where}: {section}.{name} must be a non-empty string")
+            values[name] = value
+        revision = _field(sections["model"], "model", "revision", where)
         if not isinstance(revision, str) or not _is_commit(revision):
             raise ConfigError(
-                f"{where}.revision must be a full lowercase 40-hex Hugging Face commit OID"
+                f"{where}: model.revision must be a full lowercase 40-hex Hugging Face commit OID"
             )
-        for name in ("min_free_gib", "workers"):
-            if type(data[name]) is not int or data[name] <= 0:
-                raise ConfigError(f"{where}.{name} must be a positive integer")
-        for name in ("ignore_patterns", "required_files"):
-            if not isinstance(data[name], list) or not all(
-                isinstance(item, str) and item for item in data[name]
+        for section, name in _SYNC_POSITIVE_INTEGERS:
+            value = _field(sections[section], section, name, where)
+            if type(value) is not int or value <= 0:
+                raise ConfigError(f"{where}: {section}.{name} must be a positive integer")
+            values[name] = value
+        for section, name in _SYNC_STRING_LISTS:
+            value = _field(sections[section], section, name, where)
+            if not isinstance(value, list) or not all(
+                isinstance(item, str) and item for item in value
             ):
-                raise ConfigError(f"{where}.{name} must be a list of non-empty strings")
+                raise ConfigError(f"{where}: {section}.{name} must be a list of non-empty strings")
+            values[name] = tuple(value)
         return cls(
-            repo=data["repo"],
+            repo=values["model_id"],
             revision=revision,
-            storage_root=Path(data["storage_root"]),
-            publish=Path(data["publish"]),
-            min_free_gib=data["min_free_gib"],
-            workers=data["workers"],
-            ignore_patterns=tuple(data["ignore_patterns"]),
-            required_files=tuple(data["required_files"]),
+            storage_root=Path(values["storage_root"]),
+            publish=Path(values["model_path"]),
+            min_free_gib=values["storage_min_free_gib"],
+            workers=values["download_workers"],
+            ignore_patterns=values["ignore_patterns"],
+            required_files=values["required_files"],
         )
 
 
@@ -239,24 +273,39 @@ class Recipe:
     probe_port: int
 
     @classmethod
-    def from_dict(cls, name: str, data: Any) -> Recipe:
-        where = f"recipe {name}: launch"
-        launch = _require_keys(data, _RECIPE_KEYS, where)
+    def from_dict(cls, name: str, document: Any) -> Recipe:
+        """Build a recipe from one whole recipe document.
+
+        ``launch`` is the launcher's own section and its keys are exact. The
+        checkpoint facts come out of ``model`` and ``deployment``, the sections
+        that describe where the weights live, so a deployment is stated once.
+        """
+        where = f"recipe {name}"
+        document = _require_mapping(document, f"{where}")
+        launch = _require_keys(document.get("launch"), _RECIPE_KEYS, f"{where}: launch")
         for key in ("profile", "hardware"):
             if not isinstance(launch[key], str) or not launch[key]:
-                raise ConfigError(f"{where}.{key} must be a non-empty string")
+                raise ConfigError(f"{where}: launch.{key} must be a non-empty string")
         preset = launch["preset"]
         if preset is not None and not isinstance(preset, str):
-            raise ConfigError(f"{where}.preset must be a string or null")
+            raise ConfigError(f"{where}: launch.preset must be a string or null")
         for key in ("options", "environment"):
             if not isinstance(launch[key], dict):
-                raise ConfigError(f"{where}.{key} must be a mapping")
+                raise ConfigError(f"{where}: launch.{key} must be a mapping")
         if not all(isinstance(value, str) for value in launch["environment"].values()):
-            raise ConfigError(f"{where}.environment values must be strings")
+            raise ConfigError(f"{where}: launch.environment values must be strings")
         probe_port = launch["probe_port"]
         if type(probe_port) is not int or not 1 <= probe_port <= 65535:
-            raise ConfigError(f"{where}.probe_port must be a port")
-        sync, topology = launch["model_sync"], launch["topology"]
+            raise ConfigError(f"{where}: launch.probe_port must be a port")
+        model, deployment = document.get("model"), document.get("deployment")
+        # A published root is what makes this a sync-mode deployment: with no path
+        # to publish to, the launcher fetches nothing and the engine resolves the
+        # repository id itself, which is the engine-download mode qwen38-27b runs.
+        sync = (
+            None
+            if not isinstance(deployment, dict) or deployment.get("model_path") is None
+            else ModelSync.from_dict(model, deployment, where)
+        )
         return cls(
             name=name,
             profile=launch["profile"],
@@ -264,28 +313,44 @@ class Recipe:
             preset=preset,
             options=dict(launch["options"]),
             environment=dict(launch["environment"]),
-            model_sync=(
-                ModelSync.from_dict(
-                    _require_keys(sync, _MODEL_SYNC_KEYS, f"{where}.model_sync"), f"{where}.model_sync"
-                )
-                if sync is not None
-                else None
-            ),
+            model_sync=sync,
             topology=Topology.from_dict(
-                _require_keys(topology, _TOPOLOGY_KEYS, f"{where}.topology"), f"{where}.topology"
+                _require_keys(launch["topology"], _TOPOLOGY_KEYS, f"{where}: launch.topology"),
+                f"{where}: launch.topology",
             ),
             probe_port=probe_port,
         )
 
 
+def recipe_path(name: str, root: Path | None = None) -> Path:
+    """The one file that declares ``name``, searched across the owner directories.
+
+    Recipes live at ``recipes/<owner>/<name>.yaml`` in the repository and are
+    installed flat below ``/opt/vllm-image/recipes`` in the image, so the name is
+    the identity a deployment selects and the path is an implementation detail.
+    Two files with one name is an error rather than a guess: ``--recipe`` has to
+    resolve to exactly one definition, and it names both candidates.
+    """
+    base = Path(root or recipe_root())
+    found = sorted(path for path in base.rglob(f"{name}.yaml") if path.is_file())
+    if not found:
+        raise ConfigError(f"no recipe {name}.yaml under {base}", EXIT_CONFIG)
+    if len(found) > 1:
+        raise ConfigError(
+            f"recipe {name} is declared twice: " + ", ".join(str(path) for path in found),
+            EXIT_CONFIG,
+        )
+    return found[0]
+
+
 def load_recipe(name: str, root: Path | None = None) -> Recipe:
-    """Read ``<root>/<name>.yaml``. A missing file or a missing section is an error.
+    """Read the recipe named ``name``. A missing file or a missing section is an error.
 
     The recipe's identity is the file name, so a deployment that asks for
     ``--recipe x`` always gets ``x.yaml``, and the value recorded as the source of
     its overrides names the same thing.
     """
-    path = Path(root or recipe_root()) / f"{name}.yaml"
+    path = recipe_path(name, root)
     try:
         import yaml
 
@@ -296,9 +361,12 @@ def load_recipe(name: str, root: Path | None = None) -> Recipe:
         raise ConfigError(f"cannot read recipes without PyYAML: {error}", EXIT_CONFIG) from error
     except Exception as error:  # yaml.YAMLError and anything raised while reading
         raise ConfigError(f"cannot parse recipe {path}: {error}", EXIT_CONFIG) from error
-    if not isinstance(data, dict) or "launch" not in data:
-        raise ConfigError(f"recipe {path} has no launch section", EXIT_CONFIG)
-    return Recipe.from_dict(name, data["launch"])
+    if not isinstance(data, dict):
+        raise ConfigError(f"recipe {path} must be a mapping", EXIT_CONFIG)
+    for section in ("launch", "model", "deployment"):
+        if section not in data:
+            raise ConfigError(f"recipe {path} has no {section} section", EXIT_CONFIG)
+    return Recipe.from_dict(name, data)
 
 
 def runtime_identity() -> str | None:
@@ -661,7 +729,7 @@ def publish_model(recipe: Recipe) -> None:
 
     if recipe.model_sync is None:
         raise ConfigError(
-            f"recipe {recipe.name} requests --model-sync but declares no launch.model_sync",
+            f"recipe {recipe.name} requests --model-sync but declares no deployment.model_path",
             EXIT_MODEL,
         )
     sync = recipe.model_sync

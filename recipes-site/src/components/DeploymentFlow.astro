@@ -1,0 +1,32 @@
+---
+// The four-step deployment flow, rendered from the generated documents the build
+// produces. The markup is built on the client because the whole selection lives in
+// the URL: a reader can share a configuration, reload it, and land on the same
+// manifest. The server-side page stays a shell so the published HTML carries no
+// duplicate of data the browser already fetches.
+---
+
+<section class="flow" data-flow data-base={import.meta.env.BASE_URL} aria-labelledby="flow-title">
+  <h2 id="flow-title" class="flow-heading">Configure a deployment</h2>
+  <p class="flow-intro">
+    Choose a build, a model, and the settings you want to change. The manifest, the
+    container command and the Compose file update as you type, and the address bar
+    holds the whole selection, so what you copy and what you share are the same
+    configuration.
+  </p>
+  <noscript>
+    <p class="flow-error">
+      This configurator needs JavaScript. Each recipe page still documents the
+      deployment in full, and
+      <a href={`${import.meta.env.BASE_URL}recipes/`}>the catalog</a>
+      links to the generated manifests committed with the recipe.
+    </p>
+  </noscript>
+</section>
+
+<script>
+  import { mountDeploymentFlow } from "./deployment-flow.js";
+
+  const root = document.querySelector<HTMLElement>("[data-flow]");
+  if (root) void mountDeploymentFlow(root);
+</script>

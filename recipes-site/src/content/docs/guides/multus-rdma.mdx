@@ -208,4 +208,4 @@ The `network-status` annotation must show one Cilium primary interface and one d
 
 Before applying the model LWS, perform NVIDIA's supported [GPUDirect RDMA verification](https://docs.nvidia.com/networking/display/gpudirectrdmav18/testing+gpudirect+rdma) between the two diagnostic pods using the exact flags documented for the installed `perftest` build. Run the receiving command on one pod and the matching CUDA-buffer client on the other; require successful transfer and reported bandwidth. Stop if the test falls back to host memory, cannot open the mlx5 device, or reports GID/MTU/address-family mismatch.
 
-Record the selected NetworkAttachmentDefinition name, HCA, GID index, socket/Gloo interface and extended resource key for the [recipe builder](/vllm-multiarch-oci/recipes/deepseek-v4-flash-vision-tp2/).
+Record the selected NetworkAttachmentDefinition name, HCA, GID index, socket/Gloo interface and extended resource key for the [recipe builder](/vllm-multiarch-oci/recipes/deepseek-v4-flash-vision-gb10-tp2/).

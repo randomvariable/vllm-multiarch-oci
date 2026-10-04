@@ -1,10 +1,26 @@
 import { stringify as stringifyYaml } from "yaml";
 
+// The site renders the LAUNCHER form of a deployment: every container runs
+// `/opt/venv/bin/vllm-image launch ...`, never a hand-written `vllm serve`. That
+// keeps the manifest and the image agreeing by construction, because the same
+// selection the container resolves from `launch.py` is the selection the manifest
+// carries. Nothing here re-implements a resolved default: the launcher resolves
+// it, so a value the reader did not edit is absent from the output. The rules that
+// already live in `image_tools/launcher/launch.py` (argument order, native-argument
+// handling, the cache-mode decision, the stop grace) are mirrored below with a
+// comment naming the source, so a `pnpm test` can prove the two have not drifted.
+
 const DIGEST_REFERENCE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*(?::[0-9]+)?(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)+@sha256:[0-9a-f]{64}$/;
 const DNS_LABEL = /^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$/;
 const DNS_SUBDOMAIN = /^[a-z0-9](?:[-a-z0-9.]*[a-z0-9])?$/;
 const RESOURCE_NAME = /^(?:[a-z0-9](?:[-a-z0-9.]*[a-z0-9])?\/)?[A-Za-z0-9](?:[-A-Za-z0-9_.]*[A-Za-z0-9])?$/;
 const SAFE_INTERFACE = /^[A-Za-z0-9_.:,=-]+$/;
+const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+// The manifest is only ever requested for a validated recipe (the caller shows the
+// other tabs only when a recipe exists), so the launcher selection is always
+// `--recipe <name>`; a bare `--profile/--hardware` would resolve WITHOUT this
+// recipe's option and environment layer, which is a different deployment.
 const TARGET_FIELDS = {
   lws: [
     "namespace", "name", "model_storage_path", "jit_storage_path", "hf_secret", "hf_secret_key",
@@ -12,8 +28,47 @@ const TARGET_FIELDS = {
     "rdma_resource", "rdma_units", "hca", "gid_index",
   ],
   docker: ["name", "model_storage_path", "jit_storage_path", "hca", "gid_index", "control_interface", "leader_ip", "worker_ip"],
-  "llm-d-routing": ["namespace", "name", "gateway_class"],
+  compose: ["name", "model_storage_path", "jit_storage_path", "hca", "gid_index", "control_interface"],
+  routing: ["namespace", "name", "gateway_class"],
 };
+
+// The site fields each manifest target dereferences unconditionally. A recipe that
+// declares no parameters (an engine-download recipe with `deployment.parameters: {}`)
+// renders nothing here; the caller refuses these targets for it, and the renderer refuses
+// with a named reason so the output can never carry `undefined` names or host paths.
+const REQUIRED_PRESENT = {
+  lws: ["namespace", "name", "model_storage_path", "jit_storage_path", "hf_secret", "hf_secret_key", "network_attachment", "topology_key", "topology_values", "rdma_resource", "rdma_units", "hca", "gid_index"],
+  docker: ["name", "model_storage_path", "jit_storage_path", "hca", "gid_index", "control_interface"],
+  compose: ["name", "model_storage_path", "jit_storage_path", "hca", "gid_index", "control_interface"],
+  routing: ["namespace", "name", "gateway_class"],
+};
+
+// Ports the launcher falls back to when the recipe states none; `launch.py` defines
+// DEFAULT_RENDEZVOUS_PORT = 25000 and DEFAULT_PROBE_PORT = 8890.
+const DEFAULT_PORT = 8888;
+const DEFAULT_RENDEZVOUS_PORT = 25000;
+const DEFAULT_PROBE_PORT = 8890;
+// The engine stop budget the accepted manifests carry, plus the cache stop grace
+// from `resolver.py`: STOP_GRACE_SECONDS = 10 and CHECKPOINT_SHUTDOWN_FLUSH_SECONDS
+// = 30. The pod must outlive a graceful engine drain and a RAM-checkpoint flush.
+const ENGINE_STOP_GRACE_SECONDS = 120;
+const CACHE_STOP_GRACE_SECONDS = 40;
+
+// A `--` argument is the reader's edit verbatim; the launcher resolves everything
+// else. `launch.py.parse()` collects them as `request.native` and hands them to
+// `policy.resolve(argv=native)`, so the shape here is a vLLM CLI fragment: a
+// dotted or JSON-valued flag is one `--key=value` token (as the parity harness's
+// EDITED_CASES exercises), a scalar is the pair `--key value`.
+function changeArgs(settings) {
+  const args = [];
+  for (const [name, raw] of Object.entries(settings ?? {})) {
+    if (!hasValue(raw)) continue;
+    const value = String(raw);
+    if (name.includes(".") || /^[{[]/.test(value)) args.push(`--${name}=${value}`);
+    else args.push(`--${name}`, value);
+  }
+  return args;
+}
 
 function fail(message) {
   throw new TypeError(message);
@@ -36,30 +91,39 @@ function hasValue(value, type) {
   return value !== undefined && value !== null && String(value).trim() !== "";
 }
 
+// The launcher form the manifest is built from. `launch.py.Recipe.from_dict` is the
+// authority: it reads `launch` (its keys are exact: profile, hardware, preset,
+// options, environment, topology, probe_port), `model`, and `deployment`, and a
+// deployment is model-sync mode exactly when `deployment.model_path` is set.
 function validateRecipe(recipe) {
-  if (!recipe || typeof recipe !== "object") fail("recipe must be an object");
-  for (const key of ["meta", "model", "runtime", "deployment", "validation", "guide"]) {
-    if (!recipe[key] || typeof recipe[key] !== "object") fail(`recipe.${key} is required`);
+  if (!recipe || typeof recipe !== "object" || Array.isArray(recipe)) fail("recipe must be an object");
+  if (!recipe.meta || typeof recipe.meta !== "object") fail("recipe.meta is required");
+  const launch = recipe.launch;
+  if (!launch || typeof launch !== "object" || Array.isArray(launch)) fail("recipe.launch is required");
+  for (const key of ["profile", "hardware"]) {
+    if (typeof launch[key] !== "string" || !launch[key]) fail(`launch.${key} must be a non-empty string`);
   }
-  if (!Array.isArray(recipe.runtime.command) || !recipe.runtime.command.every((value) => typeof value === "string")) fail("runtime.command must be a string array");
-  if (!Array.isArray(recipe.runtime.base_args) || !recipe.runtime.base_args.every((value) => typeof value === "string")) fail("runtime.base_args must be a string array");
-  if (!recipe.runtime.base_env || typeof recipe.runtime.base_env !== "object" || Array.isArray(recipe.runtime.base_env)) fail("runtime.base_env must be a mapping");
-  if (!Object.values(recipe.runtime.base_env).every((value) => typeof value === "string")) fail("runtime.base_env values must be strings");
-  if (recipe.runtime.leader_args !== undefined && (!Array.isArray(recipe.runtime.leader_args) || !recipe.runtime.leader_args.every((value) => typeof value === "string"))) fail("runtime.leader_args must be a string array");
-  if (recipe.runtime.leader_ports !== undefined && (!Array.isArray(recipe.runtime.leader_ports) || !recipe.runtime.leader_ports.every((entry) => typeof entry?.name === "string" && entry.name.length <= 15 && Number.isSafeInteger(entry.containerPort)))) fail("runtime.leader_ports entries need a short name and an integer containerPort");
-  if (recipe.deployment.nodes !== 2 || recipe.deployment.tensor_parallel_size !== 2) fail("this renderer requires the fixed two-node TP=2 topology");
-  if (!/^[0-9a-f]{40}$/.test(recipe.model.revision)) fail("model.revision must be a full lowercase commit OID");
-  if (!DIGEST_REFERENCE.test(recipe.validation.image)) fail("validation.image must be digest-qualified");
-  const requiredFiles = recipe.deployment.required_files;
-  if (requiredFiles !== undefined && (!Array.isArray(requiredFiles) || !requiredFiles.every((value) => typeof value === "string" && value.trim() !== ""))) {
-    fail("deployment.required_files must be a string array");
+  if (launch.preset !== null && launch.preset !== undefined && typeof launch.preset !== "string") fail("launch.preset must be a string or null");
+  for (const key of ["options", "environment"]) {
+    if (!launch[key] || typeof launch[key] !== "object" || Array.isArray(launch[key])) fail(`launch.${key} must be a mapping`);
   }
+  if (!Object.values(launch.environment).every((value) => typeof value === "string")) fail("launch.environment values must be strings");
+  const topology = launch.topology;
+  if (!topology || typeof topology !== "object" || Array.isArray(topology)) fail("launch.topology is required");
+  if (!["single", "lws"].includes(topology.kind)) fail("launch.topology.kind must be single or lws");
+  if (!Number.isSafeInteger(topology.nodes) || topology.nodes < 1) fail("launch.topology.nodes must be a positive integer");
+  if (topology.kind === "lws" && topology.nodes < 2) fail("an lws topology needs at least two nodes");
+  if (topology.kind === "single" && topology.nodes !== 1) fail("a single topology is one node");
+  if (launch.probe_port !== undefined && (!Number.isSafeInteger(launch.probe_port) || launch.probe_port < 1 || launch.probe_port > 65535)) fail("launch.probe_port must be a port");
+  if (!recipe.model || typeof recipe.model !== "object") fail("recipe.model is required");
+  const served = servedModelName(recipe, {});
+  if (!hasValue(served, "string")) fail("the served model name is required for routing and the model header");
 }
 
 function normalizedParameters(recipe, supplied, target) {
   if (!(target in TARGET_FIELDS)) fail(`unsupported render target: ${target}`);
-  const definitions = recipe.deployment.parameters;
-  if (!definitions || typeof definitions !== "object") fail("deployment.parameters must be a mapping");
+  const definitions = recipe.deployment?.parameters;
+  if (!definitions || typeof definitions !== "object" || Array.isArray(definitions)) fail("deployment.parameters must be a mapping");
   const values = {};
   for (const [name, definition] of Object.entries(definitions)) {
     if (!["string", "integer", "stringMap"].includes(definition.type)) fail(`invalid parameter type for ${name}`);
@@ -84,32 +148,153 @@ function normalizedParameters(recipe, supplied, target) {
   for (const field of ["hca", "control_interface"]) {
     if (hasValue(values[field], "string") && !SAFE_INTERFACE.test(values[field])) fail(`${field} contains unsupported characters`);
   }
+  // A manifest target dereferences these site fields directly (names, mounts, the
+  // Secret reference, the resource names). A recipe that declares none of them — an
+  // engine-download recipe with `deployment.parameters: {}` — cannot produce a manifest,
+  // so refuse rather than emit `undefined` paths and names.
+  const structural = REQUIRED_PRESENT[target];
+  for (const field of structural) {
+    if (!hasValue(values[field], "string")) fail(`${field} is required for the ${target} target but this recipe declares no such parameter`);
+  }
   return values;
 }
 
 function validateImageReference(imageReference) {
-  if (!DIGEST_REFERENCE.test(imageReference)) fail("imageReference must be digest-qualified");
+  if (typeof imageReference !== "string" || !DIGEST_REFERENCE.test(imageReference)) fail("image must be a digest-qualified reference");
   if (imageReference.includes("internal.randomvariable")) fail("private registry references are not allowed");
 }
 
-function modelSyncArgs(recipe) {
-  const args = [
-    "model-sync", "--repo", recipe.model.model_id, "--revision", recipe.model.revision,
-    "--storage-root", "/models", "--publish", recipe.deployment.model_path,
-    "--min-free-gib", String(recipe.deployment.storage_min_free_gib), "--workers", String(recipe.deployment.download_workers),
-  ];
-  for (const pattern of recipe.deployment.ignore_patterns) args.push("--ignore", pattern);
-  // Checkpoint assets loaded after the weights. Naming them here keeps the
-  // truncation check inside the image helper instead of an init-container
-  // script that re-walks the snapshot.
-  for (const name of recipe.deployment.required_files ?? []) args.push("--require", name);
-  args.push("--token-env", "HF_TOKEN");
+// -- launcher selection ---------------------------------------------------------
+
+// The name `--recipe` resolves is `meta.slug`, which `build-data.mjs` keeps equal to
+// the file stem the launcher searches for under `recipe_root()`
+// (`launch.py.recipe_path` resolves `<name>.yaml` across `recipes/**`). A bare
+// `--profile/--hardware` would resolve with no recipe layer, so a recipe selection must
+// carry `--recipe <meta.slug>`.
+function recipeName(recipe) {
+  const name = recipe.meta?.slug;
+  if (typeof name !== "string" || !/^[a-z][a-z0-9-]*$/.test(name)) fail("recipe.meta.slug must be a launcher recipe name");
+  return name;
+}
+
+function selectionArgs(recipe) {
+  return ["--recipe", recipeName(recipe)];
+}
+
+// The container path the node's model cache is mounted at is the recipe's
+// `deployment.storage_root` (`launch.py.ModelSync` publishes there); engine-download
+// recipes state no storage_root and the launcher's HF cache defaults to /models.
+function modelMount(recipe, parameters) {
+  return `${parameters.model_storage_path}:${recipe.deployment?.storage_root ?? "/models"}`;
+}
+
+// A model-sync deployment publishes the checkpoint before the engine loads it, which
+// is exactly `launch.py.Recipe.from_dict`: sync mode iff `deployment.model_path` is
+// set. Engine-download recipes (no published root) leave the flag off and let vLLM
+// resolve the repository id itself.
+function modelSync(recipe) {
+  const deployment = recipe.deployment;
+  return Boolean(deployment && typeof deployment === "object" && hasValue(deployment.model_path, "string"));
+}
+
+// The structural ports a manifest needs to name. These are the recipe's declared
+// values with the reader's edit layered on top, mirroring the resolver's precedence
+// (reader CLI > recipe layer > profile/common default); the container re-resolves
+// them from the same `--recipe` selection, so a mismatch is impossible.
+function effective(recipe, settings, key, fallback) {
+  if (settings && hasValue(settings[key], "string")) return String(settings[key]);
+  const option = recipe.launch.options[key];
+  if (option !== undefined && option !== null) return String(option);
+  return fallback;
+}
+
+function servingPort(recipe, settings) {
+  return Number(effective(recipe, settings, "port", DEFAULT_PORT));
+}
+
+function probePort(recipe) {
+  const port = recipe.launch.probe_port;
+  return Number.isSafeInteger(port) ? port : DEFAULT_PROBE_PORT;
+}
+
+function rendezvousPort(recipe) {
+  const port = recipe.launch.topology.rendezvous_port;
+  return Number.isSafeInteger(port) ? port : DEFAULT_RENDEZVOUS_PORT;
+}
+
+function servedModelName(recipe, settings) {
+  const fromSettings = settings && hasValue(settings["served-model-name"], "string") ? String(settings["served-model-name"]) : null;
+  const fromOptions = hasValue(recipe.launch?.options?.["served-model-name"], "string") ? String(recipe.launch.options["served-model-name"]) : null;
+  return fromSettings ?? fromOptions ?? (hasValue(recipe.model?.served_name, "string") ? String(recipe.model.served_name) : null);
+}
+
+// The cache decision mirrors `resolver.py.configure_cache`: the plan carries a
+// `cache_service` exactly when the effective `cache-mode` is not `vram` (and no
+// shipped recipe defaults `cache-mode`, so in practice it is the reader's edit).
+// `vram` is the resolver's default when `cache-mode` is unset.
+function effectiveCacheMode(recipe, settings) {
+  return effective(recipe, settings, "cache-mode", "vram");
+}
+
+function hasCache(recipe, settings) {
+  return effectiveCacheMode(recipe, settings) !== "vram";
+}
+
+// The cache arena and its memory come from the resolved L1, `cache-l1-gib`
+// (`resolver.py`: shm_bytes = int(values["cache-l1-gib"] * 1024**3)).
+function cacheL1GiB(recipe, settings) {
+  const value = effective(recipe, settings, "cache-l1-gib", "");
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.ceil(number) : null;
+}
+
+// The replica layout is what turns a single service into several behind a proxy;
+// `resolver.py` gates the proxy role on `plan.values["replicas"] > 1`, so a reader
+// edit is the only way one appears for these recipes.
+function effectiveReplicas(recipe, settings) {
+  const value = effective(recipe, settings, "replicas", "1");
+  const number = Number(value);
+  return Number.isSafeInteger(number) && number > 1 ? number : 1;
+}
+
+// -- shared manifest building blocks --------------------------------------------
+
+// The launcher command for one role. The engine (no role) carries `--model-sync` and
+// the reader's `--` edits; the probe and cache sidecars carry the same selection with
+// `--role` appended and nothing after it — they return from `launch.run()` before the
+// engine stages. `launch.py` builds the resolved argv, then appends `topology_args`
+// and `--middleware`; the manifest never writes those out, so the site and container
+// cannot disagree about them.
+function launcherArgs(recipe, settings, { role = null, topology = true } = {}) {
+  const args = ["launch", ...selectionArgs(recipe)];
+  if (topology) args.push("--topology", recipe.launch.topology.kind);
+  if (role) {
+    args.push("--role", role);
+    return args;
+  }
+  if (modelSync(recipe)) args.push("--model-sync");
+  const changes = changeArgs(settings);
+  if (changes.length) args.push("--", ...changes);
+  else args.push("--");
   return args;
 }
 
-function commonRuntimeEnv(recipe, parameters, controlInterface) {
+function environmentEdits(environment) {
+  return Object.entries(environment ?? {})
+    .filter(([name, value]) => ENV_NAME.test(name) && hasValue(value, "string"))
+    .map(([name, value]) => ({ name, value: String(value) }));
+}
+
+function envList(environment) {
+  return Object.entries(environment).map(([name, value]) => ({ name, value: String(value) }));
+}
+
+// The site-owned collective-network environment. The image's hardware profile carries
+// NCCL transport policy; HCA, GID index and the socket interfaces are per-site facts
+// the manifest must inject because no policy file knows the operator's fabric. The
+// HF token is never inlined: it comes from a Secret the reader names in `parameters`.
+function siteEnvironment(recipe, parameters, controlInterface) {
   return {
-    ...recipe.runtime.base_env,
     NCCL_IB_HCA: parameters.hca,
     NCCL_IB_GID_INDEX: String(parameters.gid_index),
     NCCL_SOCKET_IFNAME: controlInterface,
@@ -117,252 +302,468 @@ function commonRuntimeEnv(recipe, parameters, controlInterface) {
   };
 }
 
-function publishesKvEvents(recipe) {
-  return Array.isArray(recipe.runtime.leader_args) && recipe.runtime.leader_args.length > 0;
+function hfTokenEnv(parameters) {
+  return { name: "HF_TOKEN", valueFrom: { secretKeyRef: { name: parameters.hf_secret, key: parameters.hf_secret_key } } };
 }
 
-function servingArgs(recipe, rank, masterAddress) {
+// The rank identity the launcher reads from `os.environ` in `launch.py.read_rank`:
+// the LWS controller stamps these labels onto every pod, so the manifest sources them
+// through the downward API rather than hard-coding a per-rank template. POD_IP names
+// the pod network address the InferencePool advertises.
+function rankDownwardEnv() {
   return [
-    recipe.deployment.model_path,
-    ...recipe.runtime.base_args,
-    "--nnodes", String(recipe.deployment.nodes),
-    "--node-rank", String(rank),
-    "--master-addr", masterAddress,
-    "--tensor-parallel-size", String(recipe.deployment.tensor_parallel_size),
-    ...(rank === 1 ? ["--headless"] : []),
-    ...(rank === 0 && publishesKvEvents(recipe) ? recipe.runtime.leader_args : []),
+    { name: "LWS_WORKER_INDEX", valueFrom: { fieldRef: { fieldPath: "metadata.labels['leaderworkerset.sigs.k8s.io/worker-index']" } } },
+    { name: "LWS_GROUP_SIZE", valueFrom: { fieldRef: { fieldPath: "metadata.labels['leaderworkerset.sigs.k8s.io/group-size']" } } },
+    { name: "LWS_LEADER_ADDRESS", valueFrom: { fieldRef: { fieldPath: "metadata.labels['leaderworkerset.sigs.k8s.io/leader-address']" } } },
+    { name: "POD_IP", valueFrom: { fieldRef: { fieldPath: "status.podIP" } } },
+    { name: "VLLM_HOST_IP", valueFrom: { fieldRef: { fieldPath: "status.podIP" } } },
   ];
 }
 
-// Kubernetes expands $(POD_IP) into the leader's --kv-events-config topic at
-// container start. A Docker rank on the host network has no pod IP, so the
-// topic names the host address the endpoint would be reachable at instead.
-function dockerServingArgs(recipe, rank, masterAddress, hostIp) {
-  return servingArgs(recipe, rank, masterAddress).map((value) => String(value).replaceAll("$(POD_IP)", hostIp));
-}
-
-function envList(environment) {
-  return Object.entries(environment).map(([name, value]) => ({ name, value: String(value) }));
-}
-
-function modelSyncContainer(recipe, parameters, imageReference) {
+function gpuAndRdmaRequests(parameters) {
   return {
-    name: "model-sync",
-    image: imageReference,
-    imagePullPolicy: "IfNotPresent",
-    securityContext: { runAsUser: 0 },
-    command: ["/opt/venv/bin/vllm-image"],
-    args: modelSyncArgs(recipe),
-    env: [
-      { name: "HF_XET_HIGH_PERFORMANCE", value: "1" },
-      { name: "HF_TOKEN", valueFrom: { secretKeyRef: { name: parameters.hf_secret, key: parameters.hf_secret_key } } },
-    ],
-    resources: { requests: { cpu: "4", memory: "12Gi" }, limits: { memory: "32Gi" } },
-    volumeMounts: [
-      { name: "model-weights", mountPath: "/models" },
-      { name: "jit-cache", mountPath: "/cache" },
-    ],
+    cpu: "8",
+    memory: "96Gi",
+    "ephemeral-storage": "128Gi",
+    "nvidia.com/gpu": "1",
+    [parameters.rdma_resource]: String(parameters.rdma_units),
   };
 }
 
-function rendezvousContainer(imageReference) {
+function modelServerContainer(recipe, parameters, imageReference, settings, environment) {
+  const port = servingPort(recipe, settings);
+  const probe = probePort(recipe);
+  const env = [
+    ...envList(siteEnvironment(recipe, parameters, "eth0")),
+    hfTokenEnv(parameters),
+    ...rankDownwardEnv(),
+    ...environmentEdits(environment),
+  ];
   return {
-    name: "rendezvous-wait",
-    image: imageReference,
-    imagePullPolicy: "IfNotPresent",
-    command: ["/opt/venv/bin/vllm-image"],
-    args: ["rendezvous-wait", "--rank-env", "LWS_WORKER_INDEX", "--leader-env", "LWS_LEADER_ADDRESS", "--port", "25000", "--dns-timeout", "1200s", "--connect-timeout", "300s"],
-  };
-}
-
-function healthProbe(phase) {
-  const startup = phase === "startup";
-  return {
-    exec: { command: [
-      "/opt/venv/bin/vllm-image", "health", "--phase", phase, "--rank-env", "LWS_WORKER_INDEX",
-      "--local-url", "http://127.0.0.1:8888/v1/models", "--leader-host-env", "LWS_LEADER_ADDRESS",
-      "--leader-port", "8888", "--leader-path", "/v1/models", "--engine-parent-pid", "1", "--timeout", startup ? "8s" : "15s",
-    ] },
-    ...(startup ? { initialDelaySeconds: 60, periodSeconds: 30, timeoutSeconds: 15, failureThreshold: 240 } : { periodSeconds: 15, timeoutSeconds: 20, failureThreshold: 6 }),
-  };
-}
-
-function podTemplate(recipe, parameters, imageReference, rank) {
-  const applicationLabels = {
-    app: parameters.name,
-    "llm-d.ai/model": parameters.name,
-    "llm-d.ai/engine-type": "vllm",
-  };
-  const kvEvents = publishesKvEvents(recipe);
-  const environment = commonRuntimeEnv(recipe, parameters, "eth0");
-  environment.VLLM_HOST_IP = undefined;
-  const modelserver = {
     name: "modelserver",
     image: imageReference,
     imagePullPolicy: "IfNotPresent",
-    securityContext: { runAsUser: 0, capabilities: { add: ["IPC_LOCK", "SYS_PTRACE"] } },
-    command: recipe.runtime.command,
-    args: servingArgs(recipe, rank, rank === 0 ? "127.0.0.1" : "$(LWS_LEADER_ADDRESS)"),
-    env: [
-      ...envList(Object.fromEntries(Object.entries(environment).filter(([, value]) => value !== undefined))),
-      { name: "VLLM_HOST_IP", valueFrom: { fieldRef: { fieldPath: "status.podIP" } } },
-      // Names the pod half of the KV-event topic. Deliberately separate from
-      // VLLM_HOST_IP, which is engine-internal and may be retargeted; this one
-      // must stay the pod-network address the InferencePool advertises, because
-      // kubelet expands $(POD_IP) into the leader's --kv-events-config topic.
-      ...(kvEvents ? [{ name: "POD_IP", valueFrom: { fieldRef: { fieldPath: "status.podIP" } } }] : []),
-    ],
+    securityContext: { runAsUser: 0, capabilities: { add: ["IPC_LOCK"] } },
+    command: ["/opt/venv/bin/vllm-image"],
+    args: launcherArgs(recipe, settings),
+    env,
     ports: [
-      { name: "modelserver", containerPort: 8888, protocol: "TCP" },
-      { name: "rdzv", containerPort: 25000, protocol: "TCP" },
-      ...(recipe.runtime.leader_ports ?? []),
+      { name: "modelserver", containerPort: port, protocol: "TCP" },
+      ...(recipe.launch.topology.kind === "lws" ? [{ name: "rdzv", containerPort: rendezvousPort(recipe), protocol: "TCP" }] : []),
     ],
     resources: {
-      requests: { cpu: "8", memory: "96Gi", "ephemeral-storage": "128Gi", "nvidia.com/gpu": "1", [parameters.rdma_resource]: String(parameters.rdma_units) },
+      requests: gpuAndRdmaRequests(parameters),
       limits: { "nvidia.com/gpu": "1", [parameters.rdma_resource]: String(parameters.rdma_units) },
     },
-    startupProbe: healthProbe("startup"),
-    readinessProbe: healthProbe("readiness"),
+    startupProbe: { httpGet: { path: "/readyz", port: probe }, periodSeconds: 30, timeoutSeconds: 5, failureThreshold: 240 },
+    readinessProbe: { httpGet: { path: "/readyz", port: probe }, periodSeconds: 15, timeoutSeconds: 5, failureThreshold: 6 },
+    livenessProbe: { httpGet: { path: "/livez", port: probe }, periodSeconds: 20, timeoutSeconds: 5, failureThreshold: 6 },
     volumeMounts: [
       { name: "shm", mountPath: "/dev/shm" },
       { name: "jit-cache", mountPath: "/cache" },
-      { name: "model-weights", mountPath: "/models", readOnly: true },
+      // The model cache is the node's persistent /models: the launcher publishes the
+      // fetched snapshot there in sync mode and the engine loads it back, and in
+      // engine-download mode vLLM resolves the repository id into the same root. It is
+      // writable because the same container runs the model-sync phase before exec.
+      { name: "model-weights", mountPath: recipe.deployment?.storage_root ?? "/models" },
+      { name: "launch-record", mountPath: "/run/vllm-image" },
     ],
   };
-  const initContainers = [modelSyncContainer(recipe, parameters, imageReference)];
-  if (rank === 1) initContainers.push(rendezvousContainer(imageReference));
-  const pod = {
-    metadata: {
-      labels: applicationLabels,
-      annotations: { "k8s.v1.cni.cncf.io/networks": parameters.network_attachment },
-    },
-    spec: {
-      runtimeClassName: "nvidia",
-      enableServiceLinks: false,
-      subdomain: parameters.name,
-      nodeSelector: { "kubernetes.io/arch": "arm64", ...parameters.node_selector },
-      affinity: {
-        nodeAffinity: { requiredDuringSchedulingIgnoredDuringExecution: { nodeSelectorTerms: [{ matchExpressions: [{ key: parameters.topology_key, operator: "In", values: parameters.topology_values.split(",").map((value) => value.trim()).filter(Boolean) }] }] } },
-        podAntiAffinity: { requiredDuringSchedulingIgnoredDuringExecution: [{ labelSelector: { matchLabels: { app: parameters.name } }, topologyKey: "kubernetes.io/hostname" }] },
-      },
-      terminationGracePeriodSeconds: 120,
-      securityContext: { fsGroup: 0 },
-      initContainers,
-      containers: [modelserver],
-      volumes: [
-        { name: "shm", emptyDir: { medium: "Memory", sizeLimit: "64Gi" } },
-        { name: "jit-cache", hostPath: { path: parameters.jit_storage_path, type: "DirectoryOrCreate" } },
-        { name: "model-weights", hostPath: { path: parameters.model_storage_path, type: "DirectoryOrCreate" } },
-      ],
-    },
-  };
-  return pod;
 }
 
-function renderLws(recipe, parameters, imageReference) {
-  const service = {
-    apiVersion: "v1", kind: "Service",
-    metadata: { name: `${parameters.name}-serve`, namespace: parameters.namespace, labels: { app: parameters.name } },
-    spec: { selector: { app: parameters.name, "leaderworkerset.sigs.k8s.io/worker-index": "0" }, ports: [{ name: "modelserver", port: 8888, targetPort: "modelserver" }] },
+// A native sidecar is an initContainer whose restartPolicy is Always; the acceptance
+// rule "no init containers other than native sidecars" means every entry in the pod's
+// initContainers carries restartPolicy Always — the old blocking model-sync and
+// rendezvous-wait init containers are gone because the launcher does both in-process.
+function probeSidecar(recipe, settings) {
+  return {
+    name: "probe",
+    image: null, // filled by the pod builder so every container shares the digest
+    imagePullPolicy: "IfNotPresent",
+    restartPolicy: "Always",
+    command: ["/opt/venv/bin/vllm-image"],
+    args: launcherArgs(recipe, {}, { role: "probe" }),
+    // The probe answers liveness for the engine, so it needs its own CPU and memory
+    // reservation: sharing the engine's cgroup let a spin-heavy rank starve the probe
+    // and kubelet kill a healthy group (the reason liveness left modelserver).
+    resources: { requests: { cpu: "2", memory: "256Mi" }, limits: { memory: "512Mi" } },
+    ports: [{ name: "probe", containerPort: probePort(recipe), protocol: "TCP" }],
+    volumeMounts: [
+      { name: "shm", mountPath: "/dev/shm" },
+      // The probe answers from the launcher record the engine writes before exec
+      // (`probes.DEFAULT_RECORD_PATH` = /run/vllm-image/launch.json), so it shares that
+      // emptyDir with the modelserver rather than reading a path no container populated.
+      { name: "launch-record", mountPath: "/run/vllm-image" },
+    ],
   };
-  const lws = {
-    apiVersion: "leaderworkerset.x-k8s.io/v1", kind: "LeaderWorkerSet",
-    metadata: { name: parameters.name, namespace: parameters.namespace, labels: { app: parameters.name, "llm-d.ai/model": parameters.name }, annotations: { "leaderworkerset.sigs.k8s.io/exclusive-topology": parameters.topology_key } },
-    spec: {
-      replicas: 1,
-      startupPolicy: "LeaderCreated",
-      networkConfig: { subdomainPolicy: "Shared" },
-      rolloutStrategy: { type: "RollingUpdate", rollingUpdateConfiguration: { maxUnavailable: 1, maxSurge: 0 } },
-      leaderWorkerTemplate: {
-        size: 2,
-        restartPolicy: "RecreateGroupAfterStart",
-        leaderTemplate: podTemplate(recipe, parameters, imageReference, 0),
-        workerTemplate: podTemplate(recipe, parameters, imageReference, 1),
+}
+
+function cacheSidecar(recipe, parameters, settings, environment) {
+  const l1 = cacheL1GiB(recipe, settings);
+  const cachePort = Number(effective(recipe, settings, "cache-port", DEFAULT_PORT + 1));
+  const env = [
+    ...envList(siteEnvironment(recipe, parameters, "eth0")),
+    ...environmentEdits(environment),
+  ];
+  return {
+    name: "cache",
+    image: null,
+    imagePullPolicy: "IfNotPresent",
+    restartPolicy: "Always",
+    command: ["/opt/venv/bin/vllm-image"],
+    args: launcherArgs(recipe, {}, { role: "cache" }),
+    env,
+    // The cache owns no GPU: it is a RAM/LMCache tier process, and requesting a GPU
+    // would take the engine's only device on a one-GPU node.
+    resources: {
+      requests: { cpu: "4", memory: l1 ? `${l1 + 4}Gi` : "8Gi" },
+      limits: { memory: l1 ? `${l1 + 8}Gi` : "16Gi" },
+    },
+    startupProbe: { httpGet: { path: "/healthcheck", port: cachePort }, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 60 },
+    volumeMounts: [
+      { name: "shm", mountPath: "/dev/shm" },
+      { name: "jit-cache", mountPath: "/cache" },
+    ],
+  };
+}
+
+function workerPodSpec(recipe, parameters, imageReference, settings, environment, { single = false } = {}) {
+  const cache = hasCache(recipe, settings);
+  const initContainers = [probeSidecar(recipe, settings)];
+  if (cache) initContainers.push(cacheSidecar(recipe, parameters, settings, environment));
+  for (const container of initContainers) container.image = imageReference;
+  const volumes = [
+    // The cache arena and the engine's shm_broadcast share one tmpfs: the launcher
+    // opens the LMCache arena under /dev/shm (cache_runtime.SHM_ROOT) and the engine
+    // reads it, so both mount the SAME volume rather than two private ones.
+    { name: "shm", emptyDir: { medium: "Memory", sizeLimit: cache ? `${(cacheL1GiB(recipe, settings) ?? 64) + 8}Gi` : "64Gi" } },
+    { name: "jit-cache", hostPath: { path: parameters.jit_storage_path, type: "DirectoryOrCreate" } },
+    { name: "model-weights", hostPath: { path: parameters.model_storage_path, type: "DirectoryOrCreate" } },
+    // Carries the launcher record both the engine and the probe read, and the cache
+    // validates against; shared so the sidecars see what the engine published.
+    { name: "launch-record", emptyDir: {} },
+  ];
+  const grace = ENGINE_STOP_GRACE_SECONDS + (cache ? CACHE_STOP_GRACE_SECONDS : 0);
+  return {
+    runtimeClassName: single ? undefined : "nvidia",
+    enableServiceLinks: false,
+    subdomain: parameters.name,
+    shareProcessNamespace: true,
+    ...(single ? {} : {
+      nodeSelector: { "kubernetes.io/arch": "arm64", ...parameters.node_selector },
+      affinity: {
+        nodeAffinity: {
+          requiredDuringSchedulingIgnoredDuringExecution: {
+            nodeSelectorTerms: [{
+              matchExpressions: [{
+                key: parameters.topology_key,
+                operator: "In",
+                values: String(parameters.topology_values).split(",").map((value) => value.trim()).filter(Boolean),
+              }],
+            }],
+          },
+        },
+        podAntiAffinity: {
+          requiredDuringSchedulingIgnoredDuringExecution: [{
+            labelSelector: { matchLabels: { app: parameters.name } },
+            topologyKey: "kubernetes.io/hostname",
+          }],
+        },
       },
+    }),
+    terminationGracePeriodSeconds: grace,
+    securityContext: { fsGroup: 0 },
+    initContainers,
+    containers: [modelServerContainer(recipe, parameters, imageReference, settings, environment)],
+    volumes,
+  };
+}
+
+function podMetadata(parameters) {
+  return {
+    labels: { app: parameters.name, "llm-d.ai/model": parameters.name, "llm-d.ai/engine-type": "vllm" },
+    annotations: { "k8s.v1.cni.cncf.io/networks": parameters.network_attachment },
+  };
+}
+
+// -- LWS ------------------------------------------------------------------------
+
+function renderLws(recipe, parameters, imageReference, settings, environment) {
+  const lws = recipe.launch.topology.kind === "lws";
+  const nodes = recipe.launch.topology.nodes;
+  const port = servingPort(recipe, settings);
+  const service = {
+    apiVersion: "v1",
+    kind: "Service",
+    metadata: { name: `${parameters.name}-serve`, namespace: parameters.namespace, labels: { app: parameters.name } },
+    spec: {
+      // Only rank zero serves the API (the others are headless in topology_args), so
+      // the debug Service selects the worker-index-0 pods.
+      selector: { app: parameters.name, "leaderworkerset.sigs.k8s.io/worker-index": "0" },
+      ports: [{ name: "modelserver", port, targetPort: "modelserver" }],
     },
   };
-  const filename = `${parameters.name}-lws.yaml`;
-  const files = { [filename]: yamlDocuments([service, lws]) };
+  // One workerTemplate, no leader/worker split: `launch.py` reads LWS_WORKER_INDEX and
+  // decides leader vs headless per pod, so every pod of the group is identical. A
+  // single-node recipe is not a group at all: it becomes one plain Deployment pod.
+  const podSpec = workerPodSpec(recipe, parameters, imageReference, settings, environment, { single: !lws });
+  const workload = lws
+    ? {
+        apiVersion: "leaderworkerset.x-k8s.io/v1",
+        kind: "LeaderWorkerSet",
+        metadata: {
+          name: parameters.name,
+          namespace: parameters.namespace,
+          labels: { app: parameters.name, "llm-d.ai/model": parameters.name },
+          ...(parameters.topology_key ? { annotations: { "leaderworkerset.sigs.k8s.io/exclusive-topology": parameters.topology_key } } : {}),
+        },
+        spec: {
+          replicas: 1,
+          startupPolicy: "LeaderCreated",
+          networkConfig: { subdomainPolicy: "Shared" },
+          rolloutStrategy: { type: "RollingUpdate", rollingUpdateConfiguration: { maxUnavailable: 1, maxSurge: 0 } },
+          leaderWorkerTemplate: { size: nodes, restartPolicy: "RecreateGroupAfterStart", workerTemplate: { metadata: podMetadata(parameters), spec: podSpec } },
+        },
+      }
+    : {
+        apiVersion: "apps/v1",
+        kind: "Deployment",
+        metadata: { name: parameters.name, namespace: parameters.namespace, labels: { app: parameters.name, "llm-d.ai/model": parameters.name } },
+        spec: {
+          replicas: effectiveReplicas(recipe, settings),
+          strategy: { type: "Recreate" },
+          selector: { matchLabels: { app: parameters.name } },
+          template: { metadata: podMetadata(parameters), spec: podSpec },
+        },
+      };
+
+  const filename = "lws.yaml";
+  const files = [{ name: filename, body: yamlDocuments([service, workload]) }];
   const steps = [
-    { title: "Create the namespace", text: "Create the isolated model namespace.", command: shellCommand(["kubectl", "create", "namespace", parameters.namespace]) },
-    { title: "Create the Hugging Face Secret", text: "Read HF_TOKEN only from this workstation environment; the site never accepts the token.", command: shellCommand(["kubectl", "-n", parameters.namespace, "create", "secret", "generic", parameters.hf_secret]) + " " + shellQuote(`--from-literal=${parameters.hf_secret_key}=`) + '"$HF_TOKEN"' },
-    { title: "Apply the TP=2 group", text: "Apply the generated rank-zero Service and LeaderWorkerSet.", command: shellCommand(["kubectl", "apply", "-f", filename]) },
-    { title: "Wait for both ranks", text: "Both rank pods must become Ready before sending traffic.", command: shellCommand(["kubectl", "-n", parameters.namespace, "wait", "--for=condition=Ready", "pod", "-l", `app=${parameters.name}`, "--timeout=2h"]) },
-    { title: "Inspect group status", text: "Check the group and both rank pods.", command: shellCommand(["kubectl", "-n", parameters.namespace, "get", "leaderworkerset,pod", "-l", `app=${parameters.name}`, "-o", "wide"]) },
-    { title: "Forward the debug Service", text: "This direct rank-zero Service bypasses llm-d routing.", command: shellCommand(["kubectl", "-n", parameters.namespace, "port-forward", `service/${parameters.name}-serve`, "8888:8888"]) },
-    { title: "Check the image helper", text: "Verify rank-zero readiness using the helper shipped in the serving image.", command: shellCommand(["kubectl", "-n", parameters.namespace, "exec", `${parameters.name}-0`, "-c", "modelserver", "--", "/opt/venv/bin/vllm-image", "health", "--phase", "readiness", "--rank", "0", "--local-url", "http://127.0.0.1:8888/v1/models"]) },
-    { title: "Send text, tool, and vision requests", text: "Use the OpenAI-compatible endpoint with model name from the recipe; include a real image input for the vision check.", command: shellCommand(["curl", "--fail-with-body", "http://127.0.0.1:8888/v1/chat/completions", "-H", "Content-Type: application/json", "--data", JSON.stringify({ model: recipe.model.served_name, messages: [{ role: "user", content: "Reply with ready." }] })]) },
+    shellCommand(["kubectl", "create", "namespace", parameters.namespace]),
+    shellCommand(["kubectl", "-n", parameters.namespace, "create", "secret", "generic", parameters.hf_secret]) + " " + shellQuote(`--from-literal=${parameters.hf_secret_key}=`) + '"$HF_TOKEN"',
+    shellCommand(["kubectl", "apply", "-f", filename]),
+    shellCommand(["kubectl", "-n", parameters.namespace, "wait", "--for=condition=Ready", "pod", "-l", `app=${parameters.name}`, "--timeout=2h"]),
+    shellCommand(["kubectl", "-n", parameters.namespace, "get", "pod", "-l", `app=${parameters.name}`, "-o", "wide"]),
+    shellCommand(["kubectl", "-n", parameters.namespace, "port-forward", `service/${parameters.name}-serve`, `${port}:${port}`]),
   ];
   return { files, steps };
 }
 
-function dockerEnvironment(recipe, parameters, hostIp) {
-  return { ...commonRuntimeEnv(recipe, parameters, parameters.control_interface), VLLM_HOST_IP: hostIp };
-}
+// -- Docker ---------------------------------------------------------------------
 
-function dockerModelSync(recipe, parameters, imageReference) {
-  return [
-    "docker", "run", "--user", "0", "--network", "host", "--gpus", "all",
-    "--device", "/dev/infiniband", "--cap-add", "IPC_LOCK", "--ulimit", "memlock=-1", "--shm-size", "64g",
-    "--stop-timeout", "120", "-e", "HF_TOKEN", "-e", "HF_XET_HIGH_PERFORMANCE=1",
-    "-v", `${parameters.model_storage_path}:/models`, "-v", `${parameters.jit_storage_path}:/cache`,
-    "--entrypoint", "/opt/venv/bin/vllm-image", imageReference, ...modelSyncArgs(recipe),
-  ];
-}
-
-function dockerServe(recipe, parameters, imageReference, rank, hostIp, masterAddress) {
-  const name = `${parameters.name}-rank${rank}`;
-  const args = [
-    "docker", "run", "--detach", "--name", name, "--user", "0", "--network", "host", "--gpus", "all",
-    "--device", "/dev/infiniband", "--cap-add", "IPC_LOCK", "--ulimit", "memlock=-1", "--shm-size", "64g", "--stop-timeout", "120",
-    "-v", `${parameters.model_storage_path}:/models:ro`, "-v", `${parameters.jit_storage_path}:/cache`,
-  ];
-  for (const [key, value] of Object.entries(dockerEnvironment(recipe, parameters, hostIp))) args.push("-e", `${key}=${value}`);
-  args.push("--entrypoint", recipe.runtime.command[0], imageReference, ...recipe.runtime.command.slice(1), ...dockerServingArgs(recipe, rank, masterAddress, hostIp));
-  return args;
-}
-
-function dockerScript(recipe, parameters, imageReference, rank) {
-  const hostIp = rank === 0 ? parameters.leader_ip : parameters.worker_ip;
-  const lines = ["#!/bin/sh", "set -eu", "", shellCommand(dockerModelSync(recipe, parameters, imageReference)), ""];
-  if (rank === 1) {
-    lines.push(shellCommand([
-      "docker", "run", "--network", "host", "--entrypoint", "/opt/venv/bin/vllm-image", imageReference,
-      "rendezvous-wait", "--rank", "1", "--leader", parameters.leader_ip, "--port", "25000", "--dns-timeout", "1200s", "--connect-timeout", "300s",
-    ]), "");
+// Docker runs the image once per rank with the launcher arguments. A cache or a
+// replica layout is refused here and sent to Compose, because the cache must join
+// the model's network and IPC namespaces and replicas need the proxy sidecar — both
+// are service-graph features Compose expresses and a bare `docker run` loop cannot.
+function renderDocker(recipe, parameters, imageReference, settings, environment) {
+  if (hasCache(recipe, settings)) {
+    fail("this deployment selects an external cache, which a plain `docker run` cannot share with the engine; use the Compose tab");
   }
-  lines.push(shellCommand(dockerServe(recipe, parameters, imageReference, rank, hostIp, rank === 0 ? "127.0.0.1" : parameters.leader_ip)), "");
-  return lines.join("\n");
+  const replicas = effectiveReplicas(recipe, settings);
+  if (replicas > 1) {
+    fail(`this deployment runs ${replicas} replicas behind a proxy, which a bare \`docker run\` cannot express; use the Compose tab`);
+  }
+  const lws = recipe.launch.topology.kind === "lws";
+  const nodes = lws ? recipe.launch.topology.nodes : 1;
+  const port = servingPort(recipe, settings);
+
+  const commonRun = (rank) => {
+    const args = [
+      "docker", "run", "--detach", "--name", `${parameters.name}-rank${rank}`, "--user", "0",
+      "--network", "host", "--gpus", "all", "--device", "/dev/infiniband",
+      "--cap-add", "IPC_LOCK", "--ulimit", "memlock=-1", "--shm-size", "64g", "--stop-timeout", "120",
+      "-v", modelMount(recipe, parameters),
+      "-v", `${parameters.jit_storage_path}:/cache`,
+      "-e", "HF_TOKEN", "-e", "HF_XET_HIGH_PERFORMANCE=1",
+    ];
+    for (const [name, value] of Object.entries(siteEnvironment(recipe, parameters, parameters.control_interface))) args.push("-e", `${name}=${value}`);
+    for (const edit of environmentEdits(environment)) args.push("-e", `${edit.name}=${edit.value}`);
+    if (lws) {
+      args.push("-e", `LWS_WORKER_INDEX=${rank}`, "-e", `LWS_GROUP_SIZE=${nodes}`, "-e", `LWS_LEADER_ADDRESS=${rank === 0 ? "127.0.0.1" : parameters.leader_ip}`);
+    }
+    args.push("--entrypoint", "/opt/venv/bin/vllm-image", imageReference, ...launcherArgs(recipe, settings));
+    return args;
+  };
+
+  const lines = ["#!/bin/sh", "set -eu", ""];
+  if (nodes === 1) {
+    lines.push(shellCommand(["docker", "run", "--rm", "--name", `${parameters.name}-once`, "--user", "0", "--network", "host", "--gpus", "all", "--device", "/dev/infiniband", "--cap-add", "IPC_LOCK", "--ulimit", "memlock=-1", "--shm-size", "64g", "--stop-timeout", "120", "-v", modelMount(recipe, parameters), "-v", `${parameters.jit_storage_path}:/cache`, "-e", "HF_TOKEN", "--entrypoint", "/opt/venv/bin/vllm-image", imageReference, ...launcherArgs(recipe, settings)]), "");
+  } else {
+    for (let rank = 0; rank < nodes; rank += 1) {
+      const host = rank === 0 ? parameters.leader_ip : parameters.worker_ip;
+      lines.push(`# rank ${rank} on ${host}`, shellCommand(commonRun(rank)), "");
+    }
+  }
+  const files = [{ name: "serve.sh", body: lines.join("\n") }];
+  const steps = [
+    shellCommand(["sh", "serve.sh"]),
+    shellCommand(["docker", "logs", "--follow", `${parameters.name}-rank0`]),
+    shellCommand(["docker", "stop", "--time", "120", ...Array.from({ length: nodes }, (_, rank) => `${parameters.name}-rank${rank}`)]),
+  ];
+  void port;
+  return { files, steps };
 }
 
-function renderDocker(recipe, parameters, imageReference) {
-  const leaderFile = `${parameters.name}-leader.sh`;
-  const workerFile = `${parameters.name}-worker.sh`;
-  return {
-    files: { [leaderFile]: dockerScript(recipe, parameters, imageReference, 0), [workerFile]: dockerScript(recipe, parameters, imageReference, 1) },
-    steps: [
-      { title: "Docker setup", text: "These scripts use the same engine settings as the Kubernetes deployment. I run the Kubernetes version, not this two-host Docker form.", command: "" },
-      { title: "Start rank zero", text: "Copy the rendered leader script to the leader host, make it executable, and run it without positional arguments.", command: shellCommand(["sh", leaderFile]) },
-      { title: "Start rank one", text: "After rank zero opens port 25000, run the rendered worker script on the worker host.", command: shellCommand(["sh", workerFile]) },
-      { title: "Follow logs", text: "Long kernel work is not grounds for force-killing a GB10 process.", command: shellCommand(["docker", "logs", "--follow", `${parameters.name}-rank0`]) },
-      { title: "Check rank-zero health", text: "Run the image helper in the serving container's own process namespace.", command: shellCommand(["docker", "exec", `${parameters.name}-rank0`, "/opt/venv/bin/vllm-image", "health", "--phase", "readiness", "--rank", "0", "--local-url", "http://127.0.0.1:8888/v1/models"]) },
-      { title: "Stop gracefully", text: "Stop each rank with the full shutdown budget; do not force-remove the containers.", command: shellCommand(["docker", "stop", "--time", "120", `${parameters.name}-rank1`, `${parameters.name}-rank0`]) },
+// -- Compose --------------------------------------------------------------------
+
+// Compose splits the same way Kubernetes does. A cache joins the model service in its
+// network and IPC namespaces and shares the tmpfs; replicas each get their own GPU and
+// the proxy service load-balances them.
+function modelComposeService(recipe, parameters, imageReference, settings, environment, { name, rank, gpu } = {}) {
+  const service = {
+    image: imageReference,
+    entrypoint: "/opt/venv/bin/vllm-image",
+    command: launcherArgs(recipe, settings),
+    ipc: "host",
+    network_mode: "host",
+    restart: "unless-stopped",
+    cap_add: ["IPC_LOCK"],
+    ulimits: { memlock: { soft: -1, hard: -1 } },
+    shm_size: "64g",
+    stop_grace_period: "120s",
+    volumes: [
+      modelMount(recipe, parameters),
+      `${parameters.jit_storage_path}:/cache`,
+      "shm:/dev/shm",
     ],
+    environment: {
+      ...siteEnvironment(recipe, parameters, parameters.control_interface),
+      HF_TOKEN: "${HF_TOKEN}",
+      ...Object.fromEntries(environmentEdits(environment).map((edit) => [edit.name, edit.value])),
+    },
+    deploy: {
+      resources: { reservations: { devices: [{ driver: "nvidia", count: gpu ? "1" : "0", capabilities: ["gpu"] }] } },
+    },
+  };
+  void name;
+  void rank;
+  return service;
+}
+
+function probeComposeService(recipe, parameters, imageReference, settings) {
+  return {
+    image: imageReference,
+    entrypoint: "/opt/venv/bin/vllm-image",
+    command: launcherArgs(recipe, {}, { role: "probe" }),
+    // The probe shares the model's network and IPC namespaces so its httpGet checks
+    // read the engine's own state, exactly like the pod's shared process namespace.
+    network_mode: "service:model",
+    ipc: "service:model",
+    restart: "unless-stopped",
+    environment: {
+      ...siteEnvironment(recipe, parameters, parameters.control_interface),
+      ...Object.fromEntries(environmentEdits({}).map((edit) => [edit.name, edit.value])),
+    },
+    volumes: ["shm:/dev/shm"],
+    depends_on: ["model"],
+    deploy: {
+      resources: { reservations: { cpus: "2", memory: "256M" } },
+    },
   };
 }
 
-function routingResources(recipe, parameters) {
+function cacheComposeService(recipe, parameters, imageReference, settings, environment) {
+  const l1 = cacheL1GiB(recipe, settings);
+  return {
+    image: imageReference,
+    entrypoint: "/opt/venv/bin/vllm-image",
+    command: launcherArgs(recipe, {}, { role: "cache" }),
+    network_mode: "service:model",
+    ipc: "service:model",
+    restart: "unless-stopped",
+    environment: {
+      ...siteEnvironment(recipe, parameters, parameters.control_interface),
+      ...Object.fromEntries(environmentEdits(environment).map((edit) => [edit.name, edit.value])),
+    },
+    // The cache and the engine share the same tmpfs arena and the /cache tier volume.
+    volumes: ["shm:/dev/shm", `${parameters.jit_storage_path}:/cache`],
+    deploy: {
+      resources: { reservations: { memory: l1 ? `${l1}G` : "8G" } },
+    },
+  };
+}
+
+function proxyComposeService(recipe, parameters, imageReference, settings, replicas) {
+  return {
+    image: imageReference,
+    entrypoint: "/opt/venv/bin/vllm-image",
+    command: launcherArgs(recipe, {}, { role: "proxy" }),
+    network_mode: "host",
+    restart: "unless-stopped",
+    ports: [`${servingPort(recipe, settings)}:${servingPort(recipe, settings)}`],
+    depends_on: Array.from({ length: replicas }, (_, index) => `model-${index}`),
+    deploy: {
+      resources: { reservations: { cpus: "1", memory: "256M" } },
+    },
+  };
+}
+
+function renderCompose(recipe, parameters, imageReference, settings, environment) {
+  const lws = recipe.launch.topology.kind === "lws";
+  const nodes = lws ? recipe.launch.topology.nodes : 1;
+  const replicas = effectiveReplicas(recipe, settings);
+  const cache = hasCache(recipe, settings);
+  const services = {};
+
+  if (replicas > 1) {
+    // Each replica is its own single-node service with one GPU; the proxy fans requests
+    // across them on their per-replica ports (replica_port_base in launch.py).
+    for (let index = 0; index < replicas; index += 1) {
+      services[`model-${index}`] = modelComposeService(recipe, parameters, imageReference, settings, environment, { name: `model-${index}`, rank: 0, gpu: true });
+    }
+    services["model-proxy"] = proxyComposeService(recipe, parameters, imageReference, settings, replicas);
+  } else if (lws && nodes > 1) {
+    // A TP group spans ranks; compose can only host them together on one docker host,
+    // so each rank is a service pinned to that host and the leader's rendezvous port is
+    // published for the followers.
+    for (let rank = 0; rank < nodes; rank += 1) {
+      const service = modelComposeService(recipe, parameters, imageReference, settings, environment, { name: `model-rank${rank}`, rank, gpu: true });
+      service.environment.LWS_WORKER_INDEX = String(rank);
+      service.environment.LWS_GROUP_SIZE = String(nodes);
+      service.environment.LWS_LEADER_ADDRESS = rank === 0 ? "127.0.0.1" : "${LWS_LEADER_ADDRESS}";
+      services[`model-rank${rank}`] = service;
+    }
+    services["model"] = services["model-rank0"];
+  } else {
+    services["model"] = modelComposeService(recipe, parameters, imageReference, settings, environment, { name: "model", rank: 0, gpu: true });
+  }
+
+  // The probe sidecar follows the leader model service, mirroring the pod.
+  services["probe"] = probeComposeService(recipe, parameters, imageReference, settings);
+  if (cache) services["cache"] = cacheComposeService(recipe, parameters, imageReference, settings, environment);
+
+  const document = {
+    name: parameters.name,
+    services,
+    volumes: {
+      // The cache arena is a shared tmpfs so the engine and the cache see one /dev/shm.
+      shm: { driver_opts: { type: "tmpfs", o: "size=64g" } },
+    },
+  };
+  const files = [{ name: "compose.yaml", body: stringifyYaml(document, { lineWidth: 0 }) }];
+  const steps = [
+    shellCommand(["HF_TOKEN=... docker compose", "-f", "compose.yaml", "up", "--detach"]),
+    shellCommand(["docker", "compose", "-f", "compose.yaml", "ps"]),
+    shellCommand(["docker", "compose", "-f", "compose.yaml", "logs", "-f", "model"]),
+    shellCommand(["docker", "compose", "-f", "compose.yaml", "down", "--timeout", "120"]),
+  ];
+  return { files, steps };
+}
+
+// -- Routing (llm-d) ------------------------------------------------------------
+
+// The routing bundle is unchanged in substance: it installs the same Endpoint Picker,
+// InferencePool, Gateway and AI Gateway route. It now references the recipe's served
+// model name and the recipe selection rather than any hand-written vLLM command — the
+// engine command comes only from the launcher form the other tabs render.
+function routingResources(recipe, parameters, servedModel) {
   const name = parameters.name;
   const namespace = parameters.namespace;
   const poolName = `${name}-pool`;
   const eppName = `${name}-epp`;
   const gatewayName = `${name}-gateway`;
   const routeName = `${name}-route`;
-  // Upstream Gateway API Inference Extension configuration. The author's cluster
-  // runs the llm-d router Endpoint Picker instead, whose plugin chain (precise
-  // KV-event prefix indexing, predicted-latency placement, concurrency
-  // admission, flow control) has no public image to name; the routing guide
-  // records that difference.
   const config = {
     apiVersion: "inference.networking.x-k8s.io/v1alpha1",
     kind: "EndpointPickerConfig",
@@ -392,7 +793,7 @@ function routingResources(recipe, parameters) {
       { nonResourceURLs: ["/metrics"], verbs: ["get"] },
     ],
   };
-  const clusterRoleBinding = { apiVersion: "rbac.authorization.k8s.io/v1", kind: "ClusterRoleBinding", metadata: { name: clusterRoleName }, roleRef: { apiGroup: "rbac.authorization.k8s.io", kind: "ClusterRole", name: clusterRoleName }, subjects: [{ kind: "ServiceAccount", name: eppName, namespace }] };
+  const clusterRoleBinding = { apiVersion: "v1", kind: "ClusterRoleBinding", metadata: { name: clusterRoleName }, roleRef: { apiGroup: "rbac.authorization.k8s.io", kind: "ClusterRole", name: clusterRoleName }, subjects: [{ kind: "ServiceAccount", name: eppName, namespace }] };
   const configMap = { apiVersion: "v1", kind: "ConfigMap", metadata: { name: `${eppName}-config`, namespace }, data: { "config.yaml": stringifyYaml(config, { lineWidth: 0 }) } };
   const deployment = {
     apiVersion: "apps/v1", kind: "Deployment", metadata: { name: eppName, namespace, labels: { app: eppName } },
@@ -414,51 +815,46 @@ function routingResources(recipe, parameters) {
     } } },
   };
   const service = { apiVersion: "v1", kind: "Service", metadata: { name: eppName, namespace, labels: { app: eppName } }, spec: { selector: { app: eppName }, ports: [{ name: "grpc", port: 9002, targetPort: "grpc", protocol: "TCP" }, { name: "metrics", port: 9090, targetPort: "metrics", protocol: "TCP" }] } };
-  const pool = { apiVersion: "inference.networking.k8s.io/v1", kind: "InferencePool", metadata: { name: poolName, namespace }, spec: { appProtocol: "http", selector: { matchLabels: { app: name, "leaderworkerset.sigs.k8s.io/worker-index": "0" } }, targetPorts: [{ number: 8888 }], endpointPickerRef: { name: eppName, port: { number: 9002 }, failureMode: "FailClose" } } };
+  const pool = { apiVersion: "inference.networking.k8s.io/v1", kind: "InferencePool", metadata: { name: poolName, namespace }, spec: { appProtocol: "http", selector: { matchLabels: { app: name, "leaderworkerset.sigs.k8s.io/worker-index": "0" } }, targetPorts: [{ number: servingPort(recipe, {}) }], endpointPickerRef: { name: eppName, port: { number: 9002 }, failureMode: "FailClose" } } };
   const gateway = { apiVersion: "gateway.networking.k8s.io/v1", kind: "Gateway", metadata: { name: gatewayName, namespace }, spec: { gatewayClassName: parameters.gateway_class, listeners: [{ name: "http", protocol: "HTTP", port: 10080 }] } };
-  const route = { apiVersion: "aigateway.envoyproxy.io/v1beta1", kind: "AIGatewayRoute", metadata: { name: routeName, namespace }, spec: { parentRefs: [{ name: gatewayName, namespace }], rules: [{ matches: [{ headers: [{ type: "Exact", name: "x-ai-eg-model", value: recipe.model.served_name }] }], backendRefs: [{ group: "inference.networking.k8s.io", kind: "InferencePool", name: poolName }], timeouts: { request: "3600s" } }] } };
-  // Envoy Gateway's generated route inherits a 15-second upstream response
-  // timeout. BackendTrafficPolicy raises that ceiling for the whole route; the
-  // AIGatewayRoute rule sets its own, lower per-rule value, and the rule-level
-  // timeout is what bounds a request. A full-window prefill on a
-  // 1,048,576-token model takes far longer than either default.
+  const route = { apiVersion: "aigateway.envoyproxy.io/v1beta1", kind: "AIGatewayRoute", metadata: { name: routeName, namespace }, spec: { parentRefs: [{ name: gatewayName, namespace }], rules: [{ matches: [{ headers: [{ type: "Exact", name: "x-ai-eg-model", value: servedModel }] }], backendRefs: [{ group: "inference.networking.k8s.io", kind: "InferencePool", name: poolName }], timeouts: { request: "3600s" } }] } };
   const backendTimeouts = { apiVersion: "gateway.envoyproxy.io/v1alpha1", kind: "BackendTrafficPolicy", metadata: { name: `${name}-backend-timeouts`, namespace }, spec: { targetRefs: [{ group: "gateway.networking.k8s.io", kind: "HTTPRoute", name: routeName }], timeout: { http: { requestTimeout: "3600s" } } } };
-  // Native Anthropic Messages requests bypass AIGatewayRoute model translation,
-  // so a recipe that serves them gets its own HTTPRoute to reach the pool and its
-  // fail-closed picker. The port is explicit because a plain backendRef to an
-  // InferencePool has no model-header match to infer it from.
   const nativeMessages = recipe.model.serves_native_messages
-    ? { apiVersion: "gateway.networking.k8s.io/v1", kind: "HTTPRoute", metadata: { name: `${name}-native-messages`, namespace }, spec: { parentRefs: [{ name: gatewayName, sectionName: "http" }], rules: [{ matches: [{ path: { type: "PathPrefix", value: "/v1/messages" } }], backendRefs: [{ group: "inference.networking.k8s.io", kind: "InferencePool", name: poolName, port: 8888 }], timeouts: { request: "3600s" } }] } }
+    ? { apiVersion: "gateway.networking.k8s.io/v1", kind: "HTTPRoute", metadata: { name: `${name}-native-messages`, namespace }, spec: { parentRefs: [{ name: gatewayName, sectionName: "http" }], rules: [{ matches: [{ path: { type: "PathPrefix", value: "/v1/messages" } }], backendRefs: [{ group: "inference.networking.k8s.io", kind: "InferencePool", name: poolName, port: servingPort(recipe, {}) }], timeouts: { request: "3600s" } }] } }
     : null;
   const nativeMessagesTimeouts = nativeMessages
     ? { apiVersion: "gateway.envoyproxy.io/v1alpha1", kind: "BackendTrafficPolicy", metadata: { name: `${name}-native-messages-timeouts`, namespace }, spec: { targetRefs: [{ group: "gateway.networking.k8s.io", kind: "HTTPRoute", name: `${name}-native-messages` }], timeout: { http: { requestTimeout: "3600s", streamIdleTimeout: "3600s" } } } }
     : null;
-  // ext_proc reads the request body in BUFFERED mode, and its ceiling is the
-  // listener's per_connection_buffer_limit_bytes. The ~32 KiB default returns
-  // 413 for a vision payload carrying a base64 image, so the limit is raised.
   const policy = { apiVersion: "gateway.envoyproxy.io/v1alpha1", kind: "ClientTrafficPolicy", metadata: { name: `${name}-buffer-limit`, namespace }, spec: { targetRefs: [{ group: "gateway.networking.k8s.io", kind: "Gateway", name: gatewayName }], connection: { bufferLimit: "50Mi" } } };
   return [serviceAccount, clusterRole, clusterRoleBinding, configMap, deployment, service, pool, gateway, route, nativeMessages, backendTimeouts, nativeMessagesTimeouts, policy].filter(Boolean);
 }
 
 function renderRouting(recipe, parameters) {
-  const filename = `${parameters.name}-llm-d-routing.yaml`;
-  return {
-    files: { [filename]: yamlDocuments(routingResources(recipe, parameters)) },
-    steps: [
-      { title: "Apply model routing", text: "Install only after the LWS, inference, Envoy Gateway, and Envoy AI Gateway controllers and CRDs are Ready.", command: shellCommand(["kubectl", "apply", "-f", filename]) },
-      { title: "Wait for the Endpoint Picker", text: "The EPP's plaintext gRPC path must remain namespace-internal and network-isolated.", command: shellCommand(["kubectl", "-n", parameters.namespace, "rollout", "status", `deployment/${parameters.name}-epp`, "--timeout=5m"]) },
-      { title: "Check Gateway acceptance", text: "Require both Accepted and Programmed conditions before testing requests.", command: shellCommand(["kubectl", "-n", parameters.namespace, "get", "gateway", `${parameters.name}-gateway`, "-o", "yaml"]) },
-      { title: "Forward the internal Gateway", text: "Use the Gateway implementation Service selected by the controller; do not expose this unauthenticated endpoint publicly.", command: shellCommand(["kubectl", "-n", parameters.namespace, "get", "gateway", `${parameters.name}-gateway`]) },
-      { title: "Send a routed request", text: "The model header selects this InferencePool. EPP selects an endpoint; the request body goes directly from Gateway to rank zero.", command: shellCommand(["curl", "--fail-with-body", "http://127.0.0.1:10080/v1/chat/completions", "-H", `x-ai-eg-model: ${recipe.model.served_name}`, "-H", "Content-Type: application/json", "--data", JSON.stringify({ model: recipe.model.served_name, messages: [{ role: "user", content: "Reply with ready." }] })]) },
-    ],
-  };
+  const servedModel = servedModelName(recipe, {});
+  const filename = "routing.yaml";
+  const files = [{ name: filename, body: yamlDocuments(routingResources(recipe, parameters, servedModel)) }];
+  const steps = [
+    shellCommand(["kubectl", "apply", "-f", filename]),
+    shellCommand(["kubectl", "-n", parameters.namespace, "rollout", "status", `deployment/${parameters.name}-epp`, "--timeout=5m"]),
+    shellCommand(["kubectl", "-n", parameters.namespace, "get", "gateway", `${parameters.name}-gateway`, "-o", "yaml"]),
+    shellCommand(["curl", "--fail-with-body", "http://127.0.0.1:10080/v1/chat/completions", "-H", `x-ai-eg-model: ${servedModel}`, "-H", "Content-Type: application/json", "--data", JSON.stringify({ model: servedModel, messages: [{ role: "user", content: "Reply with ready." }] })]),
+  ];
+  return { files, steps };
 }
 
-export function renderRecipe(recipe, parameters = {}, imageReference = recipe?.validation?.image, target = "lws") {
+// -- entry ----------------------------------------------------------------------
+
+export function renderRecipe(recipe, options = {}) {
+  const { parameters = {}, settings = {}, environment = {}, target = "lws", image } = options;
+  if (typeof parameters !== "object" || parameters === null || Array.isArray(parameters)) fail("parameters must be an object");
+  if (typeof settings !== "object" || settings === null || Array.isArray(settings)) fail("settings must be an object");
+  if (typeof environment !== "object" || environment === null || Array.isArray(environment)) fail("environment must be an object");
+  if (!(target in TARGET_FIELDS)) fail(`unsupported render target: ${target}`);
   validateRecipe(recipe);
   const values = normalizedParameters(recipe, parameters, target);
-  if (target !== "llm-d-routing") validateImageReference(imageReference);
-  if (target === "lws") return renderLws(recipe, values, imageReference);
-  if (target === "docker") return renderDocker(recipe, values, imageReference);
-  return renderRouting(recipe, values);
+  if (target === "routing") return renderRouting(recipe, values);
+  validateImageReference(image);
+  if (target === "lws") return renderLws(recipe, values, image, settings, environment);
+  if (target === "docker") return renderDocker(recipe, values, image, settings, environment);
+  return renderCompose(recipe, values, image, settings, environment);
 }

@@ -2,7 +2,7 @@
 // deployment flow renders from, using this repository's own launcher resolver.
 //
 // There are exactly two sources of truth: the recipe YAML under
-// `image_tools/data/recipes/` and the pinned upstream policy data named by
+// `recipes/<owner>/` and the pinned upstream policy data named by
 // `profiles/vllmb12x/profile.json`. Nothing here restates a default: every
 // value comes out of `python3 -m image_tools.vllm_image launch --print-config`,
 // the same command the image runs, so what the site shows is what the container
@@ -24,7 +24,7 @@ import { assertNoPrivateReference, locate, pinnedSources } from "./resolve-relea
 const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const REPOSITORY_ROOT = resolve(SITE_ROOT, "..");
 const PUBLIC_ROOT = join(SITE_ROOT, "public");
-const RECIPE_ROOT = join(REPOSITORY_ROOT, "image_tools/data/recipes");
+const RECIPE_ROOT = join(REPOSITORY_ROOT, "recipes");
 
 // The recipes the deployment flow offers as validated. A missing one is a build
 // failure, not a skip: the flow cannot show a card for a recipe that vanished.
@@ -57,6 +57,34 @@ function listYaml(directory) {
     .filter((name) => /\.ya?ml$/.test(name))
     .map((name) => name.replace(/\.ya?ml$/, ""))
     .sort();
+}
+
+/** Every recipe file under a directory tree, as `<name, path>` pairs. Recipes
+    live one level down in an owner directory, so a name must be unique across the
+    whole tree: two files claiming one recipe name would make `--recipe <name>`
+    ambiguous, and the site must not pick a winner by directory order. */
+function recipeFiles(directory) {
+  assert(existsSync(directory), `${directory}: directory is missing`);
+  const found = new Map();
+  const walk = (current) => {
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const path = join(current, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else if (/\.ya?ml$/.test(entry.name)) {
+        const name = entry.name.replace(/\.ya?ml$/, "");
+        assert(!found.has(name), `${path}: duplicates recipe ${name} from ${found.get(name)}`);
+        found.set(name, path);
+      }
+    }
+  };
+  walk(directory);
+  return found;
+}
+
+function recipePath(name, files = recipeFiles(RECIPE_ROOT)) {
+  const path = files.get(name);
+  assert(path, `${RECIPE_ROOT}: recipe ${name}.yaml is missing`);
+  return path;
 }
 
 function readYaml(path, source) {
@@ -361,7 +389,7 @@ function resolveOne(runtimeRoot, entry) {
   let recipe = null;
   let groupSize = 1;
   if (entry.recipe) {
-    const data = readYaml(join(RECIPE_ROOT, `${entry.recipe}.yaml`), `recipe ${entry.recipe}`);
+    const data = readYaml(recipePath(entry.recipe), `recipe ${entry.recipe}`);
     assert(data.launch && typeof data.launch === "object", `recipe ${entry.recipe}: no launch section`);
     recipe = data.launch;
     groupSize = recipe.topology?.kind === "lws" ? recipe.topology.nodes : 1;
@@ -439,8 +467,8 @@ function writeJson(path, value) {
 
 /** The names of every recipe this repository ships. */
 export function recipeNamesFromDisk() {
-  const names = listYaml(RECIPE_ROOT);
-  for (const name of REQUIRED_RECIPES) assert(names.includes(name), `${RECIPE_ROOT}: recipe ${name}.yaml is missing`);
+  const names = [...recipeFiles(RECIPE_ROOT).keys()].sort();
+  for (const name of REQUIRED_RECIPES) recipePath(name);
   return names;
 }
 
@@ -455,7 +483,7 @@ export function recipeInventory(names = recipeNamesFromDisk()) {
   const values = {};
   const declarations = {};
   for (const name of names) {
-    const data = readYaml(join(RECIPE_ROOT, `${name}.yaml`), `recipe ${name}`);
+    const data = readYaml(recipePath(name), `recipe ${name}`);
     assert(data.launch && typeof data.launch === "object" && !Array.isArray(data.launch), `recipe ${name}: no launch section`);
     docs[name] = data.docs ?? {};
     values[name] = [...new Set([...Object.keys(data.launch.options ?? {}), ...Object.keys(data.launch.environment ?? {})])];

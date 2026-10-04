@@ -20,7 +20,7 @@ The request payload does **not** traverse EPP. Envoy asks EPP which endpoint to 
 
 ## Render the routing bundle
 
-In the [recipe builder](/vllm-multiarch-oci/recipes/deepseek-v4-flash-vision-tp2/), select the routing target and provide the same namespace/name plus an Accepted `gateway_class` (the fresh guide creates `vllm-envoy`; the author's cluster uses a `llm-gateway` class installed with Envoy AI Gateway). Download the generated manifest, named `<name>-llm-d-routing.yaml`.
+In the [recipe builder](/vllm-multiarch-oci/recipes/deepseek-v4-flash-vision-gb10-tp2/), select the routing target and provide the same namespace/name plus an Accepted `gateway_class` (the fresh guide creates `vllm-envoy`; the author's cluster uses a `llm-gateway` class installed with Envoy AI Gateway). Download the generated manifest, named `<name>-llm-d-routing.yaml`.
 
 The generated bundle contains:
 
