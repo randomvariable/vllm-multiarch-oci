@@ -483,12 +483,34 @@ class DeploymentFlow {
 
   // -- step 3 --------------------------------------------------------------
 
+  // What an option is comes from upstream's parameter docs; why it has the value it
+  // has here comes only from something about this selection. Upstream's own `why` is
+  // a catalogue across every model ("32 for GLM, 16 for Qwen, 4 for DS4 Vision ..."),
+  // which is noise once a model is chosen, so it is dropped: the reason is the
+  // recipe's own note when it has one, otherwise the layer that set the value.
   #documented(name, kind) {
     const docs = kind === "environment" ? this.options.parameter_docs.environment : this.options.parameter_docs.options;
     const fromRecipe = this.recipe() ? this.options.recipe_docs[this.recipe().meta.slug]?.[name] : null;
     const upstream = docs?.[name];
-    if (fromRecipe && upstream) return { ...upstream, ...fromRecipe };
-    return fromRecipe ?? upstream ?? null;
+    if (!fromRecipe && !upstream) return null;
+    return { ...(upstream ?? {}), why: fromRecipe?.why ?? null, ...(fromRecipe?.summary ? { summary: fromRecipe.summary } : {}), group: fromRecipe?.group ?? upstream?.group };
+  }
+
+  // Where a value came from, in words, for the one selection on screen.
+  #origin(entry) {
+    const source = String(entry?.source ?? "");
+    const [layer, ...rest] = source.split(":");
+    const detail = rest.join(":");
+    const named = {
+      recipe: `this recipe sets it`,
+      preset: `the ${detail} preset sets it`,
+      model: `the ${detail} model profile sets it`,
+      hardware: `the ${detail} hardware profile sets it`,
+      common: `the shared default for every model`,
+      derived: `derived from other settings`,
+      cli: `set on the command line`,
+    }[layer];
+    return named ?? (source || null);
   }
 
   #control(name, entry, kind, { primary }) {
@@ -501,8 +523,9 @@ class DeploymentFlow {
     input.name = `${kind === "environment" ? "e" : "x"}.${name}`;
     input.value = this.state[kind][name] ?? displayValue(entry?.value);
     label.append(element("span", "control-name", name));
-    if (documented.summary || documented.why) {
-      const help = [documented.summary, documented.why && `Why this value: ${documented.why}`].filter(Boolean).join("\n\n");
+    const why = documented.why ?? (entry ? `${displayValue(entry.value)}: ${this.#origin(entry)}.` : null);
+    if (documented.summary || why) {
+      const help = [documented.summary, why && `Why this value: ${why}`].filter(Boolean).join("\n\n");
       const hint = element("span", "control-help", "?");
       hint.title = help;
       hint.setAttribute("role", "note");
@@ -513,14 +536,12 @@ class DeploymentFlow {
     // The reason sits behind the `?` by default. A disclosure under every control
     // doubled the form's height for text most readers never open; "Show all
     // explanations" brings them back inline.
-    if (documented.why && this.state.explain) {
-      const why = element("details", "control-why");
-      why.append(element("summary", null, "Why this value"));
-      const body = element("p", null, documented.why);
-      if (entry) body.append(element("span", "control-default", `default ${String(entry.value)}`));
-      why.append(body);
-      if (this.state.explain) why.open = true;
-      row.append(why);
+    if (why && this.state.explain) {
+      const disclosure = element("details", "control-why");
+      disclosure.append(element("summary", null, "Why this value"));
+      disclosure.append(element("p", null, why));
+      disclosure.open = true;
+      row.append(disclosure);
     }
     input.addEventListener("change", () => {
       const value = input.value;
