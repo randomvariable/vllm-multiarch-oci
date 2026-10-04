@@ -1,20 +1,18 @@
 // One benchmark renderer, two hosts (the recipe page and the deployment flow), so
 // these tests are what keep a page from showing a figure its recipe does not carry.
 // They read the real recipe data rather than a synthetic shape: a fixture that
-// happens to match a buggy reader proves nothing.
+// happens to match a buggy reader proves nothing. And they read it from the
+// recipe YAML, not from public/recipes.json: that file is build output, so a
+// fresh checkout has none and the test would fail with ENOENT before the build
+// step ever ran.
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
-import { parse } from "yaml";
 
+import { recipeDocuments } from "../scripts/build-data.mjs";
 import { benchmarkHtml } from "../src/benchmark.js";
 
-const siteRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const repositoryRoot = resolve(siteRoot, "..");
-const recipes = JSON.parse(readFileSync(join(siteRoot, "public", "recipes.json"), "utf8")).recipes;
+const recipes = await recipeDocuments();
 
 test("every recipe with a benchmark renders through the shared function", () => {
   const withBenchmark = recipes.filter((recipe) => recipe.benchmark);
