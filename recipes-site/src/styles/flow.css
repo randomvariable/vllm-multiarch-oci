@@ -435,3 +435,98 @@
     border: 1px solid ButtonText;
   }
 }
+
+/* The flow is a working surface rather than prose, so it takes the content width
+   the landing page has once its table of contents is off. */
+.flow {
+  max-width: 64rem;
+}
+
+.choice-grid-compact {
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: 0.5rem;
+}
+
+.choice-grid-compact .choice-card {
+  padding: 0.45rem 0.65rem;
+  font-size: 0.9rem;
+}
+
+details.choice-group > summary {
+  cursor: pointer;
+  margin-block-end: 0.5rem;
+}
+
+.control-label {
+  justify-content: space-between;
+  min-inline-size: 0;
+}
+
+.control-name {
+  overflow-wrap: anywhere;
+}
+
+.control-input {
+  inline-size: 100%;
+  min-inline-size: 0;
+}
+
+.control-groups {
+  grid-template-columns: repeat(auto-fit, minmax(26rem, 1fr));
+  align-items: start;
+}
+
+.advanced-input {
+  inline-size: 100%;
+  font-family: var(--sl-font-mono);
+  font-size: 0.85rem;
+}
+
+.flow-slot-build .choice-grid-channels {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* A card's title is a bare text node beside its note, and Starlight's button
+   styles otherwise lay the two out side by side, squeezing the note into a column. */
+.choice-card {
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-flow: row;
+}
+
+.configure-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  color: var(--recipe-muted);
+  font-family: var(--sl-font-mono);
+  font-size: 0.85rem;
+}
+
+.output-site {
+  border: 1px solid var(--recipe-rule);
+  padding: 0.5rem 0.9rem;
+}
+
+.output-site[open] {
+  padding-block-end: 0.9rem;
+}
+
+.output-site-title {
+  color: var(--recipe-link);
+  cursor: pointer;
+}
+
+.output-site-fields {
+  margin-block-start: 0.75rem;
+  align-items: start;
+}
+
+.site-field input {
+  background: var(--recipe-paper);
+  border: 1px solid var(--recipe-rule-solid);
+  color: var(--recipe-ink);
+  font: inherit;
+  font-size: 0.9rem;
+  block-size: 2rem;
+  padding: 0 0.4rem;
+}

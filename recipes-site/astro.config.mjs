@@ -67,7 +67,7 @@ export default defineConfig({
         },
         { label: "About the author", link: "/about/" },
       ],
-      customCss: ["./src/styles/recipes.css"],
+      customCss: ["./src/styles/recipes.css", "./src/styles/flow.css"],
       pagination: false,
       editLink: {
         baseUrl:

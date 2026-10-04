@@ -18,6 +18,17 @@ import { resolveInBrowser } from "./browser-resolver.js";
 
 const NIGHTLY = "nightly";
 const OWNED_SOURCE = /^(recipe|preset|cli):/;
+// Sources whose values are a deliberate choice for this model, and so belong on the
+// form rather than only in the full table.
+const KEY_SOURCE = /^(recipe|preset|cli|model):/;
+
+// One spelling for a value everywhere it is shown or compared. Objects such as
+// limit-mm-per-prompt are JSON, which is also how the launcher accepts them, so an
+// unedited field compares equal to its default instead of to "[object Object]".
+export function displayValue(value) {
+  if (value === undefined || value === null) return "";
+  return typeof value === "object" ? JSON.stringify(value) : String(value);
+}
 const TARGETS = [
   { id: "lws", label: "Kubernetes", language: "yaml" },
   { id: "docker", label: "Docker", language: "bash" },
@@ -88,11 +99,11 @@ export function changesFor(record, settings = {}, environment = {}) {
   const listed = [];
   for (const [name, value] of Object.entries(settings)) {
     const entry = record.settings?.[name];
-    if (!entry || String(entry.value) !== String(value)) listed.push({ kind: "setting", name, value });
+    if (!entry || displayValue(entry.value) !== String(value)) listed.push({ kind: "setting", name, value });
   }
   for (const [name, value] of Object.entries(environment)) {
     const entry = record.environment?.[name];
-    if (!entry || String(entry.value) !== String(value)) listed.push({ kind: "environment", name, value });
+    if (!entry || displayValue(entry.value) !== String(value)) listed.push({ kind: "environment", name, value });
   }
   return listed;
 }
@@ -385,9 +396,17 @@ class DeploymentFlow {
     ];
     for (const [title, entries] of groups) {
       if (!entries.length) continue;
-      const section = element("section", "choice-group");
-      section.append(element("h4", "choice-group-title", title));
-      const grid = element("div", "choice-grid");
+      // 23 upstream selections would bury the three validated recipes, so they sit
+      // behind a disclosure and open only when one of them is selected.
+      const upstream = entries[0].recipe === null;
+      const section = element(upstream ? "details" : "section", "choice-group");
+      if (upstream) {
+        section.open = this.model.startsWith("profile:");
+        section.append(element("summary", "choice-group-title", `${title} (${entries.length})`));
+      } else {
+        section.append(element("h4", "choice-group-title", title));
+      }
+      const grid = element("div", upstream ? "choice-grid choice-grid-compact" : "choice-grid");
       for (const { selection, recipe } of entries) {
         const record = this.configs[selection];
         const label = recipe
@@ -439,7 +458,7 @@ class DeploymentFlow {
     input.className = "control-input";
     input.type = entry?.value !== undefined && Number.isInteger(entry.value) ? "number" : "text";
     input.name = `${kind === "environment" ? "e" : "x"}.${name}`;
-    input.value = this.state[kind][name] ?? String(entry?.value ?? "");
+    input.value = this.state[kind][name] ?? displayValue(entry?.value);
     const prefix = `${name} `;
     label.append(element("span", "control-name", name));
     if (documented.summary) {
@@ -462,7 +481,7 @@ class DeploymentFlow {
     input.addEventListener("change", () => {
       const value = input.value;
       const store = this.state[kind];
-      const unchanged = entry && String(entry.value) === value;
+      const unchanged = entry && displayValue(entry.value) === value;
       if (value === "" || unchanged) delete store[name];
       else store[name] = value;
       window.history.replaceState({}, "", payload(this.state));
@@ -490,15 +509,14 @@ class DeploymentFlow {
     const consider = (kind, name, entry) => {
       const source = entry?.source ?? "";
       const documented = this.#documented(name, kind);
-      // A value this recipe pinned deliberately is what an operator most needs to
-      // see and edit, so it leads. Everything else upstream documents still belongs
-      // on the form: a reader who chose an upstream profile has no recipe at all,
-      // and a form filtered to recipe-owned values would show them nothing.
-      const primary = OWNED_SOURCE.test(source);
-      if (!primary && !documented) return;
+      // The form shows the engine options this deployment chose: the recipe's, the
+      // preset's or the model profile's. Common defaults, hardware tuning, derived
+      // values and environment variables are still editable, in the full table
+      // below; putting all 130 on the form is what made it unreadable.
+      if (kind !== "settings" || !KEY_SOURCE.test(source)) return;
       const id = documented?.group ?? "other";
       if (!groups.has(id)) groups.set(id, []);
-      groups.get(id).push(this.#control(name, entry, kind, { primary }));
+      groups.get(id).push(this.#control(name, entry, kind, { primary: OWNED_SOURCE.test(source) }));
     };
     for (const [name, entry] of Object.entries(record.settings)) consider("settings", name, entry);
     for (const [name, entry] of Object.entries(record.environment)) consider("environment", name, entry);
@@ -544,10 +562,10 @@ class DeploymentFlow {
       const cell = element("td");
       const input = document.createElement("input");
       input.className = "advanced-input";
-      input.value = this.state[kind][name] ?? String(entry.value);
+      input.value = this.state[kind][name] ?? displayValue(entry.value);
       input.addEventListener("change", () => {
         const store = this.state[kind];
-        if (input.value === "" || String(entry.value) === input.value) delete store[name];
+        if (input.value === "" || displayValue(entry.value) === input.value) delete store[name];
         else store[name] = input.value;
         window.history.replaceState({}, "", payload(this.state));
         this.#renderRun();
@@ -610,8 +628,21 @@ class DeploymentFlow {
       bar.append(share);
     };
 
-    const site = element("div", "output-site");
-    site.append(this.#siteFields());
+    // Cluster-specific inputs are many and mostly prefilled, so they are folded away
+    // unless one of them is required and still empty -- which is exactly when the
+    // reader has to look at them before anything can be copied.
+    const site = element("details", "output-site");
+    site.open = missing.length > 0;
+    site.append(
+      element(
+        "summary",
+        "output-site-title",
+        missing.length
+          ? `Your cluster: ${missing.length} required field${missing.length === 1 ? "" : "s"} to fill in`
+          : "Your cluster: namespace, storage paths, network and node selection",
+      ),
+      this.#siteFields(),
+    );
     slot.append(site);
 
     const listed = element("div", "output-changes");
