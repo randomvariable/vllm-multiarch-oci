@@ -167,6 +167,15 @@ commandTests:
       - key: "POD_IP"
         value: "192.0.2.10"
     expectedOutput: ["\"argv\":", "vllm.entrypoints.cli.main", "--moe-backend", "b12x"]
+  # SparkCache is loaded by vLLM through its KV-Connector-V1 configuration, so the
+  # contract imports that connector module against the image's own vLLM rather than
+  # just the package, which deliberately imports nothing at package import time.
+  - name: "SparkCache connector loads against the image's vLLM"
+    command: "/opt/venv/bin/python"
+    args:
+      - "-c"
+      - "import importlib.metadata as m, sparkcache.spark_context_cache_connector as c; print('sparkcache', m.version('sparkcache'), c.__name__)"
+    expectedOutput: ["sparkcache 0\\.1\\.0a2 sparkcache\\.spark_context_cache_connector"]
   # Torch links cuDNN, cuBLAS, cuSPARSELt and NCCL, so a successful import is
   # the only proof that every runtime layer resolves through the loader.
   - name: "Torch resolves its CUDA runtime"
