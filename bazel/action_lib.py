@@ -566,6 +566,10 @@ def write_tar(archive: Path, source: Path) -> None:
             info.uname = ""
             info.gname = ""
             info.mtime = 0
+            # Keep only the permission bits. A setgid directory, which a Kubernetes
+            # fsGroup volume produces, would otherwise put 0o2700 in one build and
+            # 0o700 in another, and the layer digest would follow the build host.
+            info.mode &= 0o777
             if info.isfile():
                 with path.open("rb") as contents:
                     output.addfile(info, contents)
