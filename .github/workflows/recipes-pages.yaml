@@ -25,6 +25,12 @@ env:
   NODE_VERSION: "24"
   CRANE_VERSION: "0.22.1"
   CRANE_LINUX_X86_64_SHA256: "0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0"
+  # The linux-amd64 bazelisk release asset for the version pinned in
+  # scripts/ci/bootstrap-arm64-tools.sh. bazelisk publishes no checksums file,
+  # so this is the digest of the asset downloaded from that tag; the bootstrap
+  # carries the arm64 digest and the launcher-tests job reads the version from
+  # it, which keeps the two lanes on one release.
+  BAZELISK_LINUX_X86_64_SHA256: "5a408715e932c0250d28bd84555f12edbf70117de42f9181691c736eacc4a992"
   IMAGE_REPOSITORY: ghcr.io/randomvariable/vllm-b12x-multi
 
 jobs:
@@ -174,3 +180,104 @@ jobs:
       - name: Deploy GitHub Pages
         id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+  # The three host Python lanes: the Bazel action tests under bazel/, the
+  # launcher and proxy tests under image_tools/, and the CI script tests under
+  # scripts/. They cannot be py_test targets -- the pip hubs are download_only,
+  # so they publish wheels for the image layers and no importable py_library --
+  # and the pinned Tekton step image has no python3 and no pip at all, so the
+  # lanes that import PyYAML, aiohttp or huggingface_hub could only ever fail
+  # there. The Tekton lane runs `bazel test //scripts:all` and nothing else;
+  # these three run here, where the interpreter and the modules exist.
+  launcher-tests:
+    name: Launcher host lanes
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # The parity gate fails instead of skipping when the pinned upstream tree
+      # is mandatory -- and CI is exactly where it is mandatory, because that
+      # is the only place the gate has ever had a chance to catch drift.
+      LIL_RUNTIME_REQUIRED: "1"
+      # Where the fetch step below lands upstream's tree, and the path
+      # image_tools/launcher_parity_test.py resolves it from.
+      LIL_RUNTIME_CHECKOUT: ${{ github.workspace }}/.lil-runtime
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          # The interpreter the image itself runs on: MODULE.bazel pins the
+          # Bazel Python toolchain to 3.12 and the runtime lock was compiled
+          # against it, so the lanes exercise the same language version.
+          python-version: "3.12"
+
+      - name: Install the modules the lanes import
+        run: |
+          set -euo pipefail
+          # Exactly the versions profiles/vllmb12x/requirements-x86_64.lock
+          # carries for the image. A bump must come from a refresh of that
+          # lock, never from this file: a lane that parses YAML or JSON with a
+          # different library than the shipped venv does is not testing the
+          # image, and the parity gate compares two readers of the same files.
+          python -m pip install --disable-pip-version-check --no-input \
+              pyyaml==6.0.3 \
+              aiohttp==3.14.3 \
+              huggingface-hub==1.33.0
+          python -c 'import aiohttp, huggingface_hub, yaml; print("aiohttp", aiohttp.__version__, "huggingface_hub", huggingface_hub.__version__, "pyyaml", yaml.__version__)'
+
+      - name: Install the pinned Bazel launcher
+        run: |
+          set -euo pipefail
+          # bazel/hermetic_cc_toolchain_test.py asks for `bazelisk` by name, so
+          # the lane that checks the registered toolchains needs it. The
+          # version comes out of the Tekton bootstrap instead of being copied
+          # here, so the two lanes cannot drift apart on a release bump.
+          version="$(awk -F'"' '/^BAZELISK_VERSION=/ {print $2}' scripts/ci/bootstrap-arm64-tools.sh)"
+          test -n "$version" || {
+              echo "scripts/ci/bootstrap-arm64-tools.sh carries no bazelisk pin" >&2
+              exit 1
+          }
+          archive="$RUNNER_TEMP/bazelisk-linux-amd64"
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+              --output "$archive" \
+              "https://github.com/bazelbuild/bazelisk/releases/download/${version}/bazelisk-linux-amd64"
+          printf '%s  %s\n' "$BAZELISK_LINUX_X86_64_SHA256" "$archive" | sha256sum --check --status
+          install -m 0755 "$archive" "$RUNNER_TEMP/bin/bazelisk"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch the pinned upstream launcher tree
+        env:
+          PROFILE: profiles/vllmb12x/profile.json
+        run: |
+          set -euo pipefail
+          # Remote and commit are read from the profile rather than duplicated
+          # here: scripts/refresh-vllmb12x.py moves them together with the vLLM
+          # and B12X pins, and a second literal in this file would go stale in
+          # silence -- which is how the parity gate became a skip.
+          pin="$(python -c 'import json,sys; s=json.load(open(sys.argv[1]))["sources"]["lil_runtime"]; print(s["remote"], s["commit"])' "$PROFILE")"
+          remote="${pin%% *}"
+          commit="${pin##* }"
+          test -n "$commit" || { echo "$PROFILE carries no lil_runtime commit" >&2; exit 1; }
+          rm -rf "$LIL_RUNTIME_CHECKOUT"
+          # Depth 1 on the commit object itself, never a branch, so the tree
+          # cannot move under the run between the fetch and the checkout.
+          git init --quiet "$LIL_RUNTIME_CHECKOUT"
+          git -C "$LIL_RUNTIME_CHECKOUT" remote add origin "$remote"
+          git -C "$LIL_RUNTIME_CHECKOUT" fetch --depth 1 --no-tags origin "$commit"
+          git -C "$LIL_RUNTIME_CHECKOUT" checkout --quiet --detach FETCH_HEAD
+          # The parity gate asserts this against the profile too; printing it
+          # leaves the fetched commit in the log for whoever reads the run.
+          git -C "$LIL_RUNTIME_CHECKOUT" rev-parse HEAD
+
+      - name: Run the host lanes
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s bazel -p '*_test.py'
+          python -m unittest discover -s image_tools -p '*_test.py'
+          python -m unittest discover -s scripts -p '*_test.py'

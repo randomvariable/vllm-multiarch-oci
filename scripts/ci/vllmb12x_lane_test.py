@@ -131,24 +131,27 @@ class LaneScriptTest(unittest.TestCase):
         # these offsets apart.
         scripts_tests = self.only(["test", "//scripts:all"])
         image_build = self.only(["build", "//image:vllmb12x"])
-        host_lanes = {
-            directory: self.only(["-m", "unittest", "discover", "-s", directory, "-p", "*_test.py"])
-            for directory in ("bazel", "image_tools")
-        }
         publisher = self.only(["scripts/publish-vllmb12x.py"])
         contracts = self.positions(["test", "//tests/image:vllmb12x_contract"])
         self.assertEqual(len(contracts), 2, f"one contract run per architecture: {contracts!r}")
-        lanes = {scripts_tests, image_build, publisher, *contracts, *host_lanes.values()}
+        lanes = {scripts_tests, image_build, publisher, *contracts}
         unclassified = sorted(set(range(len(commands))) - lanes)
         self.assertEqual(
             unclassified,
             [],
             f"the lane made calls no assertion covers: {[commands[i] for i in unclassified]}",
         )
+        # The host Python lanes moved out of this step: the pinned image has
+        # no pip, so a lane importing PyYAML or aiohttp could never run here.
+        # They belong to the launcher-tests job of the Pages workflow.
+        self.assertEqual(
+            [command for command in commands if "unittest" in command],
+            [],
+            "no host unittest lane may come back into this step",
+        )
         # Everything that can fail cheaply runs before the image build; the
         # per-architecture contract runs stay last but one.
-        for test_lane in [scripts_tests, *host_lanes.values()]:
-            self.assertLess(test_lane, image_build, "every test lane must precede the image build")
+        self.assertLess(scripts_tests, image_build, "the scripts test must precede the image build")
         self.assertLess(image_build, contracts[0], "the image contract needs the built image")
         self.assertLess(contracts[1], publisher, "the contract runs stay last but one")
         self.assertEqual(

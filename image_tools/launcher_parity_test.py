@@ -3,10 +3,10 @@
 
 ``image_tools/launcher/resolver.py`` is a port of ``runtime/launcher.py`` and
 the policy half of ``runtime/cache.py`` from
-``local-inference-lab/blackwell-llm-docker`` at commit
-``353efc679f631206e0b001e67047dea80ee6d76e``. This module is the gate that
-keeps it a port: for identical inputs both resolvers must agree on the command,
-the settings with their sources, the environment with its sources, the warnings
+``local-inference-lab/blackwell-llm-docker`` at the commit the vllmb12x profile
+pins in ``profiles/vllmb12x/profile.json``. This module is the gate that keeps
+it a port: for identical inputs both resolvers must agree on the command, the
+settings with their sources, the environment with its sources, the warnings
 and the cache service. A refresh of the upstream pin that changes policy fails
 here until the port follows.
 
@@ -14,35 +14,127 @@ Both resolvers run in this interpreter, so upstream's ``installed_source`` and
 ``installed_b12x_mxfp8_moe`` answer identically on both sides, and no test
 relies on the ambient process environment: ``env`` is always passed explicitly.
 
-When the pinned checkout is absent (a CI lane that fetches only this
-repository) the cases skip with an explicit message instead of passing
-vacuously; each comparison set asserts that every case it planned actually ran.
+The pinned tree is read from ``LIL_RUNTIME_CHECKOUT``, which defaults to the
+developer clone, and the commit it is at is checked against the profile: a
+checkout that is not at the pin fails, because comparing against some other
+tree measures nothing. An *absent* checkout fails too wherever the lane
+declares the pin mandatory -- ``LIL_RUNTIME_REQUIRED=1``, which is what the
+launcher-tests job of ``.github/workflows/recipes-pages.yaml`` sets -- since a
+gate that has only ever passed by skipping never caught the drift it exists to
+catch. A workstation run without that switch is the one case allowed to skip,
+with a message naming the path and the commit to clone. Every comparison set
+also asserts that the cases it planned ran, and ``tearDownModule`` prints the
+number that was actually compared.
 """
 
 from __future__ import annotations
 
 import ast
+import functools
 import json
+import os
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 
 from image_tools.launcher import ConfigError
 from image_tools.launcher import resolver
 
-UPSTREAM_CHECKOUT = Path(
+DEFAULT_CHECKOUT = Path(
     "/home/naadir/go/src/github.com/local-inference-lab/blackwell-llm-docker"
 )
+UPSTREAM_CHECKOUT = Path(os.environ.get("LIL_RUNTIME_CHECKOUT") or DEFAULT_CHECKOUT)
 UPSTREAM_RUNTIME = UPSTREAM_CHECKOUT / "runtime"
-UPSTREAM_COMMIT = "353efc679f631206e0b001e67047dea80ee6d76e"
-UPSTREAM_AVAILABLE = (UPSTREAM_RUNTIME / "launcher.py").is_file()
+UPSTREAM_LAUNCHER = UPSTREAM_RUNTIME / "launcher.py"
+# The pin belongs to the profile, not to this file:
+# scripts/refresh-vllmb12x.py moves it together with the vLLM and B12X pins,
+# and a duplicate literal here would quietly compare the port against a tree
+# that nothing else claims is pinned.
+PROFILE = Path(__file__).resolve().parents[1] / "profiles" / "vllmb12x" / "profile.json"
+LIL_RUNTIME = json.loads(PROFILE.read_text())["sources"]["lil_runtime"]
+UPSTREAM_REMOTE = LIL_RUNTIME["remote"]
+UPSTREAM_COMMIT = LIL_RUNTIME["commit"]
+# Where the absence of the tree is a defect rather than a convenience: the CI
+# lane is the only place a pinned upstream can drift out from under the port.
+REQUIRED = os.environ.get("LIL_RUNTIME_REQUIRED", "").strip().lower() in ("1", "true", "yes")
+
+
+def _revision() -> str | None:
+    """HEAD of the checkout, or None when it cannot be read."""
+    result = subprocess.run(
+        ["git", "-C", str(UPSTREAM_CHECKOUT), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result.stdout.strip() or None
+
+
+# Only a tree that is there is asked for its commit: an absent checkout is
+# reported by its own reason, not as a mismatch. A tree whose commit cannot be
+# read is unverified, and an unverified tree is what this gate exists to rule
+# out, so a missing ``git`` is a failure rather than a pass.
+UPSTREAM_PRESENT = UPSTREAM_LAUNCHER.is_file()
+UPSTREAM_HEAD = _revision() if UPSTREAM_PRESENT else None
+UPSTREAM_MISMATCH = UPSTREAM_PRESENT and UPSTREAM_HEAD != UPSTREAM_COMMIT
+UPSTREAM_AVAILABLE = UPSTREAM_PRESENT and not UPSTREAM_MISMATCH
+
 SKIP_REASON = (
     f"pinned upstream checkout is absent: {UPSTREAM_CHECKOUT} @ {UPSTREAM_COMMIT} "
-    "(clone it to run the resolver parity gate)"
+    f"(clone {UPSTREAM_REMOTE} at that commit, or point LIL_RUNTIME_CHECKOUT at it)"
+)
+REQUIRED_REASON = (
+    f"{SKIP_REASON}; LIL_RUNTIME_REQUIRED says this lane must have it, so an "
+    "absent checkout is a broken gate and not a passing one"
+)
+MISMATCH_REASON = (
+    f"{UPSTREAM_CHECKOUT} is at "
+    f"{UPSTREAM_HEAD or 'an unreadable commit'}, not the pinned {UPSTREAM_COMMIT} "
+    "from profiles/vllmb12x/profile.json: comparing the port against a tree that "
+    "is not the pin proves nothing"
 )
 
-if UPSTREAM_AVAILABLE:  # depends on the pinned checkout, not on this repository
-    import sys
+# What the gate actually compared, so a run that compared nothing cannot print
+# the same OK as a run that compared the whole matrix.
+COMPARISONS = {"count": 0}
 
+
+def upstream_barrier() -> BaseException:
+    """What the gate raises when the pinned tree is not usable.
+
+    An ``AssertionError`` wherever the checkout is at the wrong commit or the
+    lane declared it mandatory -- both mean the comparison silently stopped
+    happening -- and a ``SkipTest`` only for the developer who genuinely has not
+    cloned upstream yet.
+    """
+    if UPSTREAM_MISMATCH:
+        return AssertionError(MISMATCH_REASON)
+    if REQUIRED:
+        return AssertionError(REQUIRED_REASON)
+    return unittest.SkipTest(SKIP_REASON)
+
+
+def upstream_only(item):
+    """Gate one case, or a whole class of them, on the pinned checkout."""
+    if UPSTREAM_AVAILABLE:
+        return item
+    if isinstance(item, type):
+
+        def setUpClass(cls):
+            raise upstream_barrier()
+
+        item.setUpClass = classmethod(setUpClass)
+        return item
+
+    @functools.wraps(item)
+    def gate(self, *args, **kwargs):
+        raise upstream_barrier()
+
+    return gate
+
+
+if UPSTREAM_AVAILABLE:  # depends on the pinned checkout, not on this repository
     if str(UPSTREAM_CHECKOUT) not in sys.path:
         sys.path.insert(0, str(UPSTREAM_CHECKOUT))
     from runtime import ConfigError as UpstreamConfigError
@@ -123,16 +215,13 @@ class ParityCase:
         return self.label
 
 
-upstream_only = unittest.skipUnless(UPSTREAM_AVAILABLE, SKIP_REASON)
-
-
 class ParityTest(unittest.TestCase):
     """Shared harness; every subclass runs against the pinned checkout only."""
 
     @classmethod
     def setUpClass(cls):
         if not UPSTREAM_AVAILABLE:
-            raise unittest.SkipTest(SKIP_REASON)
+            raise upstream_barrier()
         cls.profiles, cls.hardware, cls.presets = inventory()
 
     def setUp(self):
@@ -158,6 +247,7 @@ class ParityTest(unittest.TestCase):
 
     def assert_parity(self, case):
         self.compared += 1
+        COMPARISONS["count"] += 1
         expected, actual = self.theirs(case), self.ours(case)
         if expected[0] == "error" or actual[0] == "error":
             self.assertEqual(
@@ -422,6 +512,7 @@ class RefusalParityTest(ParityTest):
 
     def assert_refused(self, expected, case):
         self.compared += 1
+        COMPARISONS["count"] += 1
         actual = self.ours(case)
         self.assertEqual(("error", expected), actual, case.label)
         self.assertEqual(self.theirs(case), actual, f"{case.label}: upstream diverged")
@@ -550,7 +641,7 @@ class RefusalParityTest(ParityTest):
         )
 
 
-@unittest.skipUnless(UPSTREAM_AVAILABLE, SKIP_REASON)
+@upstream_only
 class RecipeLayerTest(unittest.TestCase):
     """The one layer this port adds: our accepted values and environment."""
 
@@ -916,6 +1007,25 @@ class PurityTest(unittest.TestCase):
             resolver.QSA_ATOMIC_TRANSFER_SOURCE,
         )
 
+
+
+def tearDownModule():
+    """Report what the gate compared, in the lane's own log.
+
+    The number is the evidence that the gate ran: an OK that compared nothing
+    is indistinguishable in the summary from one that compared the matrix,
+    which is how this module passed CI for a month with no upstream checkout.
+    """
+    print(
+        f"resolver parity gate: {COMPARISONS['count']} combinations compared "
+        f"against {UPSTREAM_CHECKOUT} @ {UPSTREAM_HEAD or UPSTREAM_COMMIT}",
+        file=sys.stderr,
+    )
+    if UPSTREAM_AVAILABLE and not COMPARISONS["count"]:
+        raise AssertionError(
+            "the pinned checkout was available and nothing was compared: the "
+            "parity gate has gone vacuous"
+        )
 
 if __name__ == "__main__":
     unittest.main()

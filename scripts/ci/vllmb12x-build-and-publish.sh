@@ -63,25 +63,24 @@ build:remote-multiarch --remote_executor=${REMOTE_EXECUTOR}
 build --repo_env=PATH=${PATH}
 EOF
 
-# Local strategy: these are host Python tests, and the remote ARM64 worker
+# Local strategy: this is a host Python test, and the remote ARM64 worker
 # image carries no python3 interpreter.
 "$BAZEL" test //scripts:all --disk_cache= --test_output=errors
 
-# The two host lanes that follow cover what //scripts:all cannot: the tests of
-# the Bazel build actions under bazel/, and the image_tools tests that need
-# PyYAML or aiohttp. Without them a change to a layer action merges untested.
-# They run here, before the image build, so such a change costs seconds rather
-# than an hour of CUDA compilation. Neither lane can be a py_test target:
-# bazel/*_test.py reach their actions through importlib against a source tree,
-# and the pip hubs are download_only, so they publish wheels for the image
-# layers and no importable py_library. See the note in image_tools/BUILD.bazel.
-# Their scratch -- extracted trees, temporary wheels -- must not land in the
-# pod's /tmp, which is a tmpfs. Every .tekton/ lane already exports TMPDIR onto
-# the CSI workspace; an ad-hoc run gets the same place under the staging dir.
+# The three host Python lanes -- bazel/, image_tools/ and scripts/ -- run in
+# the launcher-tests job of .github/workflows/recipes-pages.yaml, not here.
+# This pod cannot host them honestly: the bootstrap above installs the base
+# image's python3 with no pip, so the image_tools lane could never import the
+# PyYAML, aiohttp or huggingface_hub that the runtime lock in profiles/ pins
+# for the image, and the interpreter it would test on is the base's, not the
+# 3.12 the image ships. A lane that cannot resolve its imports fails every
+# pull request without proving anything.
+#
+# Scratch still stays off the pod's /tmp, which is a tmpfs. Every .tekton/
+# lane already exports TMPDIR onto the CSI workspace; an ad-hoc run gets the
+# same place under the staging dir.
 export TMPDIR="${TMPDIR:-$HOME/.cache/vllm-multiarch-oci}"
 mkdir -p "$TMPDIR"
-"$PYTHON" -m unittest discover -s bazel -p '*_test.py'
-"$PYTHON" -m unittest discover -s image_tools -p '*_test.py'
 
 "$BAZEL" build //image:vllmb12x \
     --config=remote-multiarch \
