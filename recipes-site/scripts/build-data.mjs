@@ -20,13 +20,15 @@ const RUNTIME_CONFIGURATION_PAGE = join(SITE_ROOT, "src/content/docs/reference/v
 const BUILDS_DIRECTORY = join(SITE_ROOT, "src/content/docs/builds");
 const COMMIT = /^[0-9a-f]{40}$/;
 const DIGEST_REFERENCE = /^[a-z0-9]+(?:[._-][a-z0-9]+)*(?::[0-9]+)?(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)+@sha256:[0-9a-f]{64}$/;
-const DNS_LABEL = /^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$/;
 const IMMUTABLE_TAG = /^vllmb12x-[a-z0-9][a-z0-9-]*-[0-9a-f]{12}-[0-9a-f]{12}-[0-9]{8}-n[1-9][0-9]*$/;
 // One file per deployment: the launcher's sections and the site's sections in
 // one document, so a deployment cannot be described twice. `launch`, `docs` and
 // `benchmark` are read by `vllm-image launch` and the recipe page; the rest is
-// what the site renders.
-const TOP_LEVEL_KEYS = ["meta", "model", "runtime", "launch", "docs", "deployment", "benchmark", "validation", "guide"];
+// what the site renders. There is deliberately no second copy of the hand-written
+// command: `launch.options` and `launch.environment` are the only statement of
+// what a deployment runs, and the launcher is the only thing that turns them into
+// argv.
+const TOP_LEVEL_KEYS = ["meta", "model", "launch", "docs", "deployment", "benchmark", "validation", "guide"];
 // Mirrored from image_tools/launcher/launch.py. A recipe carrying a key the
 // launcher refuses, or missing one it requires, would pass the site build and
 // fail at container start; `model_sync` is on this list's absence rather than
@@ -60,6 +62,16 @@ async function recipeFiles(directory) {
     else if (entry.isFile() && /\.ya?ml$/.test(entry.name)) paths.push(path);
   }
   return paths.sort();
+}
+
+// The recipe YAML under `recipes/**` is the source of truth for a deployment, so
+// it is what both the build and the tests read. A test that read the generated
+// `public/recipes.json` would depend on build output a fresh checkout does not
+// carry, and could only ever check the build against itself.
+export async function recipeDocuments(root = RECIPES_ROOT) {
+  const recipes = [];
+  for (const path of await recipeFiles(root)) recipes.push(validateRecipe(parseYaml(await readFile(path, "utf8")), path));
+  return recipes;
 }
 
 function mapping(value, where) {
@@ -354,24 +366,6 @@ function validateRecipe(recipe, source) {
   assert(recipe.meta.slug === name, `${source}: meta.slug must be ${name}, the file stem the launcher resolves`);
   assert(typeof recipe.model.model_id === "string" && COMMIT.test(recipe.model.revision) && typeof recipe.model.served_name === "string", `${source}: model id, full commit OID and served name are required`);
   assert(recipe.model.serves_native_messages === undefined || typeof recipe.model.serves_native_messages === "boolean", `${source}: model.serves_native_messages must be a boolean`);
-  assert(Array.isArray(recipe.runtime.command) && recipe.runtime.command.every((value) => typeof value === "string"), `${source}: runtime.command must be a string array`);
-  assert(Array.isArray(recipe.runtime.base_args) && recipe.runtime.base_args.every((value) => typeof value === "string"), `${source}: runtime.base_args must be a string array`);
-  assert(recipe.runtime.base_env && typeof recipe.runtime.base_env === "object" && !Array.isArray(recipe.runtime.base_env), `${source}: runtime.base_env must be a mapping`);
-  assert(Object.values(recipe.runtime.base_env).every((value) => typeof value === "string"), `${source}: runtime.base_env values must be strings`);
-  assert(recipe.runtime.leader_args === undefined || (Array.isArray(recipe.runtime.leader_args) && recipe.runtime.leader_args.every((value) => typeof value === "string")), `${source}: runtime.leader_args must be a string array`);
-  const leaderPorts = recipe.runtime.leader_ports ?? [];
-  assert(Array.isArray(leaderPorts) && leaderPorts.every((entry) => typeof entry?.name === "string" && DNS_LABEL.test(entry.name) && entry.name.length <= 15 && Number.isSafeInteger(entry.containerPort) && entry.containerPort > 0 && entry.containerPort <= 65535), `${source}: runtime.leader_ports entries need a DNS-label name of at most 15 characters (IANA_SVC_NAME) and a valid containerPort`);
-  if (recipe.runtime.leader_args) {
-    // The KV-event topic is the only pod identity the router indexes blocks
-    // under, so its address:port and model must be the ones the engine actually
-    // serves. A mismatch is silent: every prefix match reads zero.
-    const portIndex = recipe.runtime.base_args.indexOf("--port");
-    const nameIndex = recipe.runtime.base_args.indexOf("--served-model-name");
-    assert(portIndex >= 0 && nameIndex >= 0, `${source}: a publishing recipe must declare --port and --served-model-name`);
-    const topic = `:${recipe.runtime.base_args[portIndex + 1]}@${recipe.runtime.base_args[nameIndex + 1]}`;
-    assert(recipe.runtime.leader_args.some((value) => value.includes('"enable_kv_cache_events":true') && value.includes(topic)), `${source}: the KV-event topic must carry the serving port and the served model name (${topic})`);
-    assert(leaderPorts.some((entry) => entry.name === "kv-events"), `${source}: a publishing recipe must declare the kv-events container port`);
-  }
   const launch = validateLaunch(recipe.launch, source);
   validateDocs(recipe.docs, launch, source);
   validateBenchmark(recipe.benchmark, source);
@@ -604,8 +598,7 @@ export async function publishBuildPages(document, repository, directory = BUILDS
 }
 
 async function main() {
-  const recipes = [];
-  for (const path of await recipeFiles(RECIPES_ROOT)) recipes.push(validateRecipe(parseYaml(await readFile(path, "utf8")), path));
+  const recipes = await recipeDocuments();
   assert(recipes.length > 0, "no recipes were found");
   const slugs = recipes.map((recipe) => recipe.meta.slug);
   assert(new Set(slugs).size === slugs.length, "recipe slugs must be unique");

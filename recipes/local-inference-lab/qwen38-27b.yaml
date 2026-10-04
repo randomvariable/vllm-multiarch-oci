@@ -2,24 +2,27 @@
 # on one discrete RTX PRO 6000 GPU, single node.
 #
 # One file per deployment. `launch`, `docs` and `benchmark` are what
-# `vllm-image launch --recipe qwen38-27b` reads; `meta`, `model`, `runtime`,
+# `vllm-image launch --recipe qwen38-27b` reads; `meta`, `model`,
 # `deployment`, `validation` and `guide` are what the GitHub Pages recipe
 # renders. The recipe's name is this file's stem, which is also `meta.slug` and
 # the selection string the launcher resolves.
 #
 # This checkpoint has no upstream model profile of its own, so `launch` selects
 # the closest one -- qwen38-flash-next -- and overrides, in launch.options,
-# every value the profile would otherwise choose for *its* checkpoint. What the
-# profile still contributes is recorded in image_tools/launcher_data_test.py's
-# DRIFT list rather than hidden here: `launch` is a delta, not a copy.
+# every value the profile would otherwise choose for *its* checkpoint: `launch`
+# is a delta, not a copy. What the borrowed profile still contributes is
+# visible in the resolved record
+# image_tools/launcher_data_test.py compares against
+# image_tools/data/golden/qwen38-27b.json.
 #
 # Source of truth for every value below: the GitOps repository,
 # src/rv/k8s/clusters/home/llm-d/qwen38-27b.yaml:151-434 (the serve arguments,
 # the container environment, the probes and the volumes), quoted below as
-# `qwen38-27b.yaml:<lines>`. `runtime.base_args` and `runtime.base_env` restate
-# that accepted command and environment; the record
-# image_tools/launcher_data_test.py diffs the resolved golden against is frozen
-# in image_tools/data/accepted/qwen38-27b.json.
+# `qwen38-27b.yaml:<lines>`. The live definition ran those arguments through
+# `bash -lc` with `exec vllm serve`; the launcher retires the shell and execs
+# the interpreter directly, so MODEL_REPO, MODEL_REV and SERVED_MODEL_NAME --
+# variables that script interpolated into its own command line -- are recipe
+# options now, and must never reappear in the resolved environment.
 #
 # Engine-download mode: this recipe declares no `deployment.model_path`, so
 # `Recipe.model_sync` is null, the launcher fetches nothing and vLLM resolves
@@ -45,98 +48,6 @@ model:
   # spec.litellm.modelRef in openai/models/qwen38-27b.yaml and the backend
   # model of the anthropic/claude-opus-5-local twin.
   served_name: qwen3.8-27b
-runtime:
-  # The live definition ran `bash -lc` with `exec vllm serve` and `/opt/venv/bin/vllm`
-  # first on PATH (qwen38-27b.yaml:131, 151-153, 180-209). The launcher retires
-  # the shell and execs the interpreter directly, which is the command below.
-  command:
-    - /opt/venv/bin/python
-    - -m
-    - vllm.entrypoints.cli.main
-    - serve
-  # qwen38-27b.yaml:183-209. The positional checkpoint is model.model_id, which
-  # the live definition interpolated from MODEL_REPO (line 183, 221-222); the
-  # three shell variables MODEL_REPO, MODEL_REV and SERVED_MODEL_NAME are recipe
-  # options now, because no shell sits between the launcher and argv.
-  base_args:
-    - --revision
-    - f40a31cd813a6746067e7d6446ff2cb708dbb779
-    - --served-model-name
-    - qwen3.8-27b
-    - --host
-    - 0.0.0.0
-    - --port
-    - "8888"
-    - --tensor-parallel-size
-    - "1"
-    - --dtype
-    - bfloat16
-    - --quantization
-    - modelopt_mixed
-    - --hf-overrides
-    - '{"text_config":{"max_position_embeddings":1048576,"rope_parameters":{"rope_type":"yarn","factor":4.0,"original_max_position_embeddings":262144}}}'
-    - --max-model-len
-    - "1048576"
-    - --gpu-memory-utilization
-    - "0.92"
-    - --max-num-seqs
-    - "32"
-    - --max-cudagraph-capture-size
-    - "128"
-    - --max-num-batched-tokens
-    - "8192"
-    - --kv-cache-dtype
-    - fp8
-    - --enable-prefix-caching
-    - --mamba-cache-mode
-    - align
-    - --prefix-match-unit
-    - "16"
-    - --enable-chunked-prefill
-    - --speculative-config
-    - '{"method":"mtp","num_speculative_tokens":3,"num_speculative_tokens_per_batch_size":[[1,2,3],[3,8,0]]}'
-    - --reasoning-parser
-    - qwen3
-    - --tool-call-parser
-    - qwen3_xml
-    - --enable-auto-tool-choice
-    - --default-chat-template-kwargs
-    - '{"preserve_thinking": true}'
-    - --override-generation-config
-    - '{"temperature":0.7,"top_p":0.95,"top_k":20,"repetition_penalty":1.05}'
-    - --kernel-config
-    - '{"enable_flashinfer_autotune": false, "linear_backend": "b12x"}'
-    - --limit-mm-per-prompt
-    - '{"image":8}'
-  # qwen38-27b.yaml:210-374. MODEL_REPO, MODEL_REV and SERVED_MODEL_NAME
-  # (lines 221-228) are listed because the accepted container exported them;
-  # RETIRED_SHELL_INDIRECTION in image_tools/launcher_data_test.py is what
-  # requires them to be absent from the resolved environment.
-  base_env:
-    HOME: /cache/vllm-home
-    MODEL_REPO: local-inference-lab/Qwen3.8-27B-NVFP4-QAD
-    MODEL_REV: f40a31cd813a6746067e7d6446ff2cb708dbb779
-    SERVED_MODEL_NAME: qwen3.8-27b
-    HF_HOME: /models
-    HF_HUB_OFFLINE: "0"
-    HF_XET_HIGH_PERFORMANCE: "1"
-    HF_XET_CACHE: /cache/xet
-    TORCH_CUDA_ARCH_LIST: 12.0a
-    FLASHINFER_CUDA_ARCH_LIST: 12.0f
-    CUTE_DSL_ARCH: sm_120a
-    SAFETENSORS_FAST_GPU: "1"
-    PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
-    TRITON_CACHE_DIR: /cache/triton
-    TORCHINDUCTOR_CACHE_DIR: /cache/inductor
-    FLASHINFER_WORKSPACE_BASE: /cache/flashinfer
-    VLLM_CACHE_ROOT: /cache/vllm
-    VLLM_USE_FLASHINFER_SAMPLER: "0"
-    VLLM_DISABLED_KERNELS: FlashInferCutedslMxfp8LinearKernel,FlashInferCutlassMxfp8LinearKernel
-    B12X_COMPILE_CACHE_DIR: /cache/b12x-compile
-    VLLM_USE_RUST_FRONTEND: "0"
-    VLLM_WORKER_MULTIPROC_METHOD: spawn
-    OMP_NUM_THREADS: "8"
-    NCCL_CUMEM_ENABLE: "0"
 launch:
   profile: qwen38-flash-next
   hardware: gb10-roce
