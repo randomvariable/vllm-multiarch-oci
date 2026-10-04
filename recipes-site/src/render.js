@@ -217,13 +217,24 @@ function normalizedParameters(recipe, supplied, target) {
   return values;
 }
 
+// The site fields one output reads for this deployment's shape, in declaration
+// order. The vLLM command reads none: it is the engine's argv and nothing else.
+export function siteFieldsFor(recipe, target) {
+  if (!(target in TARGET_FIELDS)) return [];
+  return scopedFields(recipe, TARGET_FIELDS[target]);
+}
+
 // The fields this deployment asks the operator for and has no usable answer for
-// yet. `deployment-flow.js` drives its "Fill in ..." guidance from here so the
-// panel never shows a raw renderer error for a value the reader simply has not
-// typed: one rule about what counts as required, in one place.
-export function requiredSiteFields(recipe, supplied = {}) {
+// yet, for one output. What must be supplied depends on how it is deployed: a
+// Kubernetes group needs a namespace, a Secret and a topology label; a Docker or
+// Compose run needs host interfaces and IPs instead; routing needs only a
+// GatewayClass. With no `target` the union is returned, which is what the cluster
+// form lists. `deployment-flow.js` drives its "Fill in ..." guidance from here so
+// the panel never shows a raw renderer error for a value the reader has not typed.
+export function requiredSiteFields(recipe, supplied = {}, target = null) {
   const definitions = siteParameterDefinitions(recipe);
-  const asked = new Set(TARGET_KEYS.flatMap((target) => scopedFields(recipe, TARGET_FIELDS[target])));
+  const targets = target ? [target] : TARGET_KEYS;
+  const asked = new Set(targets.flatMap((name) => scopedFields(recipe, TARGET_FIELDS[name])));
   const missing = [];
   for (const [name, definition] of Object.entries(definitions)) {
     if (!asked.has(name) || !definition.required) continue;

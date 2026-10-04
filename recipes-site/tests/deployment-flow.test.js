@@ -4,11 +4,12 @@
 // the accepted recipe never had.
 
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { parse } from "yaml";
+
+import { recipeDocuments } from "../scripts/build-data.mjs";
 
 // The module imports the renderer and the browser resolver at load time, so the
 // globals those expect have to exist before the import resolves.
@@ -134,7 +135,6 @@ test("a malformed selector is reported, never passed through", () => {
 // satisfies it, and driven from the fixtures the Pages build is gated on.
 const siteRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const fixtureRoot = join(siteRoot, "tests/fixtures");
-const repositoryRoot = resolve(siteRoot, "..");
 
 function node(tag) {
   const element = {
@@ -182,26 +182,13 @@ function textOf(element) {
   return [element?.textContent ?? "", element?.innerHTML ?? "", ...(element?.children ?? []).map(textOf)].join("\n");
 }
 
-function recipeDocuments() {
-  const root = join(repositoryRoot, "recipes");
-  const out = [];
-  for (const owner of readdirSync(root, { withFileTypes: true })) {
-    if (!owner.isDirectory()) continue;
-    const directory = join(root, owner.name);
-    for (const file of readdirSync(directory)) {
-      if (file.endsWith(".yaml")) out.push(parse(readFileSync(join(directory, file), "utf8")));
-    }
-  }
-  return out;
-}
-
 async function mount() {
   const served = new Map([
     ["releases.json", JSON.parse(readFileSync(join(fixtureRoot, "releases.json"), "utf8"))],
     ["latest-image.json", JSON.parse(readFileSync(join(fixtureRoot, "latest-image.json"), "utf8"))],
     ["configs.json", JSON.parse(readFileSync(join(fixtureRoot, "configs.json"), "utf8"))],
     ["options.json", JSON.parse(readFileSync(join(fixtureRoot, "options.json"), "utf8"))],
-    ["recipes.json", { recipes: recipeDocuments() }],
+    ["recipes.json", { recipes: await recipeDocuments() }],
   ]);
   globalThis.window = {
     location: { pathname: "/vllm-multiarch-oci/", search: "", hash: "" },
@@ -227,8 +214,11 @@ function runSlot(root) {
   return walk(root).find((element) => element.className === "flow-slot flow-slot-run");
 }
 
-function tab(slots, label) {
-  return walk(slots).find((element) => element.className === "output-tab" && element.textContent === label);
+// The deployment is chosen in its own step, before the settings, so these tests
+// pick it there the way a reader does.
+function deployCard(root, label) {
+  const slot = walk(root).find((element) => element.className === "flow-slot flow-slot-deploy");
+  return walk(slot).find((element) => element.className?.startsWith("choice-card") && element.textContent.startsWith(label));
 }
 
 function panel(slots, target) {
@@ -243,12 +233,12 @@ test("an upstream profile selection renders a manifest instead of a notice", asy
   const { flow, root, settle } = await mount();
   flow.select({ model: "profile:ds41-flash#gb10-roce" });
   await settle();
-  const slot = runSlot(root);
-  assert.ok(slot, "step 4 rendered");
-  const kubernetes = tab(slot, "Kubernetes");
-  assert.ok(kubernetes, "the Kubernetes tab exists for an upstream selection");
+  const kubernetes = deployCard(root, "Kubernetes");
+  assert.ok(kubernetes, "Kubernetes is offered for an upstream selection");
   click(kubernetes);
   await settle();
+  const slot = runSlot(root);
+  assert.ok(slot, "the run step rendered");
   const body = textOf(panel(slot, "lws"));
   assert.ok(!body.includes("no recipe in this repository"), "the old refusal is gone");
   assert.ok(body.includes("--profile") && body.includes("ds41-flash") && body.includes("gb10-roce"), `the manifest selects the upstream profile: ${body.slice(0, 200)}`);
@@ -264,27 +254,30 @@ test("an unanswered site field reads as guidance, never as the renderer's error"
   const { flow, root, settle } = await mount();
   flow.select({ model: "profile:glm53-flash#native" });
   await settle();
-  const slot = runSlot(root);
-  click(tab(slot, "Model routing"));
+  click(deployCard(root, "Model routing"));
   await settle();
+  let slot = runSlot(root);
   const routed = panel(slot, "routing");
   assert.equal(textOf(routed).trim(), "", "the routing panel stays empty while its field is unanswered");
   const guidance = textOf(slot);
   assert.match(guidance, /Fill in /, "the panel is driven by the fill-in guidance");
   assert.match(guidance, /GatewayClass name/, "which names the field in its own label");
-  // A tab whose fields are all answered still renders while that guidance stands.
-  click(tab(slot, "Docker"));
+  // Another deployment whose fields are all answered still renders: what must be
+  // supplied depends on how it is deployed.
+  click(deployCard(root, "Docker"));
   await settle();
-  assert.match(textOf(panel(slot, "docker")), /vllm-image/, "the docker tab renders for the same selection");
+  slot = runSlot(root);
+  assert.doesNotMatch(textOf(slot), /Fill in GatewayClass/, "Docker is not blocked on a routing field");
+  assert.match(textOf(panel(slot, "docker")), /vllm-image/, "the docker output renders for the same selection");
 });
 
 test("a recipe selection keeps rendering from its own measured deployment", async () => {
   const { flow, root, settle } = await mount();
   flow.select({ model: "recipe:qwen38-27b" });
   await settle();
-  const slot = runSlot(root);
-  click(tab(slot, "Kubernetes"));
+  click(deployCard(root, "Kubernetes"));
   await settle();
+  const slot = runSlot(root);
   const body = textOf(panel(slot, "lws"));
   assert.match(body, /--recipe/, "a recipe selection keeps its recipe selection");
   assert.ok(!body.includes("not validated on this image"), "the upstream note belongs to upstream selections only");

@@ -13,15 +13,13 @@
 // tree. Nothing here reimplements a rule that already lives in the launcher.
 
 import { benchmarkHtml } from "../benchmark.js";
-import { profileRecipe, renderRecipe, requiredSiteFields } from "../render.js";
+import { profileRecipe, renderRecipe, requiredSiteFields, siteFieldsFor } from "../render.js";
 import { SITE_PARAMETERS } from "../data/site-parameters.js";
+import { TUNABLE_GROUPS, isCacheTierOption, isTunable, unifiedMemory } from "../data/tunable-options.js";
 import { resolveInBrowser } from "./browser-resolver.js";
 
 const NIGHTLY = "nightly";
 const OWNED_SOURCE = /^(recipe|preset|cli):/;
-// Sources whose values are a deliberate choice for this model, and so belong on the
-// form rather than only in the full table.
-const KEY_SOURCE = /^(recipe|preset|cli|model):/;
 
 // One spelling for a value everywhere it is shown or compared. Objects such as
 // limit-mm-per-prompt are JSON, which is also how the launcher accepts them, so an
@@ -30,12 +28,13 @@ export function displayValue(value) {
   if (value === undefined || value === null) return "";
   return typeof value === "object" ? JSON.stringify(value) : String(value);
 }
+
 const TARGETS = [
-  { id: "lws", label: "Kubernetes", language: "yaml" },
-  { id: "docker", label: "Docker", language: "bash" },
-  { id: "compose", label: "Compose", language: "yaml" },
-  { id: "routing", label: "Model routing", language: "yaml" },
-  { id: "vllm", label: "vLLM command", language: "bash" },
+  { id: "lws", label: "Kubernetes", language: "yaml", summary: "A LeaderWorkerSet or Deployment with probe and cache sidecars." },
+  { id: "docker", label: "Docker", language: "bash", summary: "One docker run per host, for a machine without a cluster." },
+  { id: "compose", label: "Compose", language: "yaml", summary: "The same containers as a Compose project, with any cache or proxy service." },
+  { id: "routing", label: "Model routing", language: "yaml", summary: "The llm-d routing resources that put this model behind a gateway." },
+  { id: "vllm", label: "vLLM command", language: "bash", summary: "Only the resolved engine command, to run inside your own container." },
 ];
 const COPY_LABEL = "Copy";
 
@@ -233,8 +232,9 @@ class DeploymentFlow {
     for (const [id, title, summary] of [
       ["build", "Choose a build", "Release publishes a tag. Nightly tracks the newest build the pipeline published."],
       ["model", "Choose a model", "Recipes are validated on this cluster. Upstream profiles run on the same image but are not validated here."],
-      ["configure", "Configure it", "Every value carries a reason. Changing one moves it into your changes."],
-      ["run", "Run it", "The image is pinned by digest, so what you copy is the build this page describes."],
+      ["deploy", "Choose how to deploy it", "This decides what you are asked for next: a cluster, a host, a gateway, or nothing at all."],
+      ["configure", "Configure it", "The deployment's own choices, each with its reason, then what your environment has to supply."],
+      ["run", "Run it", "What was measured, what you changed, and the output, with the image pinned by digest."],
     ]) {
       const step = element("li", `flow-step flow-step-${id}`);
       const heading = element("h3", "flow-step-title", title);
@@ -341,6 +341,7 @@ class DeploymentFlow {
     container.classList.toggle("flow-unset", !this.model);
     this.#renderBuilds();
     this.#renderModels();
+    this.#renderDeploy();
     this.#renderConfigure();
     await this.#renderRun();
   }
@@ -499,17 +500,20 @@ class DeploymentFlow {
     input.type = entry?.value !== undefined && Number.isInteger(entry.value) ? "number" : "text";
     input.name = `${kind === "environment" ? "e" : "x"}.${name}`;
     input.value = this.state[kind][name] ?? displayValue(entry?.value);
-    const prefix = `${name} `;
     label.append(element("span", "control-name", name));
-    if (documented.summary) {
+    if (documented.summary || documented.why) {
+      const help = [documented.summary, documented.why && `Why this value: ${documented.why}`].filter(Boolean).join("\n\n");
       const hint = element("span", "control-help", "?");
-      hint.title = documented.summary;
+      hint.title = help;
       hint.setAttribute("role", "note");
-      hint.setAttribute("aria-label", documented.summary);
+      hint.setAttribute("aria-label", help);
       label.append(hint);
     }
     row.append(label, input);
-    if (documented.why) {
+    // The reason sits behind the `?` by default. A disclosure under every control
+    // doubled the form's height for text most readers never open; "Show all
+    // explanations" brings them back inline.
+    if (documented.why && this.state.explain) {
       const why = element("details", "control-why");
       why.append(element("summary", null, "Why this value"));
       const body = element("p", null, documented.why);
@@ -544,35 +548,27 @@ class DeploymentFlow {
     if (record.selection.preset) summary.append(element("span", "configure-preset", `preset ${record.selection.preset}`));
     slot.append(summary);
 
+    // The form is the deployment decisions only: the allowlist in
+    // src/data/tunable-options.js. Everything else the resolver emits is a property of
+    // the model, shown read-only in the full table below.
+    const cacheMode = String(this.state.settings["cache-mode"] ?? record.settings["cache-mode"]?.value ?? "vram");
+    const cacheEnabled = cacheMode !== "vram";
     const controls = element("div", "control-groups");
-    const groups = new Map();
-    const consider = (kind, name, entry) => {
-      const source = entry?.source ?? "";
-      const documented = this.#documented(name, kind);
-      // The form shows the engine options this deployment chose: the recipe's, the
-      // preset's or the model profile's. Common defaults, hardware tuning, derived
-      // values and environment variables are still editable, in the full table
-      // below; putting all 130 on the form is what made it unreadable.
-      if (kind !== "settings" || !KEY_SOURCE.test(source)) return;
-      const id = documented?.group ?? "other";
-      if (!groups.has(id)) groups.set(id, []);
-      groups.get(id).push(this.#control(name, entry, kind, { primary: OWNED_SOURCE.test(source) }));
-    };
-    for (const [name, entry] of Object.entries(record.settings)) consider("settings", name, entry);
-    for (const [name, entry] of Object.entries(record.environment)) consider("environment", name, entry);
-
-    const titles = this.options.parameter_docs.groups ?? {};
-    const order = Object.keys(titles);
-    const rank = (id) => {
-      const index = order.indexOf(id);
-      return index === -1 ? order.length : index;
-    };
-    // The comparator reads the tuple it was handed. `id` is the loop binding below,
-    // which does not exist yet while sort() runs.
-    for (const [id, rows] of [...groups.entries()].sort((left, right) => rank(left[0]) - rank(right[0]))) {
+    for (const spec of TUNABLE_GROUPS) {
+      const names = spec.id === "cache"
+        ? [...spec.options, ...Object.keys(record.settings).filter((name) => cacheEnabled && isCacheTierOption(name)).sort()]
+        : spec.options;
+      const rows = [];
+      for (const name of names) {
+        const entry = record.settings[name];
+        if (!entry) continue;
+        rows.push(name === "cache-mode"
+          ? this.#cacheModeControl(entry, record.selection.hardware)
+          : this.#control(name, entry, "settings", { primary: OWNED_SOURCE.test(entry.source ?? "") }));
+      }
+      if (!rows.length) continue;
       const group = element("section", "control-group");
-      group.append(element("h5", "control-group-title", titles[id]?.title ?? id.replace(/-/g, " ")));
-      group.append(...rows);
+      group.append(element("h5", "control-group-title", spec.title), ...rows);
       controls.append(group);
     }
     slot.append(controls);
@@ -600,17 +596,24 @@ class DeploymentFlow {
       const row = element("tr");
       row.append(element("td", "advanced-name", name));
       const cell = element("td");
-      const input = document.createElement("input");
-      input.className = "advanced-input";
-      input.value = this.state[kind][name] ?? displayValue(entry.value);
-      input.addEventListener("change", () => {
-        const store = this.state[kind];
-        if (input.value === "" || displayValue(entry.value) === input.value) delete store[name];
-        else store[name] = input.value;
-        window.history.replaceState({}, "", payload(this.state));
-        this.#renderRun();
-      });
-      cell.append(input);
+      // Environment stays editable: it is how an operator reaches NCCL, logging and
+      // the like. An engine option is editable only if it is a deployment decision;
+      // the rest are fixed by the model and shown as values, not inputs.
+      if (kind === "settings" && !isTunable(name, cacheEnabled)) {
+        cell.append(element("code", "advanced-fixed", displayValue(entry.value)));
+      } else {
+        const input = document.createElement("input");
+        input.className = "advanced-input";
+        input.value = this.state[kind][name] ?? displayValue(entry.value);
+        input.addEventListener("change", () => {
+          const store = this.state[kind];
+          if (input.value === "" || displayValue(entry.value) === input.value) delete store[name];
+          else store[name] = input.value;
+          window.history.replaceState({}, "", payload(this.state));
+          this.#renderRun();
+        });
+        cell.append(input);
+      }
       row.append(cell);
       const source = element("td");
       source.append(element("span", `source-badge source-${String(entry.source).split(":")[0]}`, entry.source));
@@ -620,9 +623,102 @@ class DeploymentFlow {
     table.append(body);
     advanced.append(table);
     slot.append(advanced);
+
+    // What the reader's environment has to supply, for the deployment chosen in step
+    // 3 only. Docker is never asked for a namespace, Kubernetes never for host IPs.
+    const target = this.currentTarget();
+    const fields = this.#siteFields(target);
+    if (fields.childElementCount) {
+      const missing = this.#missingFields(target);
+      const label = TARGETS.find((entry) => entry.id === target).label;
+      const site = element("section", "output-site");
+      site.append(
+        element(
+          "h4",
+          "output-site-title",
+          missing.length
+            ? `Your environment: ${missing.length} required field${missing.length === 1 ? "" : "s"} for ${label}`
+            : `Your environment, for ${label}`,
+        ),
+        fields,
+      );
+      slot.append(site);
+    }
   }
 
-  // -- step 4 --------------------------------------------------------------
+  // The external KV cache is a choice, not a tuning value: vram keeps everything in
+  // the engine, lmcache and native add a cache server and its RAM tier. On GB10 the
+  // CPU and GPU share one pool of memory, so a RAM tier competes with the engine's own
+  // KV cache instead of extending it; there it is opt-in and the reason is stated.
+  #cacheModeControl(entry, hardware) {
+    const row = element("div", "control");
+    const label = element("label", "control-label");
+    label.append(element("span", "control-name", "cache-mode"));
+    const select = document.createElement("select");
+    select.className = "control-input";
+    select.name = "x.cache-mode";
+    const modes = this.options.options?.["cache-mode"]?.enum ?? ["vram", "lmcache", "native"];
+    const current = String(this.state.settings["cache-mode"] ?? entry.value ?? "vram");
+    for (const mode of modes) {
+      const option = document.createElement("option");
+      option.value = mode;
+      option.textContent = mode === "vram" ? "vram (engine only)" : mode;
+      option.selected = mode === current;
+      select.append(option);
+    }
+    select.addEventListener("change", () => {
+      if (select.value === displayValue(entry.value)) delete this.state.settings["cache-mode"];
+      else this.state.settings["cache-mode"] = select.value;
+      window.history.replaceState({}, "", payload(this.state));
+      this.#renderConfigure();
+      this.#renderRun();
+    });
+    row.append(label, select);
+    if (unifiedMemory(hardware)) {
+      row.append(
+        element(
+          "p",
+          "control-note",
+          "GB10 shares one pool of memory between CPU and GPU, so an LMCache RAM tier takes memory from the engine's KV cache rather than adding to it. Leave this at vram unless you have measured a gain.",
+        ),
+      );
+    }
+    return row;
+  }
+
+  // -- step 3 --------------------------------------------------------------
+
+  // How the model is deployed is chosen before its settings, because it decides
+  // which settings exist: a Kubernetes group needs a namespace, a Secret and a
+  // topology label, a Docker host needs its interfaces and IPs, routing needs only a
+  // GatewayClass, and the bare vLLM command needs none of them.
+  #renderDeploy() {
+    const slot = this.slots.deploy;
+    slot.textContent = "";
+    if (!this.record()) return;
+    const current = this.currentTarget();
+    const grid = element("div", "choice-grid choice-grid-targets");
+    for (const target of TARGETS) {
+      const card = button("choice-card", target.label, () => {
+        if (target.id === current) return;
+        this.state.target = target.id;
+        window.history.replaceState({}, "", payload(this.state));
+        this.#renderDeploy();
+        this.#renderConfigure();
+        this.#renderRun();
+      });
+      card.setAttribute("aria-pressed", String(target.id === current));
+      card.append(element("p", "choice-note", target.summary));
+      grid.append(card);
+    }
+    slot.append(grid);
+  }
+
+  currentTarget() {
+    return TARGETS.some((target) => target.id === this.state.target) ? this.state.target : "lws";
+  }
+
+  // -- step 5 --------------------------------------------------------------
 
   async #renderRun() {
     const slot = this.slots.run;
@@ -630,60 +726,12 @@ class DeploymentFlow {
     const record = this.record();
     if (!record) return;
     const changes = this.changes();
-    const missing = this.#missingFields();
-
-    const tabs = element("div", "output-tabs");
-    tabs.setAttribute("role", "tablist");
-    const panels = element("div", "output-panels");
+    const current = this.currentTarget();
+    const missing = this.#missingFields(current);
+    const label = TARGETS.find((target) => target.id === current).label;
     const bar = element("div", "output-actions");
-    for (const target of TARGETS) {
-      const tab = button("output-tab", target.label, () => show(target.id));
-      tab.setAttribute("role", "tab");
-      tabs.append(tab);
-      const panel = element("div", "output-panel");
-      panel.dataset.target = target.id;
-      panels.append(panel);
-      this.tabs.set(target.id, { tab, panel, target });
-    }
-
-    const show = async (id) => {
-      for (const [name, entry] of this.tabs) entry.tab.setAttribute("aria-selected", String(name === id));
-      for (const [name, entry] of this.tabs) entry.panel.hidden = name !== id;
-      const entry = this.tabs.get(id);
-      if (!entry.rendered) {
-        entry.panel.replaceChildren(element("p", "output-pending", "Rendering…"));
-        const result = await this.#output(id);
-        entry.rendered = result;
-        entry.panel.replaceChildren(...result.nodes);
-      }
-      bar.replaceChildren();
-      const text = entry.rendered.text ?? "";
-      if (text && !missing.length) {
-        bar.append(
-          button("output-copy", COPY_LABEL, (event) => copy(text, event.currentTarget)),
-          button("output-download", `Download ${entry.rendered.file}`, () => download(entry.rendered.file, text)),
-        );
-      }
-      const share = button("output-share", "Copy link", () => copy(payload({ ...this.state, target: id }), share));
-      bar.append(share);
-    };
-
-    // Cluster-specific inputs are many and mostly prefilled, so they are folded away
-    // unless one of them is required and still empty -- which is exactly when the
-    // reader has to look at them before anything can be copied.
-    const site = element("details", "output-site");
-    site.open = missing.length > 0;
-    site.append(
-      element(
-        "summary",
-        "output-site-title",
-        missing.length
-          ? `Your cluster: ${missing.length} required field${missing.length === 1 ? "" : "s"} to fill in`
-          : "Your cluster: the namespace, name, host paths and node placement this deployment asks for",
-      ),
-      this.#siteFields(),
-    );
-    slot.append(site);
+    const panel = element("div", "output-panel");
+    panel.dataset.target = current;
 
     const listed = element("div", "output-changes");
     const count = element("p", "output-changes-title", `Your changes (${changes.length})`);
@@ -703,16 +751,17 @@ class DeploymentFlow {
       listed.append(element("p", "output-changes-none", "Every value is the accepted default for this selection."));
     }
 
-    slot.append(listed);
+    // What the configuration achieved comes before what to paste: a reader deciding
+    // whether to deploy this wants the measurement first, and the artefact last.
     if (this.recipe()?.benchmark) {
-      const panel = element("details", "flow-benchmark");
-      panel.open = true;
-      panel.append(element("summary", null, "Measured on this hardware"));
+      const measured = element("details", "flow-benchmark");
+      measured.open = true;
+      measured.append(element("summary", null, "Measured on this hardware"));
       // The same function the recipe page uses, so the configurator and the prose
       // cannot disagree about what was measured.
       const table = element("div", "flow-benchmark-table");
       table.innerHTML = benchmarkHtml(this.recipe().benchmark);
-      panel.append(table);
+      measured.append(table);
       const method = element("p", "benchmark-method");
       method.append(
         element("span", null, "These numbers came from the workload described in "),
@@ -721,26 +770,41 @@ class DeploymentFlow {
         }),
         element("span", null, ". A configuration you edited here has no measurement until you take one."),
       );
-      panel.append(method);
-      slot.append(panel);
+      measured.append(method);
+      slot.append(measured);
     }
-    slot.append(tabs, bar, panels);
+    slot.append(listed);
+    slot.append(bar, panel);
     if (missing.length) {
       slot.append(
         element(
           "p",
           "output-blocked",
-          `Fill in ${missing.map((field) => field.label).join(", ")} to copy or download. These are yours to supply, not the recipe's.`,
+          `Fill in ${missing.map((field) => field.label).join(", ")} in step 4 to get the ${label} output. These are yours to supply, not the recipe's.`,
         ),
       );
     }
-    await show(TARGETS.some((target) => target.id === this.state.target) ? this.state.target : "lws");
+    panel.replaceChildren(element("p", "output-pending", "Rendering…"));
+    const rendered = await this.#output(current);
+    panel.replaceChildren(...rendered.nodes);
+    const text = rendered.text ?? "";
+    if (text && !missing.length) {
+      bar.append(
+        button("output-copy", COPY_LABEL, (event) => copy(text, event.currentTarget)),
+        button("output-download", `Download ${rendered.file}`, () => download(rendered.file, text)),
+      );
+    }
+    const share = button("output-share", "Copy link", () => copy(payload(this.state), share));
+    bar.append(share);
   }
 
-  #siteFields() {
+  #siteFields(target) {
     const wrapper = element("div", "output-site-fields");
-    const parameters = this.view()?.deployment?.parameters ?? {};
+    const view = this.view();
+    const parameters = view?.deployment?.parameters ?? {};
+    const asked = new Set(siteFieldsFor(view, target));
     for (const [name, definition] of Object.entries(parameters)) {
+      if (!asked.has(name)) continue;
       const row = element("label", "site-field");
       row.append(element("span", "site-field-label", definition.label ?? name));
       const input = document.createElement("input");
@@ -787,14 +851,15 @@ class DeploymentFlow {
     return wrapper;
   }
 
-  #missingFields() {
-    // The renderer's own rule about what it dereferences for this deployment's
-    // shape, so a field the output never reads is never demanded on the form: a
-    // single-node pod is asked for no HCA, no GID index, no network attachment, no
-    // RDMA resource and no topology label.
+  #missingFields(target) {
+    // The renderer's own rule about what this output dereferences for this
+    // deployment's shape, so a field the output never reads is never demanded: a
+    // single-node pod is asked for no HCA or topology label, and only routing needs a
+    // GatewayClass.
     const view = this.view();
-    if (!view) return [];
-    return requiredSiteFields(view, this.state.parameters);
+    // The vLLM command is the engine's argv alone; it reads no cluster field.
+    if (!view || target === "vllm") return [];
+    return requiredSiteFields(view, this.state.parameters, target);
   }
 
   async #output(target) {
@@ -867,7 +932,7 @@ class DeploymentFlow {
       // not a fault: the panel stays empty and the "Fill in ..." line names it in
       // its own label. Anything else is a real defect and is shown as one.
       const field = /^([\w-]+) is required for(?: the [\w-]+ target)?/.exec(String(error?.message ?? ""));
-      if (field && this.#missingFields().some((missing) => missing.name === field[1])) {
+      if (field && this.#missingFields(target).some((missing) => missing.name === field[1])) {
         return { text: "", file: `${target}.txt`, nodes: [] };
       }
       const text = `${error.message}`;
