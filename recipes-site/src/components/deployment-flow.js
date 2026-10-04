@@ -12,6 +12,7 @@
 // resolver.py the container runs, in the browser through the self-hosted Pyodide
 // tree. Nothing here reimplements a rule that already lives in the launcher.
 
+import { benchmarkHtml } from "../benchmark.js";
 import { renderRecipe } from "../render.js";
 import { resolveInBrowser } from "./browser-resolver.js";
 
@@ -340,15 +341,24 @@ class DeploymentFlow {
       section.append(element("h4", "choice-group-title", title));
       const grid = element("div", "choice-grid");
       for (const { selection, recipe } of entries) {
-        const card = button("choice-card", recipe ? recipe.meta.title : selection.slice("profile:".length).split("#")[0], () =>
-          this.select({ model: selection }),
-        );
+        const record = this.configs[selection];
+        const label = recipe
+          ? recipe.meta.title
+          : [
+              selection.slice("profile:".length).split("#")[0],
+              record?.selection?.hardware,
+              record?.selection?.preset,
+            ]
+              .filter(Boolean)
+              .join(" · ");
+        const card = button("choice-card", label, () => this.select({ model: selection }));
         card.setAttribute("aria-pressed", String(selection === this.model));
         if (selection !== this.model && recipe === null) card.classList.add("choice-card-secondary");
         const meta = element("p", "choice-note");
-        const record = this.configs[selection];
+        // TP is the total width of the group, so it is stated as such beside the
+        // node count rather than as a bare GPU figure a reader could read per node.
         meta.textContent = record
-          ? `${record.topology.nodes} node${record.topology.nodes === 1 ? "" : "s"}, ${record.settings["tensor-parallel-size"]?.value ?? "?"} GPUs`
+          ? `${record.topology.nodes} node${record.topology.nodes === 1 ? "" : "s"}, TP=${record.settings["tensor-parallel-size"]?.value ?? "?"}`
           : "this selection did not resolve";
         card.append(meta);
         if (recipe) {
@@ -429,24 +439,31 @@ class DeploymentFlow {
 
     const controls = element("div", "control-groups");
     const groups = new Map();
-    const claimed = new Set();
     const consider = (kind, name, entry) => {
       const source = entry?.source ?? "";
-      if (!OWNED_SOURCE.test(source)) return;
-      const documented = this.#documented(name, kind) ?? {};
-      const id = documented.group ?? "other";
+      const documented = this.#documented(name, kind);
+      // A value this recipe pinned deliberately is what an operator most needs to
+      // see and edit, so it leads. Everything else upstream documents still belongs
+      // on the form: a reader who chose an upstream profile has no recipe at all,
+      // and a form filtered to recipe-owned values would show them nothing.
+      const primary = OWNED_SOURCE.test(source);
+      if (!primary && !documented) return;
+      const id = documented?.group ?? "other";
       if (!groups.has(id)) groups.set(id, []);
-      groups.get(id).push(this.#control(name, entry, kind, { primary: true }));
-      claimed.add(`${kind}:${name}`);
+      groups.get(id).push(this.#control(name, entry, kind, { primary }));
     };
     for (const [name, entry] of Object.entries(record.settings)) consider("settings", name, entry);
     for (const [name, entry] of Object.entries(record.environment)) consider("environment", name, entry);
 
     const titles = this.options.parameter_docs.groups ?? {};
-    for (const [id, rows] of [...groups.entries()].sort(([left], [right]) => {
-      const order = Object.keys(titles);
-      return (order.indexOf(id) === -1 ? order.length : order.indexOf(id)) - (order.indexOf(right) === -1 ? order.length : order.indexOf(right));
-    })) {
+    const order = Object.keys(titles);
+    const rank = (id) => {
+      const index = order.indexOf(id);
+      return index === -1 ? order.length : index;
+    };
+    // The comparator reads the tuple it was handed. `id` is the loop binding below,
+    // which does not exist yet while sort() runs.
+    for (const [id, rows] of [...groups.entries()].sort((left, right) => rank(left[0]) - rank(right[0]))) {
       const group = element("section", "control-group");
       group.append(element("h5", "control-group-title", titles[id]?.title ?? id.replace(/-/g, " ")));
       group.append(...rows);
@@ -572,7 +589,11 @@ class DeploymentFlow {
       const panel = element("details", "flow-benchmark");
       panel.open = true;
       panel.append(element("summary", null, "Measured on this hardware"));
-      panel.append(benchmarkTable(this.recipe().benchmark));
+      // The same function the recipe page uses, so the configurator and the prose
+      // cannot disagree about what was measured.
+      const table = element("div", "flow-benchmark-table");
+      table.innerHTML = benchmarkHtml(this.recipe().benchmark);
+      panel.append(table);
       const method = element("p", "benchmark-method");
       method.append(
         element("span", null, "These numbers came from the workload described in "),
@@ -681,25 +702,6 @@ class DeploymentFlow {
       return { text: "", file: `${target}.txt`, nodes };
     }
   }
-}
-
-function benchmarkTable(benchmark) {
-  const wrapper = element("div", "benchmark");
-  for (const table of benchmark.tables ?? []) {
-    const heading = element("p", "benchmark-title", table.title ?? "");
-    const node = element("table", "benchmark-table");
-    node.append(headRow(table.columns ?? []));
-    const body = element("tbody");
-    for (const row of table.rows ?? []) {
-      const tr = element("tr");
-      for (const cellValue of row) tr.append(element("td", null, String(cellValue)));
-      body.append(tr);
-    }
-    node.append(body);
-    wrapper.append(heading, node);
-  }
-  for (const note of benchmark.notes ?? []) wrapper.append(element("p", "benchmark-note", note));
-  return wrapper;
 }
 
 export async function mountDeploymentFlow(root) {

@@ -2,6 +2,7 @@
 """Verify the registered C++ toolchain has no worker-path fallback."""
 
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -12,7 +13,11 @@ import importlib.util
 
 
 ROOT = Path(__file__).resolve().parents[1]
-BAZEL = "bazelisk"
+# The same convention the CI lane uses: the caller names the launcher and the
+# default is `bazel`, which is what scripts/ci/bootstrap-arm64-tools.sh installs and
+# what the Justfile invokes. Naming one vendor's program here made the lane runnable
+# only on a workstation that happens to have it on PATH.
+BAZEL = os.environ.get("BAZEL", "bazel")
 PLATFORM = "//platforms:blackwell_arm64_sm12x"
 X86_PLATFORM = "//platforms:blackwell_x86_64_sm120"
 PROBE = "//platforms:hermetic_cc_toolchain_probe"

@@ -2,18 +2,17 @@
 /**
  * Renders a recipe's measured-performance panel from its `benchmark` block.
  *
- * The figures used to be hand-written HTML inside each recipe page, which meant
- * a recipe could state one number in `image_tools/data/accepted` and another on
- * the site with nothing checking the two. They are recipe data now, validated by
- * scripts/build-data.mjs, and this component is the only thing that turns them
- * into markup -- so a page cannot show a figure its recipe does not carry.
- *
- * Astro imports the generated document rather than opening it from disk. A
- * bundled component's `import.meta.url` points into `dist/`, so a filesystem read
- * resolved against it looks for `dist/public/recipes.json` and fails; a static
- * import is resolved by the bundler and also guarantees the page and the JSON the
- * browser fetches are the same file.
+ * The figures used to be hand-written HTML inside each recipe page, which meant a
+ * recipe could state one number here and another in its golden, with nothing
+ * checking the two. They are recipe data now, validated by scripts/build-data.mjs,
+ * and src/benchmark.js is the only thing that turns them into markup -- the
+ * deployment flow's fourth step calls the same function, so a page and the
+ * configurator cannot disagree about what was measured.
  */
+import { benchmarkHtml } from "../benchmark.js";
+// A static import, not a read from disk: a bundled component's import.meta.url
+// resolves into dist/, so opening public/recipes.json from there looks for
+// dist/public/recipes.json and fails the build.
 import recipesDocument from "../../public/recipes.json";
 
 interface Props {
@@ -21,53 +20,9 @@ interface Props {
 }
 
 const { slug } = Astro.props;
-const recipes = recipesDocument.recipes;
-const recipe = recipes.find((entry: any) => entry.meta?.slug === slug);
+const recipe = recipesDocument.recipes.find((entry: any) => entry.meta?.slug === slug);
 if (!recipe) throw new Error(`recipes.json has no recipe with slug ${slug}`);
 if (!recipe.benchmark) throw new Error(`recipe ${slug} has no benchmark block to render`);
-
-const benchmark = recipe.benchmark;
-
-// A note's body keeps the inline code spans the hand-written markup carried, so
-// a flag named in a caveat still reads as a flag rather than as prose.
-function inline(value: string) {
-  return value.split("`").map((part, index) => (index % 2 ? { code: part } : { text: part }));
-}
 ---
 
-<div class="benchmark-panel">
-  <div class="benchmark-context">
-    {benchmark.context.map((chip: string) => <span>{chip}</span>)}
-  </div>
-  {benchmark.tables.map((table: any) => (
-    <div class="benchmark-table" role="table" aria-label={table.aria_label}>
-      <div class="benchmark-row benchmark-header" role="row">
-        {table.columns.map((column: string) => <span role="columnheader">{column}</span>)}
-      </div>
-      {table.rows.map((row: any) => (
-        <div class:list={["benchmark-row", { "benchmark-degraded": row.degraded }]} role="row">
-          {row.cells.map((cell: any, index: number) => {
-            const body = (
-              <>
-                <b>{cell.text}</b>
-                {cell.unit ?? ""}
-                {(cell.notes ?? []).map((note: string) => <small>{note}</small>)}
-              </>
-            );
-            return index === 0 ? (
-              <strong role="cell">{body}</strong>
-            ) : (
-              <span role="cell" class={cell.primary ? "benchmark-primary" : undefined}>{body}</span>
-            );
-          })}
-        </div>
-      ))}
-    </div>
-  ))}
-  {benchmark.notes.map((note: any) => (
-    <p class="benchmark-note">
-      {note.title ? <strong>{`${note.title}:`}</strong> : null}
-      {inline(note.body).map((part: any) => (part.code ? <code>{part.code}</code> : part.text))}
-    </p>
-  ))}
-</div>
+<div class="benchmark-mount" set:html={benchmarkHtml(recipe.benchmark)} />

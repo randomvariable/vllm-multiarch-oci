@@ -41,10 +41,20 @@ exports_files([
     "sources.bzl",
 ])
 
+# The interpreter the CI lanes run host Python tests with. Both build nodes need
+# one: the pull-request, nightly and release lanes are pinned to the ARM64 host, and
+# an x86-64-only select left the filegroup empty there, so no lane could obtain an
+# interpreter without installing one from outside the build graph.
+#
+# Both branches name the same label on purpose. rules_python fetches
+# @python_3_12//:python3 for the machine performing the build, so the select only
+# has to stop excluding aarch64; it must not ask for a second toolchain, which would
+# be a fetch of a distribution this build never uses.
 filegroup(
     name = "host_python",
     srcs = select({
         "@platforms//cpu:x86_64": ["@python_3_12//:python3"],
+        "@platforms//cpu:aarch64": ["@python_3_12//:python3"],
         "//conditions:default": [],
     }),
     visibility = ["//visibility:public"],
