@@ -100,7 +100,6 @@ fileExistenceTests:
     path: "/usr/include/infiniband/verbs.h"
     shouldExist: true
   - name: "Named non-root account home"
-  - name: "Named non-root account home"
     path: "/home/vllm"
     shouldExist: true
     permissions: "drwxr-xr-x"
@@ -152,9 +151,21 @@ commandTests:
       - "-c"
       - "from pathlib import Path; expected = '#!/opt/python/bin/python'; offenders = {name: Path(name).read_text(errors='ignore').splitlines()[0] for name in ('/opt/venv/bin/vllm-image', '/opt/venv/bin/lmcache') if not Path(name).read_text(errors='ignore').startswith(expected + chr(10))}; assert not offenders, offenders; print('launch path is python')"
     expectedOutput: ["launch path is python"]
+  # The recipe is a two-rank LeaderWorkerSet, so the launcher refuses to resolve it
+  # without the rank variables the controller injects; the test supplies rank zero
+  # the way a leader pod would see it.
   - name: "Recipe resolution needs no GPU and no download"
     command: "/opt/venv/bin/vllm-image"
     args: ["launch", "--recipe", "qwen38-flash-next-gb10-tp2", "--print-config"]
+    envVars:
+      - key: "LWS_WORKER_INDEX"
+        value: "0"
+      - key: "LWS_GROUP_SIZE"
+        value: "2"
+      - key: "LWS_LEADER_ADDRESS"
+        value: "qwen38-flash-next-0.qwen38-flash-next"
+      - key: "POD_IP"
+        value: "192.0.2.10"
     expectedOutput: ["\"argv\":", "vllm.entrypoints.cli.main", "--moe-backend", "b12x"]
   # Torch links cuDNN, cuBLAS, cuSPARSELt and NCCL, so a successful import is
   # the only proof that every runtime layer resolves through the loader.
