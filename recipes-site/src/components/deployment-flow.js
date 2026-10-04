@@ -803,10 +803,18 @@ class DeploymentFlow {
     const view = this.view();
     const parameters = view?.deployment?.parameters ?? {};
     const asked = new Set(siteFieldsFor(view, target));
-    for (const [name, definition] of Object.entries(parameters)) {
-      if (!asked.has(name)) continue;
-      const row = element("label", "site-field");
-      row.append(element("span", "site-field-label", definition.label ?? name));
+    // The fields still blocking this output lead the list and are marked, so "2
+    // required fields" points at two visible inputs instead of a count to hunt for.
+    const missing = new Set(this.#missingFields(target).map((field) => field.name));
+    const ordered = Object.entries(parameters)
+      .filter(([name]) => asked.has(name))
+      .sort(([left], [right]) => Number(missing.has(right)) - Number(missing.has(left)));
+    for (const [name, definition] of ordered) {
+      const unanswered = missing.has(name);
+      const row = element("label", unanswered ? "site-field site-field-missing" : "site-field");
+      const caption = element("span", "site-field-label", definition.label ?? name);
+      if (unanswered) caption.append(element("span", "site-field-required", "Required"));
+      row.append(caption);
       const input = document.createElement("input");
       input.type = definition.type === "integer" ? "number" : "text";
       const supplied = this.state.parameters[name];
@@ -818,6 +826,7 @@ class DeploymentFlow {
       input.value = supplied !== undefined ? supplied : text(definition.default);
       if (definition.type === "stringMap") input.setAttribute("aria-describedby", `${name}-format`);
       if (definition.required) input.required = true;
+      if (unanswered) input.setAttribute("aria-invalid", "true");
       input.addEventListener("change", () => {
         if (input.value === "") {
           delete this.state.parameters[name];
@@ -839,6 +848,9 @@ class DeploymentFlow {
           this.state.parameters[name] = input.value;
         }
         window.history.replaceState({}, "", payload(this.state));
+        // Re-draw the form too, so an answered field loses its "Required" mark and
+        // the heading's count follows; `change` fires on commit, not per keystroke.
+        this.#renderConfigure();
         this.#renderRun();
       });
       row.append(input);

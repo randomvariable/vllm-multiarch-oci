@@ -609,3 +609,26 @@ details.choice-group > summary {
 .output-site {
   margin-block-start: 1rem;
 }
+
+/* A field that is required and still empty blocks the output, so it is marked the
+   way the rest of the flow marks a choice that needs attention: the accent rule on
+   the left, an accent border on the input, and a "Required" tag beside its label. */
+.site-field-missing {
+  border-inline-start: 3px solid var(--recipe-accent);
+  background: var(--recipe-accent-tint);
+  padding: 0.4rem 0.5rem;
+  margin-inline-start: -0.5rem;
+}
+
+.site-field-missing input {
+  border-color: var(--recipe-accent);
+}
+
+.site-field-required {
+  margin-inline-start: 0.4rem;
+  color: var(--recipe-accent);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
