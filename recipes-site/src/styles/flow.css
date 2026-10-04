@@ -79,7 +79,7 @@
 .choice-grid {
   display: grid;
   gap: 0.75rem;
-  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
 }
 
 .choice-card {
@@ -191,7 +191,7 @@
 .control {
   display: grid;
   gap: 0.25rem;
-  grid-template-columns: minmax(9rem, 14rem) minmax(8rem, 1fr);
+  grid-template-columns: minmax(0, 14rem) minmax(0, 1fr);
 }
 
 .control-label {
@@ -301,7 +301,7 @@
 .output-site-fields {
   display: grid;
   gap: 0.5rem;
-  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
 }
 
 .site-field {
@@ -436,14 +436,47 @@
   }
 }
 
-/* The flow is a working surface rather than prose, so it takes the content width
-   the landing page has once its table of contents is off. */
-.flow {
-  max-width: 64rem;
+/* The flow is a working surface rather than prose, so the page that hosts it gets
+   a wider content column. Every grid inside sizes its tracks with
+   min(100%, ...) so nothing can force the column wider than the viewport. */
+:root:has(.flow) {
+  --sl-content-width: 72rem;
+}
+
+/* A grid's implicit track is sized to its widest child, and a rendered manifest or
+   a long hf-overrides value is very wide. Without an explicit minmax(0, 1fr) track
+   and min-inline-size: 0 on each level, that one line set the width of the whole
+   flow and pushed it off the right of the screen; long content now scrolls inside
+   its own box instead. */
+.flow,
+.flow-steps {
+  grid-template-columns: minmax(0, 1fr);
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+.flow-step,
+.flow-slot,
+.output-panels,
+.output-panel,
+.control-group,
+.build-facts {
+  min-inline-size: 0;
+}
+
+.build-digest code {
+  overflow-wrap: anywhere;
+}
+
+/* On a phone the build history and full parameter table are wider than the
+   screen; they scroll inside their own disclosure rather than widening the page. */
+.build-history,
+.control-advanced {
+  overflow-x: auto;
 }
 
 .choice-grid-compact {
-  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 13rem), 1fr));
   gap: 0.5rem;
 }
 
@@ -472,7 +505,7 @@ details.choice-group > summary {
 }
 
 .control-groups {
-  grid-template-columns: repeat(auto-fit, minmax(26rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
   align-items: start;
 }
 
