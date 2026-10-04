@@ -3,10 +3,14 @@ title: Validated deployments
 description: Digest-pinned local-inference-lab/vLLM deployments for NVIDIA DGX Spark.
 ---
 
-import RecipeCatalog from "../../../components/RecipeCatalog.astro";
-
 <p class="eyebrow">Recipe catalog</p>
 
-These recipes run the [`local-inference-lab/vLLM`](https://github.com/local-inference-lab/vllm) fork built for NVIDIA DGX Spark. A recipe fixes the engine behavior that was accepted. Host paths, network devices, allocatable resource names, selectors, and credentials remain deployment inputs. The validated image is always the default; a newer publication is offered separately and never inherits the recipe's acceptance status.
+These recipes run the [`local-inference-lab/vLLM`](https://github.com/local-inference-lab/vllm) fork built for NVIDIA DGX Spark. A recipe fixes the engine behavior that was accepted, in one file that both the launcher and this site read. Host paths, network devices, allocatable resource names, selectors, and credentials remain deployment inputs. The validated image is always the default; a newer publication is offered separately and never inherits the recipe's acceptance status.
 
-<RecipeCatalog />
+Configure and copy manifests in the [deployment flow](../), which lists every recipe
+beside the upstream profiles it also runs. Each page below keeps the reasoning no
+generated document can carry: what is fixed, why, and what was measured.
+
+- [DeepSeek V4 Flash Vision on two DGX Spark systems](./deepseek-v4-flash-vision-gb10-tp2/) — a one-million-token context, TP=2 across two systems, vision enabled, and the LMCache and InstantTensor settings the accepted boot depends on.
+- [Qwen3.8 Flash Next on two DGX Spark systems](./qwen38-flash-next-gb10-tp2/) — NVFP4 weights, a 4x YaRN override to 1,048,576 tokens, MTP speculation with MXFP8 draft experts on B12X kernels, and PLE tables in page-locked host memory.
+- [Qwen3.8-27B on one system](./qwen38-27b/) — a single-GPU QAD checkpoint with a batch-size-keyed speculation schedule, served by the engine's own downloader rather than a published checkpoint.

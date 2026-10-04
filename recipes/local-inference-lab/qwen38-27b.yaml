@@ -1,0 +1,590 @@
+# Qwen3.8-27B (local-inference-lab QAD: NVFP4 MLP, MXFP8 attention/GDN/lm_head)
+# on one discrete RTX PRO 6000 GPU, single node.
+#
+# One file per deployment. `launch`, `docs` and `benchmark` are what
+# `vllm-image launch --recipe qwen38-27b` reads; `meta`, `model`,
+# `deployment`, `validation` and `guide` are what the GitHub Pages recipe
+# renders. The recipe's name is this file's stem, which is also `meta.slug` and
+# the selection string the launcher resolves.
+#
+# This checkpoint has no upstream model profile of its own, so `launch` selects
+# the closest one -- qwen38-flash-next -- and overrides, in launch.options,
+# every value the profile would otherwise choose for *its* checkpoint: `launch`
+# is a delta, not a copy. What the borrowed profile still contributes is
+# visible in the resolved record
+# image_tools/launcher_data_test.py compares against
+# image_tools/data/golden/qwen38-27b.json.
+#
+# Source of truth for every value below: the GitOps repository,
+# src/rv/k8s/clusters/home/llm-d/qwen38-27b.yaml:151-434 (the serve arguments,
+# the container environment, the probes and the volumes), quoted below as
+# `qwen38-27b.yaml:<lines>`. The live definition ran those arguments through
+# `bash -lc` with `exec vllm serve`; the launcher retires the shell and execs
+# the interpreter directly, so MODEL_REPO, MODEL_REV and SERVED_MODEL_NAME --
+# variables that script interpolated into its own command line -- are recipe
+# options now, and must never reappear in the resolved environment.
+#
+# Engine-download mode: this recipe declares no `deployment.model_path`, so
+# `Recipe.model_sync` is null, the launcher fetches nothing and vLLM resolves
+# the repository id itself into HF_HOME on the node-local NVMe hostPath
+# (qwen38-27b.yaml:415-422). That is why --model is the repository id and
+# HF_HUB_OFFLINE is "0" (qwen38-27b.yaml:229-239): an offline first start of a
+# repository this node has never fetched would fail. `--model-sync` is refused
+# for this recipe, naming deployment.model_path.
+meta:
+  title: Qwen3.8-27B, single-node TP=1
+  slug: qwen38-27b
+  description: A fixed single-node Qwen3.8-27B QAD deployment on one RTX PRO 6000 GPU, with a batch-size-keyed MTP schedule and a 1,048,576-token context.
+model:
+  # qwen38-27b.yaml:221-222 (MODEL_REPO). The engine resolves this id itself;
+  # there is no published snapshot path for this deployment.
+  model_id: local-inference-lab/Qwen3.8-27B-NVFP4-QAD
+  # qwen38-27b.yaml:223-224 (MODEL_REV). Pinned to a commit sha, so a cached
+  # snapshot resolves without re-downloading and upstream branch moves cannot
+  # silently change what is served. A full 40-hex commit OID: a branch or tag
+  # would let a moved ref change a deployment under a fixed image digest.
+  revision: f40a31cd813a6746067e7d6446ff2cb708dbb779
+  # qwen38-27b.yaml:225-228 (SERVED_MODEL_NAME). Must equal
+  # spec.litellm.modelRef in openai/models/qwen38-27b.yaml and the backend
+  # model of the anthropic/claude-opus-5-local twin.
+  served_name: qwen3.8-27b
+launch:
+  profile: qwen38-flash-next
+  hardware: gb10-roce
+  # No preset: every upstream deployment preset names
+  # hardware: rtx-pro-6000-pcie and one of the profiles that has real upstream
+  # policy, and this recipe's profile is borrowed rather than authored.
+  preset: null
+  options:
+    # qwen38-27b.yaml:222. The profile would serve
+    # local-inference-lab/Qwen3.8-Flash-Next-NVFP4; the engine downloads this
+    # repository id instead. Not a published snapshot path: there is no
+    # model_sync phase here.
+    model: local-inference-lab/Qwen3.8-27B-NVFP4-QAD
+    # qwen38-27b.yaml:224. Pinned to a commit sha, so a cached snapshot
+    # resolves without re-downloading and upstream branch moves cannot
+    # silently change what is served.
+    revision: f40a31cd813a6746067e7d6446ff2cb708dbb779
+    # qwen38-27b.yaml:227-228. Must equal spec.litellm.modelRef in
+    # openai/models/qwen38-27b.yaml and the backend model of the
+    # anthropic/claude-opus-5-local twin.
+    served-model-name: qwen3.8-27b
+    # qwen38-27b.yaml:187. --host 0.0.0.0 and --dtype bfloat16 (line 189),
+    # --quantization modelopt_mixed (line 190) and --tensor-parallel-size 1
+    # (line 188) are all set identically by the common layer or by the
+    # borrowed profile, so they are not repeated here.
+    port: 8888
+    # qwen38-27b.yaml:192,199. The checkpoint is native at 262144
+    # (text_config.max_position_embeddings) with rope_parameters.rope_type
+    # "default"; --hf-overrides below applies Qwen's static factor-4 YaRN in
+    # memory, giving a 1048576-token limit without touching the cached
+    # checkpoint. Written out rather than derived: the resolver's YaRN
+    # derivation belongs to the flash-next checkpoint, whose rope_parameters
+    # carry mrope_section and mrope_interleaved for the vision position ids.
+    # ModelConfig._apply_dict_overrides recurses into text_config and merges
+    # into rope_parameters, so mrope_section/rope_theta survive from the
+    # checkpoint where they exist (qwen38-27b.yaml:25-29).
+    max-model-len: 1048576
+    hf-overrides:
+      text_config:
+        max_position_embeddings: 1048576
+        rope_parameters:
+          rope_type: yarn
+          factor: 4.0
+          original_max_position_embeddings: 262144
+    # qwen38-27b.yaml:193.
+    gpu-memory-utilization: 0.92
+    # qwen38-27b.yaml:194, raised from 2 on operator instruction (2026-09-21).
+    # The cap is not a reservation, so it costs nothing when unused: KV is
+    # consumed in proportion to actual sequence length. Measured footprint on
+    # this deployment is 35,673 bytes/token (61.99 GiB for 1,865,871 tokens),
+    # so 32 sequences at 128k need 139 GiB and would overrun the 62 GiB GPU
+    # cache into preemption, while 32 at 32k need 35 GiB and fit (lines 64-73).
+    max-num-seqs: 32
+    # qwen38-27b.yaml:196.
+    max-num-batched-tokens: 8192
+    # qwen38-27b.yaml:195. Derived from the request cap, not independent of it:
+    # seqs x (3 speculative tokens + 1) = 32 x 4 = 128, so a batch at the cap is
+    # covered by a captured decode graph. It was 8 under the old cap of 2
+    # (lines 75-77).
+    max-cudagraph-capture-size: 128
+    # --kv-cache-dtype fp8 (qwen38-27b.yaml:197) and --mamba-cache-mode align
+    # (line 199) come from the common layer and the borrowed profile at exactly
+    # these values, so they are not restated. --enable-prefix-caching (line 198)
+    # is the common layer's value too; the model card's warning about corrupting
+    # recurrent state applies to a pin whose MambaManager lacks align mode, and
+    # this image's implements it in full (lines 42-46).
+    # qwen38-27b.yaml:200.
+    prefix-match-unit: 16
+    # qwen38-27b.yaml:202. The batch-size-keyed MTP schedule, measured
+    # 2026-09-22 (DCGM + engine logs): the RTX PRO 6000 Max-Q is power-capped
+    # at 300 W, and aggregate decode is 42-99 tok/s at one stream, ~20-40 at
+    # two, but collapses to 2.2 tok/s at three-plus with static MTP-3 -- draft
+    # passes plus split verify batches blow the power budget and every stream
+    # starves until client idle-watchdogs fire. The schedule keeps full MTP-3
+    # for 1-2 concurrent streams (acceptance 3.5/3, 85%+) and disables
+    # speculation at 3+ so every step yields a token per stream (~40 tok/s
+    # aggregate projected). Acceptance-length adaptation
+    # (adaptive_speculative_tokens_*) is deliberately unset: acceptance is
+    # already high, and the batch-size schedule expresses the policy without
+    # per-request tuning noise (lines 269-280).
+    #
+    # Written out, not taken from the borrowed profile's mtp mode: that mode
+    # carries flash-next's MTP policy, and this checkpoint's drafter is
+    # qualified against its own shapes.
+    speculative-config:
+      method: mtp
+      num_speculative_tokens: 3
+      num_speculative_tokens_per_batch_size:
+        - - 1
+          - 2
+          - 3
+        - - 3
+          - 8
+          - 0
+    # qwen38-27b.yaml:206.
+    default-chat-template-kwargs:
+      preserve_thinking: true
+    # qwen38-27b.yaml:207. The checkpoint's own generation_config.json is not
+    # selected, so the sampling defaults are stated here.
+    override-generation-config:
+      temperature: 0.7
+      top_p: 0.95
+      top_k: 20
+      repetition_penalty: 1.05
+    # qwen38-27b.yaml:209. Eight images per prompt, against the single frame
+    # the TP=2 flash-next group admits.
+    limit-mm-per-prompt:
+      image: 8
+  environment:
+    # Runtime JIT must describe this GPU, not the GB10 the image was cut for:
+    # server21 is compute 12.0. 12.0a asks for the arch-accelerated form rather
+    # than the 12.0f family fallback on a pinned single-arch device.
+    # CUTE_DSL_ARCH is overridden from gb10-roce's sm_121a for the same reason,
+    # but this checkpoint does not reach it: the boot chose the Triton/FLA GDN
+    # prefill kernel, the CUDA GDN decode kernel and Marlin for MXFP8, so no
+    # CuTe DSL launch happened to confirm it. It matters only if a DSL path is
+    # enabled later. (qwen38-27b.yaml:244-259)
+    TORCH_CUDA_ARCH_LIST: "12.0a"
+    FLASHINFER_CUDA_ARCH_LIST: "12.0f"
+    CUTE_DSL_ARCH: sm_120a
+    # Pinned to the node hostPath rather than the image's own home: see
+    # docs.HOME.
+    HOME: /cache/vllm-home
+    # Hugging Face cache root: the node-local hostPath, so the checkpoint
+    # survives pod restarts and downloads exactly once (qwen38-27b.yaml:229-232).
+    HF_HOME: /models
+    # Not the reference recipe's "1": see docs.HF_HUB_OFFLINE.
+    HF_HUB_OFFLINE: "0"
+    HF_XET_HIGH_PERFORMANCE: "1"
+    HF_XET_CACHE: /cache/xet
+    # Direct GPU reads for the 21.16 GiB safetensors payload; the compiler and
+    # kernel caches below are node-local so a restart does not recompile.
+    # TORCHINDUCTOR_CACHE_DIR is /cache/inductor here, not the resolver's
+    # derived /cache/torchinductor: this is the path the live node's hostPath
+    # already holds warm. (qwen38-27b.yaml:260-268, 281-287)
+    TRITON_CACHE_DIR: /cache/triton
+    TORCHINDUCTOR_CACHE_DIR: /cache/inductor
+    FLASHINFER_WORKSPACE_BASE: /cache/flashinfer
+    VLLM_CACHE_ROOT: /cache/vllm
+    # flashinfer/jit/core.py creates the workspace at import time; left unset it
+    # derives from ~/.cache/flashinfer, so it stays on the node-local jit-cache
+    # hostPath and the compiled cubins survive a restart
+    # (qwen38-27b.yaml:281-285).
+    # The Spark runtime does not package vllm-rs. Keep the Python CLI enabled
+    # rather than failing before model loading starts
+    # (qwen38-27b.yaml:365-368).
+    VLLM_USE_RUST_FRONTEND: "0"
+    # The sampling path on this device does not have a working FlashInfer
+    # sampler for these shapes (qwen38-27b.yaml:288-289).
+    VLLM_USE_FLASHINFER_SAMPLER: "0"
+    # Eight OMP threads on server21's 80-core host, against the borrowed
+    # profile's 2, which is a one-node GB10 figure (qwen38-27b.yaml:371-372).
+    OMP_NUM_THREADS: "8"
+    # The QAD checkpoint's GDN in_proj_ba is fused to out_features 96:
+    # in_proj_a and in_proj_b are each linear_num_value_heads = 48 rows.
+    # Mxfp8LinearLayerConfig (model_executor/kernels/linear/mxfp8/
+    # Mxfp8LinearKernel.py) carries no shape, so can_implement() on the
+    # FlashInfer MXFP8 kernels returns True unconditionally and
+    # init_mxfp8_linear_kernel picks one kernel for the whole model. The assert
+    # min_dim <= N lives inside apply_weights (flashinfer.py:74), so the engine
+    # only discovers it during profile_run and dies there. With
+    # linear_backend=b12x this override is inert: the backend filter in
+    # vllm/model_executor/kernels/linear/__init__.py narrows the candidates to
+    # the b12x set before VLLM_DISABLED_KERNELS is consulted. It is kept so that
+    # reverting linear_backend restores the previous behaviour exactly --
+    # dropping both FlashInfer MXFP8 kernels made the selector fall through to
+    # MarlinMxfp8LinearKernel, which pads N and K via marlin_padded_nk, logging
+    # "Marlin requires thread-tile padding for some weight shapes" and paying
+    # that cost on every MXFP8 layer rather than only the narrow ones
+    # (qwen38-27b.yaml:290-317).
+    #
+    # This replaces the borrowed profile's MarlinFP8ScaledMMLinearKernel entry,
+    # which is flash-next's kernel exclusion, not this checkpoint's.
+    VLLM_DISABLED_KERNELS: FlashInferCutedslMxfp8LinearKernel,FlashInferCutlassMxfp8LinearKernel
+    # b12x's generated-kernel cache. Pin it for the same reason the other
+    # compiler caches above are pinned, but note this one is not merely
+    # tidiness: b12x/_lib/compiler.py:_cute_compile_cache_dir() falls back to
+    # Path.home()/.cache/b12x/compile when this and XDG_CACHE_HOME are unset, so
+    # the location is inherited from HOME rather than chosen. The container runs
+    # as root, so an unset HOME would silently place it on the container
+    # filesystem and lose it at every restart, turning the cached boot into a
+    # full recompile: the same engine measured 172.09 s with an unpopulated
+    # cache and 60.74 s once it was warm. Measured before this pin, with HOME
+    # set, the unset-variable resolution was
+    # /cache/vllm-home/.cache/b12x/compile holding 461 entries
+    # (qwen38-27b.yaml:318-330).
+    B12X_COMPILE_CACHE_DIR: /cache/b12x-compile
+    # Three b12x controls were tested this session and are deliberately NOT set
+    # here. The reasons are recorded so none of them is retried (lines 331-364):
+    #
+    # 1. The activation-mode variables are constraints, not knobs.
+    #    VLLM_B12X_{MXFP8,NVFP4}_ACTIVATION_MODE and
+    #    VLLM_B12X_DENSE_ACTIVATION_MODE look tunable, but
+    #    b12x/gemm/blockscaled/_tuning.py builds the mode axis as
+    #    ("a16", "quantized") when activation_mode == "auto" and
+    #    (activation_mode,) otherwise, and _automatic_a16 already picks a16 for
+    #    compute capability 12.0 on small-token calls. An explicit value can only
+    #    remove per-layer search. Measured: pinning MXFP8 to quantized moved C1
+    #    at 0/8k/32k by -0.4%, +1.2%, -0.2%.
+    #
+    # 2. B12X_AUTOTUNE_EXHAUSTIVE showed no effect even once it was made to run.
+    #    It is inert on its own because the selection cache key
+    #    (b12x/preparation/_cache.py:cache_identity) is composed of
+    #    schema_version, tuning_cache_version, measurement, namespace and
+    #    device_name -- not the exhaustive flag -- so cached selections are
+    #    reused. Forcing re-selection with B12X_TUNING_CACHE_VERSION=2 did
+    #    execute a full search (559 measured, 0 cached, 35/35 ready), but that
+    #    total matches the earlier non-exhaustive run, and the resulting matrix
+    #    moved -5.1% to +5.3% across the ten non-capacity-limited cells (mean
+    #    +0.6%), i.e. run variation. Both variables are therefore removed,
+    #    restoring the recorded baseline.
+    #
+    # 3. B12X_DENSE_ATOM_24 does not merely under-perform, it breaks the engine
+    #    on this model and device. Boot with it set to 1 died at init with
+    #      RuntimeError: b12x preparation failed on rank 0:
+    #      b12x.gemm.blockscaled._preparation:compile_packed:
+    #      RuntimeError: std::get: wrong index for variant
+    #    i.e. a C++ variant index error inside the packed codegen path, not a
+    #    performance regression. Do not enable it without a fix in
+    #    vllm-multiarch-oci.
+  topology:
+    # One pod, one GPU, no rendezvous: the live definition is a plain
+    # single-replica Deployment, not a LeaderWorkerSet, because one discrete
+    # sm_120 GPU owns the whole model (qwen38-27b.yaml:4-7,101-102).
+    kind: single
+    nodes: 1
+    # No group to rendezvous with; the launcher never waits on a leader.
+    rendezvous_port: null
+    # The router never sees this rank's blocks: there is no group to publish
+    # for, and the deployment is reached through its own Service.
+    kv_events: null
+    replica_port_base: null
+  # The probe serves here as an httpGet target on the single container
+  # (qwen38-27b.yaml:396-407 replaces the /v1/models httpGet probes).
+  probe_port: 8890
+
+# Unmanaged native arguments this deployment passes after `--`. They are not in
+# runtime/options.yaml, so the resolver forwards them to vLLM without
+# validating them; a recipe cannot carry them as options.
+#   --kernel-config {"enable_flashinfer_autotune": false, "linear_backend": "b12x"}
+# --kernel-config sets linear_backend=b12x, so MXFP8 GEMM dispatches to
+# B12xMxfp8LinearKernel and NVFP4 GEMM to B12xNvFp4LinearKernel, in place of the
+# automatic order in vllm/model_executor/kernels/linear/__init__.py, which
+# reaches FlashInfer for NVFP4 but stops at Marlin for MXFP8. Accepted backend
+# names are the keys of _BACKEND_KERNELS there; a per-quant override would
+# instead use linear_backend_per_quant with the keys mxfp8 and nvfp4_w4a4. Proof
+# the routing took effect is the boot log naming a B12x*LinearKernel, not this
+# setting being present in the rendered args (qwen38-27b.yaml:171-179).
+
+# Per-value explanation for the site's step 3, read alongside upstream's
+# runtime/parameter-docs.yaml. Only the names upstream does not document appear
+# here, and each documents a value this file itself sets.
+docs:
+  FLASHINFER_CUDA_ARCH_LIST:
+    group: kernels
+    summary: The CUDA architecture list flashinfer compiles and selects kernels for.
+    why: >-
+      12.0f, not the 12.0a the rest of the runtime is pinned to: flashinfer has
+      no 12.0a target, and its kernels resolved and ran on the family build
+      (decode_backend=xqa, arch=sm120) on this device. (qwen38-27b.yaml:244-257)
+  HOME:
+    group: runtime
+    summary: The home directory components derive cache paths from.
+    why: >-
+      Pinned to the node hostPath deliberately, not defensively. The image
+      carries a named uid 10001 account whose home is /home/vllm, so ~ resolves
+      without this variable -- but /home/vllm lives in the container filesystem,
+      so anything a component derives from ~ is lost on restart and charged to
+      the 8Gi ephemeral-storage limit. /cache is a hostPath shared with
+      qwen38-flash-next that already holds the triton, inductor, xet and
+      flashinfer caches, so pinning HOME makes HOME-backed state durable and
+      puts it on the node's NVMe. (qwen38-27b.yaml:211-220)
+  HF_HUB_OFFLINE:
+    group: model
+    summary: Allow the hub, because this checkpoint is fetched by the engine.
+    why: >-
+      The reference recipe ships "1". It stays "0" here because this repository
+      id has never been fetched to this node, so offline mode would fail the
+      first start; this recipe declares no launch.model_sync, so vLLM resolves
+      the hub itself. The pinned revision already makes the cached snapshot the
+      authority on every later start. (qwen38-27b.yaml:233-239)
+  HF_XET_HIGH_PERFORMANCE:
+    group: model
+    summary: Use the Xet transport's high-performance download path.
+    why: >-
+      The 21.16 GiB payload is fetched once by the engine into HF_HOME on the
+      node's NVMe; the first boot's budget for it is 60 minutes, which the
+      startup probe allows. (qwen38-27b.yaml:240-241, 394-401)
+  HF_XET_CACHE:
+    group: model
+    summary: Where the Xet chunk cache lives.
+    why: >-
+      On the node-local runtime cache volume rather than inside the model
+      directory, so a published snapshot is exactly the checkpoint and the
+      cache stays out of the model hostPath's accounting. (qwen38-27b.yaml:242-243)
+  VLLM_USE_RUST_FRONTEND:
+    group: runtime
+    summary: Keep the Python API frontend rather than the Rust one.
+    why: >-
+      The Spark runtime does not package vllm-rs, so leaving this at its default
+      fails before model loading starts rather than serving anything.
+      (qwen38-27b.yaml:365-368)
+deployment:
+  # qwen38-27b.yaml:102 (replicas: 1), 103-106 (Recreate, because one GPU and
+  # one node-local model directory cannot admit a surge replica), 378-393 (one
+  # nvidia.com/gpu): a plain single-replica Deployment, not a LeaderWorkerSet,
+  # because one discrete sm_120 GPU owns the whole model.
+  nodes: 1
+  tensor_parallel_size: 1
+
+  # -- cluster shape -------------------------------------------------------------
+  # The single-node Deployment's live values the renderer must read rather than
+  # hardcode. Source of truth: the GitOps repository,
+  # src/rv/k8s/clusters/home/llm-d/qwen38-27b.yaml, cited per value below. This is a
+  # plain single-replica Deployment (replicas 1 at :102, Recreate strategy at :103-106
+  # -- one GPU and one node-local model directory cannot admit a surge replica), so it
+  # has no group count, no rollout window and no tolerations.
+  # Node placement names only the host the pod is pinned to; there is NO architecture
+  # key here (:115-116), unlike the GB10 groups -- the site `node_selector` parameter
+  # carries the hostname, and the recipe adds nothing.
+  nodeSelector: {}
+  # A single physical GPU on server21; the device plugin reports 4 by time-slicing
+  # (nvidia.com/gpu 1 at :389 requests, :393 limits). No RDMA: this box never opens
+  # the RoCE device, so rdma is false and the allocator resource is absent from both
+  # maps. Requests and limits are two maps and differ -- memory 48Gi requested against
+  # a 72Gi cap, ephemeral-storage 4Gi against 8Gi (:385-393) -- so they are modelled
+  # independently; the only value the two must share is the GPU count, which the
+  # renderer injects into both from this one field.
+  gpu: 1
+  rdma: false
+  resources:
+    requests:
+      cpu: "8"
+      memory: 48Gi
+      ephemeral-storage: 4Gi
+    limits:
+      memory: 72Gi
+      ephemeral-storage: 8Gi
+  # Root, but NO IPC_LOCK: it never touches the RDMA device. runAsGroup 0 as the live
+  # container sets it (:143-150). Capabilities are omitted entirely, not declared empty.
+  securityContext:
+    runAsUser: 0
+    runAsGroup: 0
+  # The two hostPaths are DirectoryOrCreate on the node; their paths come from the
+  # model_storage_path/jit_storage_path parameters (:415-434). No pod-level
+  # securityContext -- the live pod sets none (:114).
+  volumes:
+    hostPathType: DirectoryOrCreate
+  # No `probes` block: the launcher-form startup/readiness httpGet windows are the
+  # single-node defaults, and the live container declares no livenessProbe (:394-407),
+  # matching the accepted rule that an unmeasured liveness window is never emitted.
+  # No storage_root, model_path, storage_min_free_gib, download_workers,
+  # ignore_patterns or required_files: engine-download mode, so the launcher
+  # publishes nothing and there is no free-space gate or truncation list to
+  # enforce before exec.
+  # -- site fields ---------------------------------------------------------------
+  # A single-node shape asks the operator for eight fields -- namespace, name, the
+  # two host paths, the Hugging Face Secret and its key, the node selector and the
+  # GatewayClass -- and `recipes-site/src/data/site-parameters.js` declares every one
+  # of them with its label, type and explanation. A recipe therefore overrides only
+  # the values that belong to it. Source of truth for the four below: the GitOps
+  # repository, src/rv/k8s/clusters/home/llm-d/qwen38-27b.yaml -- the Deployment's
+  # namespace (:98) and name (:97), and the two node-local NVMe hostPaths it mounts
+  # (:419-422 for the model cache at /models, :425-428 for the JIT cache at /cache).
+  # The live pod's own nodeSelector (:115-116) names a single host; that is the
+  # operator's `node_selector` field, never a host written into this recipe. The
+  # Secret name and key are the site convention the shared set already carries, and
+  # this deployment has no collective network to attach (see `guide.networking`).
+  parameters:
+    namespace:
+      default: openai
+    name:
+      default: qwen38-27b
+    model_storage_path:
+      default: /var/lib/vllm-models/qwen38-27b
+    jit_storage_path:
+      default: /var/lib/vllm-qwen38-cache
+# The measured panel the recipe page renders. These are the live definition's own
+# observations, with the run they came from named in every case; nothing here is
+# a benchmark-harness result, and the one projected figure is marked as such.
+benchmark:
+  context:
+    - Single node, one GPU
+    - DCGM and engine logs
+    - Measured 2026-09-22
+    - Static MTP-3 baseline
+    - 300 W power cap
+    - Memory panel from the 2026-09-20 boot
+  tables:
+    - id: decode-static-mtp
+      title: Aggregate decode with static MTP-3
+      aria_label: Qwen3.8-27B aggregate decode by concurrent streams under static MTP-3
+      columns:
+        - Concurrent streams
+        - Aggregate decode
+        - What the run showed
+      rows:
+        - cells:
+            - text: "1"
+            - text: 42-99
+              unit: tok/s
+              primary: true
+            - text: Full MTP-3 kept, acceptance 3.5 of 3 nominal at 85% or better.
+        - cells:
+            - text: "2"
+            - text: ~20-40
+              unit: tok/s
+              primary: true
+            - text: Full MTP-3 still kept at the same acceptance.
+        - degraded: true
+          cells:
+            - text: 3 or more
+            - text: "2.2"
+              unit: tok/s
+              primary: true
+            - text: >-
+                Collapse: draft passes plus split verify batches blow the power
+                budget and every stream starves until client idle watchdogs fire.
+    - id: boot
+      title: Engine boot against the b12x compile cache
+      aria_label: Qwen3.8-27B engine boot with a cold and a warm b12x compile cache
+      columns:
+        - b12x compile cache
+        - Boot to startup complete
+      rows:
+        - cells:
+            - text: unpopulated
+            - text: "172.09"
+              unit: s
+              primary: true
+        - cells:
+            - text: warm
+            - text: "60.74"
+              unit: s
+              primary: true
+    - id: memory
+      title: GPU memory budget
+      aria_label: Qwen3.8-27B measured GPU memory budget on one RTX PRO 6000
+      columns:
+        - Budget
+        - Measured
+      rows:
+        - cells:
+            - text: weights
+            - text: "21.79"
+              unit: GiB
+              primary: true
+        - cells:
+            - text: peak activation
+            - text: "2.33"
+              unit: GiB
+              primary: true
+        - cells:
+            - text: CUDA graphs
+            - text: "0.12"
+              unit: GiB
+              primary: true
+        - cells:
+            - text: available KV cache
+            - text: "61.32"
+              unit: GiB
+              primary: true
+              notes:
+                - 1,845,556 fp8 tokens
+  notes:
+    - title: Method
+      body: >-
+        The decode and boot figures are DCGM samples read against the engine's own
+        logs on 2026-09-22, not a benchmark-harness run (qwen38-27b.yaml:269-280,
+        318-330). The device is an RTX PRO 6000 Blackwell Max-Q power-capped at
+        300 W, which is what makes the three-stream collapse a power effect rather
+        than a scheduler one.
+    - title: Conditions
+      body: >-
+        The memory panel is the 2026-09-20 boot of engine
+        v0.1.dev1+gf6281c7ba on sm_120 (qwen38-27b.yaml:31-40). The GPU budget the
+        recipe now serves -- 0.92 utilization on the QAD checkpoint -- was
+        re-measured later on the same host, and that run's footprint is the
+        Capacity note below.
+    - title: Scheduler
+      body: >-
+        The recipe adopts the batch-size-keyed schedule rather than static MTP-3:
+        full MTP-3 for one or two concurrent streams, speculation disabled at three
+        or more, so every step then yields one token per stream. The roughly 40
+        tok/s aggregate the disabled-speculation path is expected to hold at three
+        or more streams is a projection from the single-stream rate, not a measured
+        cell. Acceptance-length adaptation
+        (adaptive_speculative_tokens_*) is deliberately unset: acceptance is
+        already high, and the batch-size schedule expresses the policy without
+        per-request tuning noise (qwen38-27b.yaml:269-280).
+    - title: Capacity
+      body: >-
+        Measured footprint on this deployment is 35,673 bytes per token -- 61.99
+        GiB for 1,865,871 tokens. So 32 sequences at 128k need 139 GiB and would
+        overrun the 62 GiB GPU cache into preemption, while 32 at 32k need 35 GiB
+        and fit; only about 1.8 full-context sequences fit in the GPU cache, and 8
+        with the node's RAM added, so 32 concurrent full-context requests is not
+        reachable by offload alone (qwen38-27b.yaml:64-73).
+    - title: Not measured
+      body: >-
+        No time-to-first-token or end-to-end distribution, no prefix-cache reuse
+        through a router, no gateway-path overhead and no concurrency figure for
+        the adopted batch-size schedule: the three-stream row above is the static
+        baseline that schedule replaced. The boot never reached a CuTe DSL launch
+        on this checkpoint -- it chose the Triton/FLA GDN prefill kernel, the CUDA
+        GDN decode kernel and Marlin for MXFP8 -- so the sm_120a DSL architecture
+        override this recipe carries is unconfirmed by measurement
+        (qwen38-27b.yaml:132-136).
+validation:
+  # No `image` key: nothing here claims `verified`, so there is no accepted public
+  # digest to name. The build these observations come from is vllm-b12x-multi
+  # PR-28 -- the multi-arch index 6ae39189d82f whose linux/arm64 leaf is
+  # 6529f31fa482, carrying vLLM 588bc2641de6 and B12X 2b1a2358b9f0
+  # (qwen38-27b.yaml:126-141) -- and that publication never reached a public
+  # registry. Naming a digest here would name a build that was not the accepted
+  # one, which is the failure this field exists to prevent.
+  kubernetes: unverified
+  docker: unverified
+  evidence: >-
+    Ran live as a single-replica Kubernetes Deployment on one RTX PRO 6000
+    Blackwell Max-Q host, and recorded unverified because the build it was
+    accepted on -- vLLM 588bc2641de6 with B12X 2b1a2358b9f0 -- shipped only as a
+    pull-request artifact and no public registry carries it, so this recipe cannot
+    point a reader at the image that produced these observations. The
+    observations themselves are recorded: the pinned build boots this checkpoint
+    with no prologue patch, the GDN warmup runs and the engine reaches Application
+    startup complete (qwen38-27b.yaml:154-169); the 2026-09-20 boot measured 21.79
+    GiB of weights, 2.33 GiB of peak activation, 0.12 GiB of CUDA graphs and 61.32
+    GiB of available KV cache holding 1,845,556 fp8 tokens, which fits one
+    full-window request 1.76 times concurrently (lines 31-40); the batch-size-keyed
+    MTP schedule is from the 2026-09-22 DCGM and engine-log run (lines 269-280);
+    and a warm b12x compile cache turned a 172.09 s boot into a 60.74 s one
+    (lines 318-330). Docker is unverified: the live definition is Kubernetes-only
+    and the same arguments have not been run under docker run on a single host.
+guide:
+  hardware: >-
+    One host with a single RTX PRO 6000 Blackwell Max-Q GPU (sm_120). The device plugin reports four nvidia.com/gpu only because it is configured with timeSlicing.replicas: 4, so request exactly one and never a CUDA_VISIBLE_DEVICES list naming a second index, which would name a device that does not exist (qwen38-27b.yaml:379-393). The container asks for 8 CPUs and 48Gi with a 72Gi memory limit and 8Gi of ephemeral storage, and /dev/shm is capped at 64Gi of tmpfs that counts against that memory limit (lines 385-393, 429-434). The model hostPath needs room for the 21.16 GiB checkpoint and the roughly 31.6 GB the first start downloads before the engine loads (lines 9-14, 394-395); the JIT hostPath holds the triton, inductor, flashinfer, xet and b12x compile caches, and a warm b12x cache is the difference between a 60.74 s boot and a 172.09 s one (lines 318-330).
+  fixed_tuning: TP=1 on one GPU, MTP at depth 3 on a batch-size-keyed schedule that keeps full MTP-3 for one or two concurrent streams and disables speculation at three or more, 0.92 GPU memory utilization, a 1,048,576-token maximum context from a static factor-4 YaRN override written out rather than derived, 32 sequences, 8,192 batched tokens, a 128-token CUDA graph capture cap derived from the sequence cap times the speculative width, FP8 KV cache, prefix caching with a 16-token match unit and mamba cache mode align, eight images per prompt, both FlashInfer MXFP8 linear kernels excluded for the fused 96-wide GDN in_proj_ba, b12x as the linear backend through --kernel-config, and the Python API frontend rather than vllm-rs.
+  networking: No secondary network. One node and one rank means there is no cross-host collective to carry, no RDMA resource to allocate and no leader address to rendezvous with; the single container is reached through its own Service.
+  safety: Stop the container gracefully with a 120-second timeout, as the live definition sets (qwen38-27b.yaml:120). A first start downloads the checkpoint and then compiles and captures graphs, which the 60-minute startup budget covers (lines 394-401); do not shorten that budget, and never set CUDA_LAUNCH_BLOCKING, because b12x does not function with synchronous kernel launches.

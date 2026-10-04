@@ -25,11 +25,15 @@ export default defineConfig({
             { label: "Catalog", link: "/recipes/" },
             {
               label: "DeepSeek V4 Flash Vision",
-              link: "/recipes/deepseek-v4-flash-vision-tp2/",
+              link: "/recipes/deepseek-v4-flash-vision-gb10-tp2/",
+            },
+            {
+              label: "Qwen3.8-27B",
+              link: "/recipes/qwen38-27b/",
             },
             {
               label: "Qwen3.8 Flash Next",
-              link: "/recipes/qwen38-flash-next-tp2/",
+              link: "/recipes/qwen38-flash-next-gb10-tp2/",
             },
           ],
         },
@@ -63,7 +67,7 @@ export default defineConfig({
         },
         { label: "About the author", link: "/about/" },
       ],
-      customCss: ["./src/styles/recipes.css"],
+      customCss: ["./src/styles/recipes.css", "./src/styles/flow.css"],
       pagination: false,
       editLink: {
         baseUrl:

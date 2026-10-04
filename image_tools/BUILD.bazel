@@ -1,10 +1,18 @@
 load("@rules_python//python:defs.bzl", "py_library", "py_test")
 
-exports_files([
-    "vllm_image.py",
-    "vllm-image.sh",
-    "__init__.py",
-])
+package(default_visibility = ["//visibility:public"])
+# The launcher package ships as source files, not a wheel: the venv layer copies
+# this exact set into the image's site-packages, so a new module that is missing
+# here is missing from the image too.
+filegroup(
+    name = "launcher_sources",
+    srcs = [
+        "__init__.py",
+        "vllm_image.py",
+    ] + glob([
+        "launcher/*.py",
+    ]),
+)
 
 py_test(
     name = "vllm_image_test",
@@ -12,7 +20,32 @@ py_test(
     deps = [":vllm_image_lib"],
 )
 
+py_test(
+    name = "probes_test",
+    srcs = ["probes_test.py"],
+    deps = [":vllm_image_lib"],
+)
+
+py_test(
+    name = "cache_runtime_test",
+    srcs = ["cache_runtime_test.py"],
+    deps = [":vllm_image_lib"],
+)
+
+# Only the standard-library tests are declared here. The pip hubs are
+# ``download_only``, so they publish wheels for the image layers and no importable
+# ``py_library``; a test that needs PyYAML or aiohttp therefore cannot run as a
+# Bazel ``py_test`` today. Those are ``launcher_test.py``, ``launcher_data_test.py``,
+# ``launcher_parity_test.py`` and ``replica_proxy_test.py``, and they run in the
+# ``launcher-tests`` job of ``.github/workflows/recipes-pages.yaml``, which
+# installs the versions the runtime lock pins. It is not in the Tekton lane:
+# that step's image is a bare Ubuntu base with neither python3 nor pip, so
+# there these tests could only ever fail to import. The ``bazel/`` host lane
+# does run in the Tekton script, under the interpreter ``//bazel:host_python``
+# resolves to; see the note in scripts/ci/vllmb12x-build-and-publish.sh.
+
 py_library(
     name = "vllm_image_lib",
-    srcs = ["__init__.py", "vllm_image.py"],
+    srcs = [":launcher_sources"],
+    imports = [".."],
 )

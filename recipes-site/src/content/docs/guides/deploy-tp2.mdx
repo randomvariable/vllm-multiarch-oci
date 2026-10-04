@@ -32,7 +32,7 @@ Kubernetes pods use `eth0` for Gloo coordination and NCCL socket bootstrap, so t
 
 Docker uses host networking. Set `leader_ip` and `worker_ip` to stable host addresses that reach each other. Set the socket and Gloo interfaces to real host interfaces, and the HCA list to the host RDMA devices mounted into each container. Kubernetes NetworkAttachmentDefinition names and extended-resource keys do not apply to Docker.
 
-Open the [recipe builder](/vllm-multiarch-oci/recipes/deepseek-v4-flash-vision-tp2/), select **Kubernetes / LeaderWorkerSet**, and supply:
+Open the [recipe builder](/vllm-multiarch-oci/recipes/deepseek-v4-flash-vision-gb10-tp2/), select **Kubernetes / LeaderWorkerSet**, and supply:
 
 - namespace and workload name;
 - absolute model and JIT host paths;

@@ -38,7 +38,28 @@ class LaneScriptTest(unittest.TestCase):
         self.trace.write_text("")
         self.bin = self.directory / "bin"
         self.bin.mkdir()
-        self.stub("bazel")
+        # The hermetic interpreter the lane resolves out of Bazel's output
+        # base. It deliberately lives outside bin/, so it is not on PATH: the
+        # python3 that PATH offers is the stub standing in for the base
+        # image's apt interpreter, which this lane must not run on.
+        self.hermetic = self.directory / "hermetic"
+        (self.hermetic / "external" / "hermetic" / "bin").mkdir(parents=True)
+        self.interpreter = self.hermetic / "external" / "hermetic" / "bin" / "python3"
+        self.interpreter.write_text(
+            "#!/bin/bash\n"
+            'printf \'\\001ARG %s\\n\' "$0" >> "$TRACE"\n'
+            "for argument in \"$@\"; do printf '\\001ARG %s\\n' \"$argument\" >> \"$TRACE\"; done\n"
+            "printf '\\001\\n' >> \"$TRACE\"\n"
+        )
+        self.interpreter.chmod(0o755)
+        self.stub(
+            "bazel",
+            'if [ "${1-}" = cquery ]; then\n'
+            '    printf \'%s\\n\' "external/hermetic/bin/python3"\n'
+            "elif [ \"${1-}\" = info ]; then\n"
+            f'    printf \'%s\\n\' "{self.hermetic}"\n'
+            "fi\n",
+        )
         self.stub("python3")
         self.stub("cargo")
         # git answers the two queries the lane script asks and records nothing:
@@ -103,6 +124,20 @@ class LaneScriptTest(unittest.TestCase):
                 current.append(line[len(ARGUMENT):])
         return blocks
 
+    def positions(self, prefix: list[str]) -> list[int]:
+        """Every traced call whose arguments start with `prefix`, in order."""
+        return [
+            index
+            for index, command in enumerate(self.commands())
+            if command[: len(prefix)] == prefix
+        ]
+
+    def only(self, prefix: list[str]) -> int:
+        """The one traced call whose arguments start with `prefix`."""
+        positions = self.positions(prefix)
+        self.assertEqual(len(positions), 1, f"expected exactly one call {prefix!r}, got {positions!r}")
+        return positions[0]
+
     def publisher_command(self) -> list[str]:
         matches = [command for command in self.commands() if command[:1] == ["scripts/publish-vllmb12x.py"]]
         self.assertEqual(len(matches), 1, f"expected one publisher call, got {matches!r}")
@@ -112,12 +147,54 @@ class LaneScriptTest(unittest.TestCase):
         result = self.run_lane(LANE="nightly", PUBLISHER_LEASE="vllmb12x-publish", PUBLISHER_NAMESPACE="ci")
         self.assertEqual(result.returncode, 0, result.stderr)
         commands = self.commands()
-        self.assertEqual(commands[0][:2], ["test", "//scripts:all"])
-        self.assertEqual(commands[1][:2], ["build", "//image:vllmb12x"])
-        contracts = [command[:2] for command in commands[2:-1]]
-        self.assertEqual(contracts, [["test", "//tests/image:vllmb12x_contract"]] * 2)
+        # Selected by content, not by index: a step added to the lane has to
+        # report itself as the call no assertion covers, not silently shift
+        # these offsets apart.
+        scripts_tests = self.only(["test", "//scripts:all"])
+        host_python = self.only(["build", "//bazel:host_python"])
+        host_python_query = self.only(["cquery", "--output=files", "//bazel:host_python"])
+        output_base = self.only(["info", "output_base"])
+        host_lane = self.only(
+            [str(self.interpreter), "-m", "unittest", "discover", "-s", "bazel", "-p", "*_test.py"]
+        )
+        image_build = self.only(["build", "//image:vllmb12x"])
+        publisher = self.only(["scripts/publish-vllmb12x.py"])
+        contracts = self.positions(["test", "//tests/image:vllmb12x_contract"])
+        self.assertEqual(len(contracts), 2, f"one contract run per architecture: {contracts!r}")
+        lanes = {
+            scripts_tests,
+            host_python,
+            host_python_query,
+            output_base,
+            host_lane,
+            image_build,
+            publisher,
+            *contracts,
+        }
+        unclassified = sorted(set(range(len(commands))) - lanes)
         self.assertEqual(
-            [command[2] for command in commands[2:-1]],
+            unclassified,
+            [],
+            f"the lane made calls no assertion covers: {[commands[i] for i in unclassified]}",
+        )
+        # Exactly one host lane runs here, and it runs on the interpreter
+        # Bazel named: a bare python3 out of PATH would be the apt one, which
+        # is neither the 3.12 the image ships nor able to install anything.
+        discovers = [command for command in commands if "discover" in command]
+        self.assertEqual(len(discovers), 1, f"one host lane belongs in this step: {discovers!r}")
+        # The image_tools lane needs the modules the runtime lock pins, so it
+        # runs in the Pages workflow's launcher-tests job and never here.
+        self.assertEqual([command for command in commands if "image_tools" in command], [])
+        # Everything that can fail cheaply runs before the image build; the
+        # per-architecture contract runs stay last but one.
+        for test_lane in (scripts_tests, host_lane):
+            self.assertLess(test_lane, image_build, "every test lane must precede the image build")
+        for resolution in (host_python, host_python_query, output_base):
+            self.assertLess(resolution, host_lane, "the interpreter is resolved before the lane runs")
+        self.assertLess(image_build, contracts[0], "the image contract needs the built image")
+        self.assertLess(contracts[1], publisher, "the contract runs stay last but one")
+        self.assertEqual(
+            [commands[index][2] for index in contracts],
             ["--config=remote-aarch64", "--config=remote-x86_64"],
         )
         # The fetch of a cargo-vendored source failed in CI because repository

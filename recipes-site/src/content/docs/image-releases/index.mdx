@@ -1,23 +1,27 @@
 ---
-title: Latest image publication
+title: Image releases
 description: Immutable multiarchitecture images built from local-inference-lab/vLLM for NVIDIA DGX Spark and x86-64 Blackwell.
 ---
 
-import LatestImage from "../../../components/LatestImage.astro";
-
 Every image on this page packages a pinned revision of [`local-inference-lab/vLLM`](https://github.com/local-inference-lab/vllm) and its DGX Spark dependency set. These are not generic upstream vLLM images.
 
-<p class="eyebrow">Release channel</p>
+The [deployment flow](../) lists both channels and every published build, and each
+release has its own page under `builds/` carrying its digest, source revisions and
+change list. This page keeps what no generated record can: why a lineage exists and
+what each architecture actually supports.
 
-The trusted Pages build resolves the public repository's `latest` tag to a multiarchitecture index digest, finds the matching immutable publication tag, and records the resolution time. Resolution fails unless the index carries exactly the `linux/arm64` and `linux/amd64` manifests. The recipe generator consumes that static record and always emits a digest-qualified reference.
+## Two channels
 
-The selected recipe's validated digest remains the default. Choosing **Latest published image** displays an explicit warning because publication does not prove that the new image completed the recipe's two-node runtime acceptance.
+**Release** is a tag cut deliberately, with a changelog and a page. **Nightly** is
+the newest publication the pipeline pushed, resolved to a multiarchitecture index
+digest on the hour. Resolution fails unless the index carries exactly the
+`linux/arm64` and `linux/amd64` manifests, so a partial publication never becomes
+the default the flow offers.
 
-<LatestImage />
-
-:::note[Freshness]
-The resolver runs hourly and on manual deployment. The displayed timestamp records when registry metadata was resolved, rather than implying immediate consistency with a just-finished publication.
-:::
+Neither channel's newest build is a recommendation. A recipe's validated digest
+stays the default until that build completes the recipe's two-node runtime
+acceptance, and selecting anything else is an explicit choice to run an image that
+has not.
 
 ## What each published lineage carries
 
@@ -40,9 +44,8 @@ A publication pins one vLLM revision and one b12x revision together. The pairing
 - vLLM `0a6739845a3249b07a30ad9b1e720e5e3fb6236f` (`dev/rv-mxfp8-mtp`), b12x `965e748f74fe9dac0a35c497a0947c5b108617c5` (`feat/mxfp8-moe`). First public release whose source pair reaches `main`.
 - Native block-scaled MXFP8 W8A8 MoE on both architectures: Qwen3.8 Flash Next step 5500's MTP draft experts are MXFP8 and run on `B12X_MXFP8` at their unpadded 320-wide TP=2 shard; the NVFP4 target experts run on `B12X`. Nothing selects Marlin.
 - Runtime dependencies move to current CUDA-era pins (nvidia-cutlass-dsl 4.8.0, tilelang 0.1.15, cuda-python 13.4.1, nixl, numba, PyNvVideoCodec, fastokens); locks target manylinux_2_34.
-- Serving acceptance and the idle benchmark are recorded in the [release notes](https://github.com/randomvariable/vllm-multiarch-oci/releases/tag/v20261001.1) and the [Qwen recipe](/recipes/qwen38-flash-next-tp2/), which pins this digest as its validated image.
+- Serving acceptance and the idle benchmark are recorded in the [release notes](https://github.com/randomvariable/vllm-multiarch-oci/releases/tag/v20261001.1) and the [Qwen recipe](../recipes/qwen38-flash-next-gb10-tp2/).
 - Pull requests: [vllm-multiarch-oci#36](https://github.com/randomvariable/vllm-multiarch-oci/pull/36) for the source pair, dependency bump and docs, [#37](https://github.com/randomvariable/vllm-multiarch-oci/pull/37) for the per-architecture base-creation label the first release attempt tripped.
-- Current state: both open recipes' `validation.image` digests are public releases again.
 
 ### DeepSeek V4 Flash Vision lineage
 
@@ -55,4 +58,10 @@ This is the image the DeepSeek recipe was accepted on. It remains the recipe's d
 Every publication is one OCI index with a native `linux/arm64` and a native `linux/amd64` manifest. Both manifests are built and contract-tested on every publication pipeline run; the publisher rejects an index that is missing either architecture.
 
 - **ARM64 (GB10, DGX Spark)** is the production architecture. The two-node recipes and their runtime acceptance evidence all run here.
-- **x86-64 (RTX 5090, SM120)** is built from the same pins and passes the same image contract. A single-GPU serving smoke measured 46.5 tokens/s single-stream on an RTX 5090 under WSL2. Two x86-64 specifics from that smoke: invoke the entrypoint through the `vllm serve` subcommand, because a bare positional model path fails in this image, and set a small `--max-num-seqs` (8) on a 32 GiB card, because the default 256 exceeds the Mamba cache budget and leaves KV space for roughly 52K tokens at 0.90 utilization. Distributed topologies on x86-64 are untested.
+- **x86-64 (RTX 5090, SM120)** is built from the same pins and passes the same image contract. A single-GPU serving smoke measured 46.5 tokens/s single-stream on an RTX 5090 under WSL2. Two x86-64 specifics from that smoke: name the `serve` subcommand explicitly, because the image entrypoint hands a bare positional model path to the vLLM CLI unchanged, and set a small `--max-num-seqs` (8) on a 32 GiB card, because the default 256 exceeds the Mamba cache budget and leaves KV space for roughly 52K tokens at 0.90 utilization. Distributed topologies on x86-64 are untested.
+
+## Freshness
+
+The resolver runs hourly and on manual dispatch. The timestamp a build page shows
+records when registry metadata was resolved, not a claim that a just-finished
+publication is already reflected.

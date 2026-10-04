@@ -1,0 +1,609 @@
+# Qwen3.8 Flash Next NVFP4 on two RoCE-joined GB10 nodes, TP=2.
+#
+# One file per deployment. `launch`, `docs` and `benchmark` are what
+# `vllm-image launch --recipe qwen38-flash-next-gb10-tp2` reads; `meta`,
+# `model`, `deployment`, `validation` and `guide` are what the
+# GitHub Pages recipe renders. The recipe's name is this file's stem, which is
+# also `meta.slug` and the selection string the launcher resolves.
+#
+# Selection: the upstream qwen38-flash-next model profile plus our gb10-roce
+# hardware profile. Everything the model profile or the common layer already
+# sets is left out of `launch` on purpose -- see the per-value comments there.
+# Only the values this image's accepted live deployment actually changed
+# relative to upstream policy, and the process settings that are ours rather
+# than upstream's, are listed.
+#
+# Source of truth for every value below: the GitOps repository,
+# src/rv/k8s/clusters/home/llm-d/qwen38-flash-next.yaml:333-645 (rank branch, KV
+# topic, environment). Those arguments ran through an inline shell script that
+# branched on LWS_WORKER_INDEX and interpolated its own variables into the
+# command; the launcher retires the shell, so every one of those values is a
+# `launch` option or an environment entry here, and
+# image_tools/launcher_data_test.py compares the record the resolver builds from
+# them against image_tools/data/golden.
+meta:
+  title: Qwen3.8 Flash Next NVFP4, two-node TP=2
+  slug: qwen38-flash-next-gb10-tp2
+  description: A fixed two-node, one-GB10-per-node Qwen3.8-Flash-Next-NVFP4 deployment with PLE tables in page-locked host memory and a 1,048,576-token context.
+model:
+  model_id: local-inference-lab/Qwen3.8-Flash-Next-NVFP4
+  revision: 60215d26cf5e42c2db6128774032d57fc62678da
+  served_name: qwen38-flash-next
+  # The engine answers the native Anthropic Messages API as well as the OpenAI
+  # one, so the routing bundle adds a path-matched route for it.
+  serves_native_messages: true
+launch:
+  profile: qwen38-flash-next
+  hardware: gb10-roce
+  # No preset. upstream's qwen38-tp2 preset raises tensor-parallel-size to 2
+  # but is qualified against rtx-pro-6000-pcie, where that pair of GPUs sits in
+  # one host and shares a PCIe crossover all-reduce. Here the second GPU is on
+  # another node behind RoCE, so the parallelism degree belongs to this recipe,
+  # not to a preset that describes different silicon.
+  preset: null
+  options:
+    # The launcher publishes the fetched snapshot here; the engine loads a
+    # directory of safetensors on local NVMe, never the repository id. In
+    # ple_table_memory=ram the PLE table is copied from these files once at
+    # boot into page-locked host memory, so the published root must stay local
+    # and readable for load and restart rather than for every forward pass.
+    model: /models/qwen38-flash-next
+    # The profile serves the checkpoint's own name; this deployment answers to
+    # the short name the gateway and the LiteLLM modelRef use, and the KV-event
+    # topic embeds it, so a mismatch silently reads zero prefix hits.
+    served-model-name: qwen38-flash-next
+    # Single source of truth for the serving port: it also appears in the
+    # KV-event topic, which the router matches against the endpoint
+    # address:port it learned from the InferencePool.
+    port: 8888
+    # One GPU per node across two nodes. The profile is a single-node RTX PRO
+    # policy and leaves this at 1; 2 matches LWS_GROUP_SIZE in the live
+    # manifest, which is where the accepted command got it.
+    tensor-parallel-size: 2
+    # 16, not the profile's 64: the accepted GDN/recurrent checkpoint blocking
+    # for this checkpoint on GB10.
+    block-size: 16
+    # The checkpoint advertises 262144 positions with rope_type "default". The
+    # resolver derives the 4x YaRN --hf-overrides from this number, including
+    # mrope_section and mrope_interleaved, which get_rope() needs present to
+    # preserve M-RoPE for the vision position ids. Set the context here and
+    # nothing rope-related: a hand-written hf-overrides would bypass that
+    # derivation. VLLM_ALLOW_LONG_MAX_MODEL_LEN stays unset exactly as the
+    # accepted recipe argues: the profile's own context ceiling is the
+    # authority on what this image may be asked to admit.
+    max-model-len: 1048576
+    max-num-seqs: 8
+    max-num-batched-tokens: 8192
+    # 32, not the profile's 64: two GB10 hosts froze during the startup profile
+    # pass at the wider capture ceiling; 32 is the accepted cap at this
+    # checkpoint and utilization.
+    max-cudagraph-capture-size: 32
+    # 0.74, not 0.76: the step-5500 checkpoint loads 42.77 GiB per rank against
+    # 40.32 GiB at step 4000 (MXFP4 MTP experts), and at 0.76 the startup
+    # profile pass froze two GB10 hosts with no kernel log. 0.74 gives back
+    # 2.48 GiB of the 123.79 GiB budget. Not the profile's 0.96 either, which
+    # is a single-node RTX PRO figure with no second rank to share the host.
+    gpu-memory-utilization: 0.74
+    # No speculative-config, mode or draft-tokens here: the profile's mtp mode
+    # supplies the MTP policy, which adds draft_sample_method,
+    # rejection_sample_method and moe_backend to the hand-written command's
+    # {"method":"mtp","num_speculative_tokens":3}. Adopting those is the point
+    # of this file.
+    recurrent-checkpoint-policy: aligned
+    # Decode-aware prefill scheduling: the scheduler admits prefills against
+    # decode pressure with an adaptive share and half-life. Live manifest flags
+    # as of the 2026-09-30 step-5500 acceptance.
+    max-parallel-prefills: auto
+    prefill-compute-share: auto
+    prefill-compute-half-life: responsive
+    prefill-policy: decode-aware
+    limit-mm-per-prompt:
+      image: 1
+      video: 1
+    # ram copies the PLE n-gram tables into page-locked host memory at boot
+    # (13.41 GiB per rank) instead of reading them through the io_uring
+    # DiskTable on every forward pass. disk mode retired on 2026-09-22: the
+    # recurring async illegal-memory-access class surfaced through its
+    # synchronize point; ram is the mode accepted by live soak.
+    additional-config:
+      ple_table_memory: ram
+  environment:
+    # Not repeated here because another layer already sets them, and this file
+    # must stay a delta: CUDA_DEVICE_ORDER, HF_HOME's replacement below
+    # aside -- the common layer sets CUDA_DEVICE_ORDER, SAFETENSORS_FAST_GPU,
+    # PYTORCH_CUDA_ALLOC_CONF, INSTANTTENSOR_BACKEND, VLLM_USE_V2_MODEL_RUNNER
+    # and VLLM_WORKER_MULTIPROC_METHOD; the model profile sets
+    # VLLM_SSM_CONV_STATE_LAYOUT=DS, OMP_NUM_THREADS=2 and the B12X dynamic
+    # MoE/LM-head set; gb10-roce sets the NCCL, RoCE, spin-limit, PCIe-off and
+    # architecture list.
+    #
+    # nvidia-cutlass-dsl's .pth does not take effect in this image's venv and
+    # RoCEnante needs it: see docs.PYTHONPATH.
+    PYTHONPATH: /opt/venv/lib/python3.12/site-packages:/opt/venv/lib/python3.12/site-packages/nvidia_cutlass_dsl/dsl_packages
+    # instanttensor is a stock vLLM loader, so this recipe needs no b12x
+    # plugin; the live deployment leaves the allowlist empty. Set it to
+    # b12x_loader only if you switch --load-format to b12x.
+    VLLM_PLUGINS: ""
+    # The checkpoint is fetched and published by the launcher before the engine
+    # starts, so nothing here may reach the hub: see docs.HF_HUB_OFFLINE.
+    HF_HOME: /models
+    HF_HUB_OFFLINE: "1"
+    TRANSFORMERS_OFFLINE: "1"
+    INSTANTTENSOR_BUFFER_SIZE: "1342177280"
+    INSTANTTENSOR_CONCURRENCY: "1"
+    INSTANTTENSOR_IO_DEPTH: "3"
+    # The model profile leaves the dense activation mode on auto; a16 dense
+    # plus quantized MXFP8 is the accepted pair for this checkpoint, measured
+    # on the live ranks.
+    VLLM_B12X_DENSE_ACTIVATION_MODE: a16
+    VLLM_B12X_MXFP8_ACTIVATION_MODE: quantized
+    VLLM_EXPERIMENTAL_SHM_BROADCAST_ADAPTIVE_SPIN: "1"
+    VLLM_SHM_BROADCAST_ADAPTIVE_MAX_GRACE_MS: "50"
+    CUDA_ENABLE_COREDUMP_ON_EXCEPTION: "1"
+    CUDA_COREDUMP_FILE: /cache/ima-debug/core.%h.%p.%t.nvcudmp
+    CUDA_COREDUMP_GENERATION_FLAGS: faulted_contexts_only,gzip_compress
+    VLLM_MARLIN_USE_ATOMIC_ADD: "1"
+    # Node-local compiler/JIT scratch on persistent NVMe, kept off overlayfs:
+    # TP=2 JIT on overlayfs stalled the NCCL watchdog on sibling workloads. The
+    # remaining compiler-cache paths the resolver derives from XDG_CACHE_HOME
+    # land on the same volume; these are spelled out because they are the
+    # accepted live values.
+    VLLM_CACHE_ROOT: /cache/vllm
+    XDG_CACHE_HOME: /cache
+    TRITON_CACHE_DIR: /cache/triton
+    TORCHINDUCTOR_CACHE_DIR: /cache/torchinductor
+    FLASHINFER_WORKSPACE_BASE: /cache/flashinfer
+    VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS: "1800"
+    # Precompiled AOT artifacts ship in the image; without these the ranks JIT
+    # the whole compilation set on every boot.
+    VLLM_USE_AOT_COMPILE: "1"
+    VLLM_USE_MEGA_AOT_ARTIFACT: "1"
+  topology:
+    kind: lws
+    nodes: 2
+    # The rank-zero rendezvous socket the follower polls before exec'ing. Also
+    # the --master-port the engine is given.
+    rendezvous_port: 25000
+    kv_events:
+      # Rank zero only. The leader owns the API server and the EngineCore
+      # scheduler, so it is the only rank that can serve /v1/messages/render or
+      # publish KV events; rank one runs --headless, and publishing from it
+      # would add a second, unroutable source for the same blocks. The topic is
+      # built from POD_IP, the resolved --port and the resolved
+      # --served-model-name by launch.kv_events_args. Publisher ports are
+      # offset by data-parallel rank (DP=1 here, so 5556/5559 are literal),
+      # chosen off vLLM's 5557 default; buffer_steps/hwm/max_queue_size stay at
+      # engine defaults. The names the manifest gives these ports are container
+      # port names, so they stay within 15 characters: IANA_SVC_NAME rejects
+      # longer ones and the LWS controller then loops on the leader StatefulSet
+      # update. Both ranks declare them; only the leader binds them.
+      publisher: zmq
+      endpoint: tcp://*:5556
+      replay_endpoint: tcp://*:5559
+    # Not a replica layout: one conversation spans both ranks, so there is no
+    # per-replica port range.
+    replica_port_base: null
+  # The probe sidecar listens here on every rank, including the headless ones,
+  # which have no HTTP server of their own.
+  probe_port: 8890
+
+# Unmanaged native arguments this deployment passes after `--`. They are not in
+# runtime/options.yaml, so the resolver forwards them to vLLM without
+# validating them; a recipe cannot carry them as options.
+#   --distributed-executor-backend mp
+#   --master-port 25000
+#   --gdn-prefill-backend b12x
+#   --disable-access-log-for-endpoints /metrics,/v1/models
+
+# Per-value explanation for the site's step 3, read alongside upstream's
+# runtime/parameter-docs.yaml. Only the names upstream does not document appear
+# here, and each documents a value this file itself sets.
+docs:
+  PYTHONPATH:
+    group: runtime
+    summary: sys.path entries the engine's children inherit, the venv plus the CuTe DSL packages.
+    why: >-
+      nvidia-cutlass-dsl 4.6.2 ships nvidia_cutlass_dsl_packages.pth to put its
+      dsl_packages directory, which holds the cutlass package, on sys.path, and
+      that .pth does not take effect in this image's venv: import cutlass fails
+      even though the files are present. It is b12x.comm.roce.is_supported()
+      that needs cutlass, and B12xRoceAllReduce._local_capability calls it
+      outside its ImportError guard, so without this variable
+      VLLM_ENABLE_ROCE_ALLREDUCE=1 raises during distributed init instead of
+      voting RoCEnante off. Both entries are required: /opt/venv/bin/python
+      prepends the venv's site-packages for its own children, but a PYTHONPATH
+      carrying only dsl_packages hides the venv.
+  HF_HUB_OFFLINE:
+    group: model
+    summary: Refuse any hub request; the checkpoint is already on the node.
+    why: >-
+      The launcher's model-sync phase fetches, verifies and publishes the
+      snapshot before the engine starts, so a request out to huggingface.co at
+      load time would mean the published root was not used. The same reason
+      gives TRANSFORMERS_OFFLINE its value.
+  TRANSFORMERS_OFFLINE:
+    group: model
+    summary: Refuse any hub request from the tokenizer and processor loaders.
+    why: >-
+      transformers resolves tokenizer and chat-template assets independently of
+      vLLM's model fetch, so offline must be asserted on both paths: the
+      required_files list names them precisely so a truncated snapshot fails in
+      the launcher rather than at model load.
+  INSTANTTENSOR_BUFFER_SIZE:
+    group: runtime
+    summary: Size of one InstantTensor read buffer, 1.25 GiB.
+    why: >-
+      Direct GPU reads for the 99 GiB tensor payload, sized so one buffered read
+      covers a shard's worth of weights without pinning the whole file.
+  INSTANTTENSOR_CONCURRENCY:
+    group: runtime
+    summary: Concurrent InstantTensor read streams.
+    why: >-
+      One stream at a time keeps the node's NVMe queue depth shared with the
+      PLE table's boot copy instead of competing with it.
+  INSTANTTENSOR_IO_DEPTH:
+    group: runtime
+    summary: Outstanding I/O requests per InstantTensor stream.
+    why: >-
+      Three deep is the accepted pairing with a single stream on the node-local
+      NVMe of a GB10 host.
+  VLLM_B12X_MXFP8_ACTIVATION_MODE:
+    group: kernels
+    summary: Quantized activations for the B12X MXFP8 layers.
+    why: >-
+      The live deployment quantizes the B12X MXFP8 activations; a16 dense plus
+      quantized MXFP8 is the accepted pair for this checkpoint. The rank-0 boot
+      log is the evidence: B12X for the NVFP4 target experts, B12X_MXFP8 for the
+      MTP draft experts at their unpadded 320-wide TP=2 intermediate.
+  VLLM_EXPERIMENTAL_SHM_BROADCAST_ADAPTIVE_SPIN:
+    group: kernels
+    summary: Opt in to adaptive waits in vLLM's shared-memory broadcast.
+    why: >-
+      Readers otherwise spin on sched_yield(), which keeps every TP rank's
+      threads runnable on GB10 and starves anything else in the container's CPU
+      group -- including a kubelet exec probe, which is why liveness left the
+      modelserver container.
+  VLLM_SHM_BROADCAST_ADAPTIVE_MAX_GRACE_MS:
+    group: kernels
+    summary: Ceiling on one adaptive shared-memory broadcast wait, in milliseconds.
+    why: >-
+      A 900 ms maximum grace deadlocked one group in B12X preparation on first
+      boot; 50 ms booted both. Reader grace is clamp(BUDGET^2 / T_ema,
+      MIN_GRACE, MAX_GRACE), so the 50 ms ceiling is only approached under
+      sub-microsecond read cadence and idle readers still park within MIN_GRACE.
+  CUDA_ENABLE_COREDUMP_ON_EXCEPTION:
+    group: kernels
+    summary: Ask the CUDA driver for a core dump when a kernel faults.
+    why: >-
+      Capture the faulting GPU context without attaching a debugger to a live TP
+      worker: the QSA illegal-memory-access class is open on this checkpoint.
+  CUDA_COREDUMP_FILE:
+    group: kernels
+    summary: Path template for the faulting-context core dumps.
+    why: >-
+      Written to /cache, which is node-local persistent NVMe, so the dump
+      survives the pod that produced it and can be read after the group is
+      recreated.
+  CUDA_COREDUMP_GENERATION_FLAGS:
+    group: kernels
+    summary: Dump only the faulted contexts, compressed.
+    why: >-
+      faulted_contexts_only and gzip_compress keep a dump on a four-GPU host
+      small enough to be worth keeping; a full-context dump of a rank under a
+      123 GiB budget is not.
+  VLLM_MARLIN_USE_ATOMIC_ADD:
+    group: kernels
+    summary: Marlin's atomic-add reduction path for quantized GEMMs.
+    why: >-
+      Marlin is the fallback for some quantized shapes on this checkpoint, and
+      the accepted ranks log it; the atomic-add path is the one that was
+      measured under load.
+  VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS:
+    group: runtime
+    summary: Watchdog budget for one execute_model step, in seconds.
+    why: >-
+      A 1,048,576-token prefill on two GB10 ranks exceeds the engine's own
+      window, and the timeout kills an engine that is still making progress.
+deployment:
+  nodes: 2
+  tensor_parallel_size: 2
+
+  # -- cluster shape -------------------------------------------------------------
+  # These are the live cluster's values the renderer used to hardcode; the generated
+  # LeaderWorkerSet reads every one of them from here. Source of truth: the GitOps
+  # repository, src/rv/k8s/clusters/home/llm-d/qwen38-flash-next.yaml, line ranges
+  # cited per value. The fleet runs three TP=2 groups; one group is recreated as a
+  # unit on failure, and the rollout takes one group down at a time with no surge,
+  # holding at partition 0 (qwen38-flash-next.yaml:138, 142-151).
+  groups: 3
+  restartPolicy: RecreateGroupAfterStart
+  rollout:
+    type: RollingUpdate
+    maxUnavailable: 1
+    maxSurge: 0
+    # Pair C verified the pinned hybrid checkpoint before releasing this hold.
+    partition: 0
+  # The two GB10 nodes are arm64 and carry the dgx node role; the arch key is a
+  # recipe choice now, not a renderer default, so a single-host recipe can omit it
+  # (qwen38-flash-next.yaml:169-171). The site parameter `node_selector` layers the
+  # operator's extra labels on top.
+  nodeSelector:
+    kubernetes.io/arch: arm64
+    node-role.kubernetes.io/dgx: ""
+  # The dgx taint keeps everything else off the GPU nodes (qwen38-flash-next.yaml:191-195).
+  tolerations:
+    - key: dgx
+      operator: Equal
+      value: "true"
+      effect: NoSchedule
+  # A single GPU count feeds requests and limits alike, so the two can never disagree
+  # (nvidia.com/gpu 4 at qwen38-flash-next.yaml:685, 688). rdma: true adds the RDMA
+  # allocator resource (rdma/dgx_roce 63 at qwen38-flash-next.yaml:686, 689) from the
+  # rdma_resource/rdma_units parameters, also into both maps.
+  gpu: 4
+  rdma: true
+  # The non-device resources are the accepted request; there is deliberately no memory
+  # or cpu limit -- these unified-memory GB10 nodes OOM-killed this model's loader
+  # under the previous 120Gi cap, and GPU/RDMA are the only guarded resources
+  # (qwen38-flash-next.yaml:675-689).
+  resources:
+    requests:
+      cpu: "8"
+      memory: 96Gi
+      ephemeral-storage: 128Gi
+    limits: {}
+  # Root for effective IPC_LOCK so RDMA can pin pages (qwen38-flash-next.yaml:327-332).
+  securityContext:
+    runAsUser: 0
+    capabilities:
+      add: [IPC_LOCK]
+  # The pod runs the fetched weights under group 0 (qwen38-flash-next.yaml:199-200).
+  podSecurityContext:
+    fsGroup: 0
+  # The two hostPath volumes are DirectoryOrCreate on the node's NVMe; their paths come
+  # from the jit_storage_path/model_storage_path parameters, the type from here
+  # (qwen38-flash-next.yaml:754-765).
+  volumes:
+    hostPathType: DirectoryOrCreate
+  # httpGet probes on the probe sidecar's /readyz. The startup window is the two-hour
+  # first-boot budget the live manifest carries (failureThreshold 240 at
+  # qwen38-flash-next.yaml:715, period 30 at line 711); the readiness window is the live
+  # 6 x 15s tolerance (qwen38-flash-next.yaml:727-732). No livenessProbe: the container
+  # execs vLLM as PID 1 and the accepted manifests carry none -- a liveness window that
+  # timed out under a long prefill is what previously killed healthy groups, so it is
+  # only emitted once /livez is measured on both ranks.
+  probes:
+    startup:
+      periodSeconds: 30
+      timeoutSeconds: 5
+      failureThreshold: 240
+    readiness:
+      periodSeconds: 15
+      timeoutSeconds: 5
+      failureThreshold: 6
+  # The HF cache root the launcher downloads into before it publishes; the
+  # engine only ever reads `model_path`. One volume, one identity: the published
+  # root is `<storage_root>/<served-model-name>`, which
+  # image_tools/launcher_data_test.py asserts.
+  storage_root: /models
+  model_path: /models/qwen38-flash-next
+  # The checkpoint's tensor payload is about 99 GiB. In ram mode the PLE tables
+  # are copied from the published safetensors once at boot, so the published
+  # root must stay local and readable for load and restart rather than for
+  # every forward pass.
+  storage_min_free_gib: 130
+  download_workers: 8
+  ignore_patterns: []
+  # Loaded after the weights. Naming them lets the image helper fail on a
+  # truncated snapshot instead of the engine failing at model load.
+  required_files:
+    - tokenizer_config.json
+    - chat_template.jinja
+  # -- site fields ---------------------------------------------------------------
+  # This is a two-node RoCE shape, so the shared set in
+  # `recipes-site/src/data/site-parameters.js` declares eleven fields on top of the
+  # eight every deployment asks for: the Multus attachment, the exclusive-topology
+  # key and values, the RDMA resource and its units, the HCA pair, the GID index, the
+  # host control interface and the two rank addresses. Each carries its label, type,
+  # requirement and explanation there, and every one of them already matches what the
+  # accepted group runs -- the Secret is `huggingface-token`/`HF_TOKEN`, the attachment
+  # `roce-net`, the allocator `rdma.com/roce` at one unit per rank, the HCA pair
+  # `rocep1s0f1,roceP2p1s0f1` at GID index 3 (qwen38-flash-next.yaml:686, 689 and the
+  # network guide). Two defaults are this deployment's own and are the only thing
+  # stated here: its resource name, and the JIT cache directory named after it
+  # (the model cache stays at the shared /var/lib/models).
+  parameters:
+    name:
+      default: qwen38-flash-next
+    jit_storage_path:
+      default: /var/cache/vllm/qwen38-flash-next
+# The measured panel the recipe page renders, from the run recorded in
+# `validation.evidence`. Every number, qualifier and "not measured" statement is
+# here rather than in the page, so the site cannot show a figure this file does
+# not carry. `primary` marks the column the panel emphasises; `unit` and `notes`
+# are the suffix and the small note the markup carried.
+benchmark:
+  tool: llm-inference-bench
+  version: 0.7.5
+  context:
+    - Decode capacity sweep
+    - llm-inference-bench 0.7.5
+    - 30 seconds per cell
+    - One sample per cell
+    - Concurrency 1, 4, 8
+    - Contexts 0 and 16K
+    - Prefill scouts 8K to 128K
+  tables:
+    - id: decode
+      title: Sustained decode
+      aria_label: Qwen3.8 Flash Next sustained decode results
+      columns:
+        - Concurrency
+        - Aggregate decode, empty context
+        - Aggregate decode, 16K context
+        - Engine steps/s, empty context
+        - Engine steps/s, 16K context
+      rows:
+        - cells:
+            - text: C=1
+            - text: "52.5"
+              unit: tok/s
+              primary: true
+            - text: "51.0"
+              unit: tok/s
+            - text: "23.4"
+              unit: /s
+              notes: [accept length 2.24]
+            - text: "23.6"
+              unit: /s
+              notes: [accept length 2.16]
+        - cells:
+            - text: C=4
+            - text: "126.7"
+              unit: tok/s
+              primary: true
+            - text: "129.4"
+              unit: tok/s
+            - text: "59.3"
+              unit: /s
+              notes: [accept length 2.14]
+            - text: "61.1"
+              unit: /s
+              notes: [accept length 2.12]
+        - cells:
+            - text: C=8
+            - text: "181.8"
+              unit: tok/s
+              primary: true
+            - text: "175.2"
+              unit: tok/s
+            - text: "86.8"
+              unit: /s
+              notes: [accept length 2.09]
+            - text: "84.4"
+              unit: /s
+              notes: [accept length 2.08]
+    - id: prefill
+      title: Prefill
+      aria_label: Qwen3.8 Flash Next prefill results
+      columns:
+        - Prompt length
+        - Prefill
+        - Time to first token
+        - Padded-draft image
+        - Padded-draft TTFT
+      rows:
+        - cells:
+            - text: 8K
+            - text: "2,857"
+              unit: tok/s
+              primary: true
+            - text: "2.87"
+              unit: s
+            - text: 2,857 tok/s
+            - text: 2.87 s
+        - cells:
+            - text: 16K
+            - text: "2,882"
+              unit: tok/s
+              primary: true
+            - text: "5.61"
+              unit: s
+            - text: 2,898 tok/s
+            - text: 5.65 s
+        - cells:
+            - text: 64K
+            - text: "2,664"
+              unit: tok/s
+              primary: true
+            - text: "24.07"
+              unit: s
+            - text: 2,663 tok/s
+            - text: 24.61 s
+        - cells:
+            - text: 128K
+            - text: "2,416"
+              unit: tok/s
+              primary: true
+            - text: "52.98"
+              unit: s
+            - text: 1,873 tok/s
+            - text: 69.98 s
+  notes:
+    - title: Method
+      body: >-
+        `llm_decode_bench.py` from `local-inference-lab/llm-inference-bench`
+        0.7.5, against the group's rank-zero endpoint on the model port directly,
+        not through the Gateway. Thirty-second duration-mode cells, one sample per
+        cell, temperature 1, maximum 8,192 output tokens, integrated prefill
+        scouts, loop detection on. The measurement ran from a separate x86-64
+        workstation, so no hardware panel was collected, and burst/end-to-end
+        cells were not requested.
+    - title: Conditions
+      body: >-
+        The run was taken on one TP=2 group confirmed idle before and after (zero
+        running, zero waiting); the other group was left serving. Configuration:
+        GitOps revision `818be2ad4`, image version above. The padded-draft columns
+        are the same benchmark on the other group, running the previous image
+        (vLLM `b607be360037`, B12X `b600bf26c8e4`, MTP experts padded 320 to 384)
+        without adaptive spin; both images and both node pairs differ between the
+        columns.
+    - title: Capacity
+      body: >-
+        Every cell held its concurrency with nothing queued - the C=8 cells report
+        eight running requests and zero waiting. The recipe sets `--max-num-seqs
+        8`, so C=8 exactly fills the scheduler's sequence slots. Aggregate figures
+        are duration-weighted per-request decode, not total server throughput,
+        because concurrent generation intervals overlap.
+    - title: Speculative normalisation
+      body: >-
+        Steps per second is decode throughput divided by the accept length the
+        engine measured for that cell (accepted draft tokens plus the bonus token,
+        against a nominal four tokens per step). It removes acceptance-rate
+        variation, which moves between runs at temperature 1: aggregate decode at
+        C=1 with empty context read 45.1 tok/s at accept length 1.93 on the
+        padded-draft run and 52.5 at 2.24 here, while steps per second read 23.4
+        on both.
+    - title: Run-to-run spread
+      body: >-
+        Engine steps per second agree with the padded-draft run within three
+        percent in every decode cell, and prefill agrees within one percent up to
+        64K. That matches the kernel measurement: unpadded MTP experts save
+        nothing at the one to four tokens the draft processes per step. The 128K
+        prefill cell varies between runs - 2,416, 1,873 and 2,369 tok/s across
+        three single samples - so read it as a range, not a quotable number.
+    - title: Not measured
+      body: >-
+        Prefix-cache reuse through the router, gateway-path overhead, mixed
+        workloads, and any figure for a cluster other than the one described
+        above. These are observations of this stack on GB10, not hardware
+        guarantees.
+validation:
+  image: ghcr.io/randomvariable/vllm-b12x-multi@sha256:43aaf6d1b5e0b96bff630f5b5211afccd1b4838c40a29864aaee3eb7dae6cbde
+  # Two GB10 nodes over RoCE as one LeaderWorkerSet, which is what the live
+  # deployment runs and what `launch.topology` selects.
+  kubernetes: verified
+  docker: unverified
+  evidence: >-
+    Accepted live on 2026-09-30 in the author's GB10 cluster (two independent TP=2
+    groups on four nodes, GitOps revision 818be2ad4) running the ram PLE mode, 0.74
+    utilization, a 32-token CUDA graph capture cap,
+    VLLM_B12X_MXFP8_ACTIVATION_MODE=quantized, adaptive shm_broadcast spin with a 50 ms
+    maximum grace, VLLM_PLUGINS empty, the 1,048,576-token max_position_embeddings
+    override, VLLM_QWEN3_8_PREFILL_COALESCE unset (the eager-mode IMA discriminator is
+    permanently parked), and rank-zero KV-event publishing (--enable-scale-out plus
+    --kv-events-config). The four live ranks run version
+    0.29.0+rv.mxfp8.mtp.0a6739845a32.965e748f74fe.c6f1c3f3e582: vLLM 0a6739845a32 on
+    dev/rv-mxfp8-mtp with B12X 965e748f74fe on feat/mxfp8-moe. That source pair is
+    published as vllm-multiarch-oci v20261001.1, and validation.image pins that
+    release digest - the same image the GB10 groups above serve.
+    Kernel selection in the rank-0 log: B12X for the NVFP4 target experts, B12X_MXFP8
+    for the MTP draft experts at their unpadded 320-wide TP=2 intermediate, and
+    nothing on Marlin. The benchmark panel is a separate run: llm-inference-bench 0.7.5
+    against one idle group's rank-zero endpoint, 30 seconds per cell, one sample per
+    cell, concurrency 1/4/8 at contexts 0 and 16K, prefill scouts at 8K/16K/64K/128K.
+guide:
+  hardware: Two arm64 GB10 nodes, one physical integrated GPU per node, with a working RoCE secondary network and at least 130 GiB free model storage per node for the 99 GiB checkpoint.
+  fixed_tuning: TP=2, MTP depth 3, 0.74 GPU memory utilization, 1,048,576-token maximum context from a 4x YaRN override, eight sequences, 8,192 batched tokens, decode-aware prefill scheduling, FP8 KV cache, full and piecewise CUDA graphs capped at a 32-token capture size, B12X GDN prefill and decode, quantized B12X MXFP8 activations, NVFP4 target experts and MXFP8 MTP draft experts both on B12X kernels, PLE tables in page-locked host memory, and KV-event publishing from rank zero only. Never set CUDA_LAUNCH_BLOCKING, because b12x does not function with synchronous kernel launches.
+  networking: Primary control traffic uses the operator-selected socket interfaces; tensor-parallel collectives use the selected RDMA HCAs. Kubernetes allocator units do not describe physical device counts.
+  safety: Stop both ranks gracefully with a 120-second timeout. A long kernel is not grounds for force-killing a GB10 process.

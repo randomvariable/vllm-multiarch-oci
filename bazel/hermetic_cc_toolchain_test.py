@@ -2,6 +2,7 @@
 """Verify the registered C++ toolchain has no worker-path fallback."""
 
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -12,7 +13,11 @@ import importlib.util
 
 
 ROOT = Path(__file__).resolve().parents[1]
-BAZEL = "bazelisk"
+# The same convention the CI lane uses: the caller names the launcher and the
+# default is `bazel`, which is what scripts/ci/bootstrap-arm64-tools.sh installs and
+# what the Justfile invokes. Naming one vendor's program here made the lane runnable
+# only on a workstation that happens to have it on PATH.
+BAZEL = os.environ.get("BAZEL", "bazel")
 PLATFORM = "//platforms:blackwell_arm64_sm12x"
 X86_PLATFORM = "//platforms:blackwell_x86_64_sm120"
 PROBE = "//platforms:hermetic_cc_toolchain_probe"
@@ -34,7 +39,23 @@ def bazel(*args: str, env: dict[str, str] | None = None) -> subprocess.Completed
     )
 
 
+# These cases resolve the graph with //platforms:local_x86_64 as an execution
+# platform and, for two of them, build on it with --spawn_strategy=local: the ARM64
+# root is unpacked by an x86-64 zstd, and the QEMU loader is an x86-64 binary. On an
+# aarch64 host such as the CI build node that platform does not match the machine, so
+# the actions fail with "Exec format error" rather than testing anything. They run
+# on an x86-64 workstation; the native-wrapper case below is host-independent and
+# runs everywhere.
+X86_64_HOST = __import__("platform").machine() == "x86_64"
+
+
+NEEDS_X86_64_HOST = unittest.skipUnless(
+    X86_64_HOST, "needs an x86-64 host: the graph uses //platforms:local_x86_64 for execution"
+)
+
+
 class HermeticCCToolchainTest(unittest.TestCase):
+    @NEEDS_X86_64_HOST
     def test_arm64_sm12x_vllm_extensions_target_full_blackwell_family(self) -> None:
         result = bazel(
             "aquery",
@@ -46,6 +67,7 @@ class HermeticCCToolchainTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("CMAKE_CUDA_ARCHITECTURES=120f", result.stdout)
 
+    @NEEDS_X86_64_HOST
     def test_arm64_sm12x_nccl_target_retains_family_architecture(self) -> None:
         result = bazel(
             "aquery",
@@ -58,6 +80,7 @@ class HermeticCCToolchainTest(unittest.TestCase):
         arguments = json.loads(result.stdout)["actions"][0]["arguments"]
         self.assertEqual(arguments[arguments.index("--cuda-arch") + 1], "120f")
 
+    @NEEDS_X86_64_HOST
     def test_arm64_sm12x_torch_extensions_use_portable_ptx(self) -> None:
         result = bazel(
             "aquery",
@@ -73,6 +96,7 @@ class HermeticCCToolchainTest(unittest.TestCase):
         }
         self.assertEqual(environment["TORCH_CUDA_ARCH_LIST"], "12.0+PTX")
 
+    @NEEDS_X86_64_HOST
     def test_arm64_python_runs_with_declared_loader_and_emulator(self) -> None:
         result = bazel(
             "build",
@@ -87,6 +111,7 @@ class HermeticCCToolchainTest(unittest.TestCase):
         self.assertNotIn("qemu-aarch64-static", result.stderr)
         self.assertNotIn("/lib/ld-linux-aarch64.so.1", result.stderr)
 
+    @NEEDS_X86_64_HOST
     def test_probe_does_not_use_worker_include_paths(self) -> None:
         poisoned = {
             "CPATH": "/worker/include",

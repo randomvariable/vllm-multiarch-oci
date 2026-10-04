@@ -63,9 +63,34 @@ build:remote-multiarch --remote_executor=${REMOTE_EXECUTOR}
 build --repo_env=PATH=${PATH}
 EOF
 
-# Local strategy: these are host Python tests, and the remote ARM64 worker
+# Local strategy: this is a host Python test, and the remote ARM64 worker
 # image carries no python3 interpreter.
 "$BAZEL" test //scripts:all --disk_cache= --test_output=errors
+
+# Scratch stays off the pod's /tmp, which is a tmpfs, for everything below.
+# Every .tekton/ lane already exports TMPDIR onto the CSI workspace; an ad-hoc
+# run gets the same place under the staging dir.
+export TMPDIR="${TMPDIR:-$HOME/.cache/vllm-multiarch-oci}"
+mkdir -p "$TMPDIR"
+
+# The bazel/ lane covers what //scripts:all cannot -- the tests of the Bazel
+# build actions -- and imports nothing beyond the standard library, so it can
+# run here. It runs under Bazel's own hermetic CPython, not the apt python3 the
+# bootstrap installs: the lane has to exercise the 3.12 the image ships, and
+# this pod has no pip, so the base distribution's interpreter could not import
+# anything extra even if a test needed it. The image_tools/ lane, which does
+# need the pyyaml, aiohttp, huggingface_hub and jsonschema that the runtime
+# lock pins, runs in the launcher-tests job of
+# .github/workflows/recipes-pages.yaml instead.
+"$BAZEL" build //bazel:host_python
+host_python="$("$BAZEL" cquery --output=files //bazel:host_python)"
+: "${host_python:?//bazel:host_python names no interpreter for this host: //bazel/BUILD.bazel selects on the CPU and this architecture is not covered}"
+BAZEL_PY="${BAZEL_PY:-$("$BAZEL" info output_base)/${host_python}}"
+test -x "$BAZEL_PY" || {
+    echo "no executable interpreter at $BAZEL_PY" >&2
+    exit 1
+}
+"$BAZEL_PY" -m unittest discover -s bazel -p '*_test.py'
 
 "$BAZEL" build //image:vllmb12x \
     --config=remote-multiarch \

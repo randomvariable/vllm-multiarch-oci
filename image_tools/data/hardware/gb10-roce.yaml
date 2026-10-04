@@ -1,0 +1,68 @@
+schema_version: 1
+kind: hardware
+id: gb10-roce
+status: implemented
+description: >-
+  Two arm64 GB10 nodes, one physical integrated GPU per node, joined by a RoCE
+  secondary network for the tensor-parallel collectives. Every value here is
+  true of that pair of hosts regardless of which model runs on it: cross-node
+  NCCL over RDMA, the b12x RoCE one-shot all-reduce, and the sm_121a
+  architecture the GB10 reports. Model policy lives in the model profiles and
+  site policy in the deployment manifest, not here.
+defaults: {}
+environment:
+  # NCCL still carries the collectives outside RoCEnante's size limits, so the
+  # transport must be IB rather than the socket fallback. The first-boot RoCE
+  # preparation race times out at sequence 1 with the default spin budget on
+  # this topology, which is what B12X_ROCE_SPIN_LIMIT below pays for.
+  NCCL_NET: IB
+  NCCL_IB_DISABLE: "0"
+  NCCL_CROSS_NIC: "1"
+  # Cumem-backed allocations do not survive the two-node bootstrap here; the
+  # accepted live deployment carries this on both ranks.
+  NCCL_CUMEM_ENABLE: "0"
+  NCCL_IGNORE_CPU_AFFINITY: "1"
+  # GB10 has no NVLS switch to register against.
+  NCCL_NVLS_ENABLE: "0"
+  NCCL_DEBUG: WARN
+  TORCH_NCCL_ASYNC_ERROR_HANDLING: "1"
+  # b12x one-shot RoCE collectives for the cross-node TP group. Avoids a torch
+  # NCCL communicator for eligible collectives (~3.4 GB unified memory per
+  # rank). HCA and GID discovery is the runtime's job; fail-stop, never a
+  # silent fallback.
+  VLLM_ENABLE_ROCE_ALLREDUCE: "1"
+  # Covers the 8,192-token TP BF16 hidden-state reduction.
+  VLLM_ROCE_ALLREDUCE_MAX_SIZE: "41943040"
+  # DS4-era proven spin budget for this exact topology (server17<->server19
+  # over enp1s0f1np1 macvlan): the first-boot RoCE prep race times out at seq 1
+  # with the default spin.
+  B12X_ROCE_SPIN_LIMIT: "600000000"
+  # The crossover PCIe all-reduce is single-host policy: on two nodes with one
+  # integrated GPU each there is no peer BAR to map, and leaving it enabled
+  # makes the ranks vote on a backend that cannot carry the traffic.
+  VLLM_ENABLE_PCIE_ALLREDUCE: "0"
+  # Runtime torch cpp_extension builds and the CuTe DSL target only this GPU.
+  # The image bakes NVIDIA's multi-architecture list from the NGC base, and the
+  # GB10 is compute 12.0a in that list; 12.1a names the arch-accelerated form
+  # rather than the family fallback on a pinned single-arch device. Upstream's
+  # rtx-pro-6000-pcie profile carries the same trio for sm_120a.
+  CUTE_DSL_ARCH: sm_121a
+  TORCH_CUDA_ARCH_LIST: "12.1a"
+  FLASHINFER_CUDA_ARCH_LIST: "12.1a"
+  # spawn, not fork: the engine's worker must not inherit the parent's CUDA
+  # context, and the cache arena under /dev/shm is opened by both ranks. The
+  # common layer already exports this value; it is restated because it is a
+  # property of this two-node shared-memory topology, so the hardware profile
+  # stays self-describing.
+  VLLM_WORKER_MULTIPROC_METHOD: spawn
+  # Full thread dump on a hard stall instead of a bare timeout. Cross-node
+  # preparation deadlocks here present as a silent hang in one rank.
+  PYTHONFAULTHANDLER: "1"
+# No model_environment: the per-model entries in upstream's
+# rtx-pro-6000-pcie.yaml tune the crossover PCIe all-reduce (one-shot and
+# two-shot size ceilings, DMA floors, NCCL channel counts), which this hardware
+# disables outright, and the Qwen HC weight sharding that the accepted GB10
+# deployment leaves at its default (VLLM_QWEN3_8_FLASH_NEXT_HC_TP stays unset;
+# PR 779's sharding is separate from the parked prefill-coalesce controls).
+# Nothing else here is model-specific: it is the RoCE transport, the spin
+# budget and the architecture list.

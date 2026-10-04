@@ -6,6 +6,7 @@ load("@runtime_deps_x86_64//:requirements.bzl", runtime_x86_requirements = "all_
 load("@rules_oci//oci:defs.bzl", "oci_image_index", "oci_push")
 load("@bazel_skylib//rules:write_file.bzl", "write_file")
 load("//bazel:accounts_layer.bzl", "accounts_layer")
+load("//bazel:launcher_data_layer.bzl", "launcher_data_layer")
 load("//bazel:provenance_layer.bzl", "provenance_layer")
 load("//bazel:venv_layer.bzl", "venv_layer")
 load("//bazel:vllm_image.bzl", "vllm_image")
@@ -102,6 +103,7 @@ write_file(
         "LD_LIBRARY_PATH=/opt/nccl/lib:/opt/cusparselt/lib:/usr/local/cuda/lib64:$LD_LIBRARY_PATH",
         "LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libmimalloc.so.3",
         "PATH=/opt/venv/bin:$PATH",
+        "PYTHONPATH=/opt/venv/lib/python3.12/site-packages",
         "TORCH_CUDA_ARCH_LIST=12.0+PTX",
         "VLLM_DISABLED_KERNELS=MarlinFP8ScaledMMLinearKernel",
     ],
@@ -116,6 +118,7 @@ write_file(
         "LD_LIBRARY_PATH=/opt/nccl/lib:/opt/cusparselt/lib:/usr/local/cuda/lib64:$LD_LIBRARY_PATH",
         "LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libmimalloc.so.3",
         "PATH=/opt/venv/bin:$PATH",
+        "PYTHONPATH=/opt/venv/lib/python3.12/site-packages",
         "TORCH_CUDA_ARCH_LIST=12.0",
         "VLLM_DISABLED_KERNELS=MarlinFP8ScaledMMLinearKernel",
     ],
@@ -174,6 +177,7 @@ provenance_layer(
         "exllamav3": "@vllmb12x_exllamav3//:source.identity.json",
         "flashinfer": "@vllmb12x_flashinfer//:source.identity.json",
         "instanttensor": "@vllmb12x_instanttensor//:source.identity.json",
+        "lil_runtime": "@vllmb12x_lil_runtime//:source.identity.json",
         "lmcache": "@vllmb12x_lmcache//:source.identity.json",
         "llguidance": "@vllmb12x_llguidance//:source.identity.json",
         "nccl": "@vllmb12x_nccl//:source.identity.json",
@@ -196,6 +200,18 @@ provenance_layer(
     output = "vllmb12x-sources-lock.tar",
 )
 
+# The launcher turns a recipe or an upstream profile into a running server, so the
+# pinned policy tree has to travel with the image: a launch must never reach for the
+# upstream repository. Only its data ships, never its Python; see
+# bazel/launcher_data_layer_action.py for the selected file set.
+launcher_data_layer(
+    name = "launcher_data",
+    upstream_source = "@vllmb12x_lil_runtime//:source.tar",
+    hardware = "//image_tools/data:hardware",
+    recipes = "//recipes:all_yaml_files",
+    output = "launcher-data.tar",
+)
+
 # The base passwd file ends at the `ubuntu` account. A pod that pins its own
 # runAsUser gets an unnamed uid, so expanduser("~") resolves to "/" and imports
 # that create a workspace below the home directory fail. Name one account at a
@@ -216,6 +232,7 @@ vllm_image(
     # PyTorch links against cuSPARSELt, which NVIDIA's CUDA devel image omits.
     cuda_layer = ":cusparselt_layer",
     env = _IMAGE_ENV,
+    launcher_data_layer = ":launcher_data",
     provenance_layer = ":vllmb12x_sources_lock",
     venv_layers = [
         ":runtime_venv",

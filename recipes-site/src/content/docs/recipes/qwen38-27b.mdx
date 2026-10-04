@@ -1,0 +1,63 @@
+---
+title: Qwen3.8-27B on one RTX PRO 6000 system
+description: The single-node Qwen3.8-27B QAD deployment recipe, with a batch-size-keyed MTP schedule.
+sidebar:
+  label: Qwen3.8-27B
+---
+
+import BenchmarkPanel from "../../../components/BenchmarkPanel.astro";
+
+<p class="eyebrow">Runtime recipe · Qwen3.8-27B</p>
+
+This is the public form of the single-node deployment I run for the QAD checkpoint `local-inference-lab/Qwen3.8-27B-NVFP4-QAD` at revision `f40a31cd813a`. One discrete RTX PRO 6000 Blackwell Max-Q (`sm_120`) owns the whole model, so this is a plain single-replica Kubernetes `Deployment` rather than a LeaderWorkerSet: there is no second rank to rendezvous with, no collective to carry over a secondary network, and no KV-event stream for a router to index. Its image is the pinned [`local-inference-lab/vLLM`](https://github.com/local-inference-lab/vllm) fork, not an arbitrary upstream vLLM release.
+
+<dl class="fact-grid">
+  <div><dt>Model</dt><dd>local-inference-lab/Qwen3.8-27B-NVFP4-QAD</dd></div>
+  <div><dt>Model revision</dt><dd>f40a31cd813a6746067e7d6446ff2cb708dbb779</dd></div>
+  <div><dt>Topology</dt><dd>1 node · TP=1 · one discrete GPU</dd></div>
+  <div><dt>Context</dt><dd>1,048,576 tokens</dd></div>
+</dl>
+
+## How the checkpoint reaches the engine
+
+The engine downloads it. `vllm-image launch --recipe qwen38-27b` runs no model-sync phase, because the recipe declares no `deployment.model_path`: vLLM resolves the repository id itself into `HF_HOME` on the node-local NVMe hostPath, so the 21.16 GiB payload is fetched once and reused across restarts, and `--revision` pins the commit a cached snapshot resolves against. That is also why `HF_HUB_OFFLINE` is `0` here where the two-node recipes ship `1`: an offline first start of a repository this node has never fetched would fail. The two commands differ accordingly:
+
+```bash
+# Two-node groups: the launcher publishes a snapshot, the engine loads a directory.
+vllm-image launch --recipe qwen38-flash-next-gb10-tp2 --topology lws --model-sync
+
+# This recipe: one container, one GPU, the engine resolves the hub itself.
+vllm-image launch --recipe qwen38-27b --topology single
+```
+
+`--print-config` on the second one is the authoritative list of what the container will run; `docs` in the recipe file carries the per-value explanation for every setting upstream does not document.
+
+## What is fixed
+
+The recipe preserves the accepted runtime: MTP at depth 3 on a **batch-size-keyed schedule**, 0.92 GPU memory utilization, a 1,048,576-token context from a static factor-4 YaRN override, 32 sequences, an 8,192-token batch budget, a 128-token CUDA graph capture cap derived from the sequence cap times the speculative width, FP8 KV cache, prefix caching with a 16-token match unit and mamba cache mode `align`, eight images per prompt, `modelopt_mixed` quantization, and `b12x` as the linear backend through `--kernel-config`.
+
+Two of those are worth the reasoning, because both look like tunables and neither is.
+
+**The speculative schedule is a power result, not a preference.** The device is power-capped at 300 W. With static MTP-3, aggregate decode measured 42-99 tok/s at one stream and roughly 20-40 at two, then collapsed to 2.2 tok/s at three or more: draft passes plus split verify batches blow the power budget and every stream starves until client idle watchdogs fire. The schedule keeps full MTP-3 for one or two concurrent streams, where acceptance runs 3.5 of 3 nominal at 85 percent or better, and disables speculation at three or more so every step yields a token per stream. Acceptance-length adaptation (`adaptive_speculative_tokens_*`) is deliberately unset: acceptance is already high, and a batch-size schedule expresses the policy without per-request tuning noise.
+
+**The YaRN override is written out, not derived.** This checkpoint is native at 262,144 positions with `rope_type` `default`, and it carries no `mrope_section` for the resolver's derivation to preserve; the two-node Qwen recipe relies on that derivation, and borrowing it here would have produced the wrong override. So the `--hf-overrides` block states `max_position_embeddings`, `rope_type: yarn`, `factor: 4.0` and `original_max_position_embeddings` explicitly. `ModelConfig._apply_dict_overrides` recurses into `text_config` and merges into `rope_parameters`, so the keys the checkpoint does carry survive.
+
+The quantization is mixed per prefix: `hf_quant_config.json` declares `modelopt` / `MIXED_PRECISION` with MXFP8 at group 32 for the attention, GDN and `lm_head` projections and NVFP4 at group 16 for the MLP projections, while the MTP head and the vision tower are absent from that map and load unquantized from the source-preserved shards. Both FlashInfer MXFP8 linear kernels are excluded through `VLLM_DISABLED_KERNELS` because the QAD checkpoint's fused GDN `in_proj_ba` is 96 rows wide and the FlashInfer kernels' minimum dimension is asserted only inside `apply_weights`, which is during `profile_run` rather than at kernel selection. With `linear_backend=b12x` that exclusion is inert and kept only so reverting the backend restores the previous behaviour exactly; the reason three other `b12x` controls are *not* set is recorded in the recipe file so none of them is retried.
+
+## Validation status
+
+This recipe is **unverified on the site's terms**, and says so rather than implying otherwise. The deployment ran live and served, but the build it ran on was `vllm-b12x-multi` PR-28 (vLLM `588bc2641de6`, B12X `2b1a2358b9f0`), which was published only as a pull-request artifact and never reached a public registry. `validation.image` is therefore absent: the field exists to point a reader at the image a configuration was accepted on, and naming a different digest would be a false reference. Until a public build carrying that pair is published, treat the numbers below as observations from one host, and expect a current public release to behave differently.
+
+## Measured performance
+
+The figures below are rendered from this recipe's `benchmark` block, which `scripts/build-data.mjs` validates. They are DCGM samples read against the engine's own logs, not a benchmark-harness run, and the one projected figure is marked as a projection.
+
+<BenchmarkPanel slug="qwen38-27b" />
+
+## Before applying output
+
+- The host needs room on the model hostPath for the 21.16 GiB checkpoint plus the roughly 31.6 GB the first start downloads before the engine loads, and room on the JIT hostPath for the triton, inductor, flashinfer, xet and b12x compile caches. A warm b12x cache is the difference between a 60.74 s boot and a 172.09 s one.
+- Keep the 60-minute startup budget. A first start downloads the checkpoint and then compiles and captures graphs; shortening it kills an engine that is still making progress.
+- `HOME`, `HF_HOME` and every compiler-cache path are pinned to the node's persistent volumes on purpose, and the recipe's `docs` block explains each one. Components derive cache locations from `~`, and the container filesystem is not one of them.
+- Never set `CUDA_LAUNCH_BLOCKING`: b12x does not function with synchronous kernel launches.
+- Requests go to one container on one GPU, so nothing here depends on a RoCE fabric, a Multus attachment, an RDMA allocator resource or a rank-zero-only KV-event stream.

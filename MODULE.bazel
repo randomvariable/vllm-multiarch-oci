@@ -245,6 +245,7 @@ use_repo(
     "vllmb12x_exllamav3",
     "vllmb12x_flashinfer",
     "vllmb12x_instanttensor",
+    "vllmb12x_lil_runtime",
     "vllmb12x_lmcache",
     "vllmb12x_llguidance",
     "vllmb12x_nccl",

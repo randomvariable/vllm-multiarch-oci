@@ -18,6 +18,18 @@ if SPEC is None or SPEC.loader is None:
 ACTION_LIB = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(ACTION_LIB)
 
+# The launcher data layer builds its fixture tree in its own test module, which
+# owns what the layer selects. It is loaded the same way action_lib is so the
+# byte-identity checks below describe exactly that layer, not a second copy of it.
+_LAYER_FIXTURES = Path(__file__).with_name("launcher_data_layer_test.py")
+if not _LAYER_FIXTURES.is_file():
+    _LAYER_FIXTURES = Path(__file__).parents[1] / "bazel" / "launcher_data_layer_test.py"
+LAYER_SPEC = importlib.util.spec_from_file_location("launcher_data_layer_test", _LAYER_FIXTURES)
+if LAYER_SPEC is None or LAYER_SPEC.loader is None:
+    raise RuntimeError("unable to load launcher_data_layer_test")
+LAYER = importlib.util.module_from_spec(LAYER_SPEC)
+LAYER_SPEC.loader.exec_module(LAYER)
+
 
 class ReproducibilityTests(unittest.TestCase):
     def test_write_tar_normalizes_modes(self):
@@ -100,6 +112,62 @@ class ReproducibilityTests(unittest.TestCase):
                 line for line in second.stdout.splitlines() if line.startswith("--frandom-seed=")
             ]
             self.assertEqual(first_seed, second_seed)
+
+
+class LauncherDataLayerTarTests(unittest.TestCase):
+    # A layer tar is a Bazel build artifact exactly like the wheel and provenance
+    # outputs above, so its reproducibility is proven here: an image digest means
+    # nothing unless the tar under it is a pure function of its declared inputs.
+    # The selection, collision and completeness rules for this layer stay in
+    # bazel/launcher_data_layer_test.py.
+
+    def setUp(self):
+        self._temporary = tempfile.TemporaryDirectory()
+        self.base = Path(self._temporary.name)
+        self.recipes, self.hardware = LAYER.make_overlay(self.base)
+        self.archive = LAYER.make_source_archive(self.base, LAYER.make_upstream(self.base))
+
+    def tearDown(self):
+        self._temporary.cleanup()
+
+    def test_tar_is_byte_identical_across_two_runs(self):
+        first = LAYER.run_action(self.base / "one", self.archive, self.recipes, self.hardware)
+        second = LAYER.run_action(self.base / "two", self.archive, self.recipes, self.hardware)
+
+        self.assertEqual(first.read_bytes(), second.read_bytes())
+        with tarfile.open(first) as contents:
+            self.assertEqual(
+                {member.name for member in contents if member.isfile()},
+                LAYER.expected_paths(),
+            )
+
+    def test_tar_does_not_depend_on_checkout_modes(self):
+        # write_tar records the on-disk mode, so an operator's umask must not
+        # reach the layer digest.
+        reference = self.run_with_modes(0o600, 0o700, "strict")
+        variant = self.run_with_modes(0o664, 0o775, "loose")
+
+        self.assertEqual(reference.read_bytes(), variant.read_bytes())
+        with tarfile.open(reference) as contents:
+            members = {member.name: member for member in contents}
+        recipe = members[f"{LAYER.ROOT}/recipes/qwen38-27b.yaml"]
+        self.assertTrue(recipe.isfile())
+        self.assertEqual(recipe.mode, 0o644)
+        self.assertEqual(recipe.uid, 0)
+        self.assertEqual(recipe.gid, 0)
+        self.assertEqual(recipe.mtime, 0)
+        directory = members[f"{LAYER.ROOT}/{LAYER.RUNTIME}/profiles"]
+        self.assertTrue(directory.isdir())
+        self.assertEqual(directory.mode, 0o755)
+
+    def run_with_modes(self, file_mode: int, directory_mode: int, name: str) -> Path:
+        # Both overlay trees: the hardware profiles live under //image_tools/data
+        # and the recipes under //recipes, and either one's on-disk mode would
+        # otherwise reach the layer digest.
+        for directory in (LAYER.data_dir(self.base), LAYER.recipes_dir(self.base)):
+            for path in directory.rglob("*"):
+                path.chmod(directory_mode if path.is_dir() else file_mode)
+        return LAYER.run_action(self.base / name, self.archive, self.recipes, self.hardware)
 
 
 if __name__ == "__main__":

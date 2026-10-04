@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: Apache-2.0
+"""One recipe per deployment, in a directory per model owner.
+
+These are the files `vllm-image launch --recipe NAME` reads: the recipe's name
+is the file stem, which is also `meta.slug` and the selection string the site
+publishes. The launcher searches this tree, so the owner directory carries the
+provenance of the checkpoint while the name stays the identity a deployment
+selects. //bazel/launcher_data_layer.bzl installs them flat below
+/opt/vllm-image/recipes, and it refuses a stem two owners both declare.
+"""
+
+package(default_visibility = ["//visibility:public"])
+
+filegroup(
+    name = "all_yaml_files",
+    srcs = glob(["*/*.yaml"]),
+)

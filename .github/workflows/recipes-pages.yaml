@@ -8,6 +8,11 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "17 * * * *"
+  # A published release changes the history the deployment flow lists, so the
+  # site regenerates the moment one lands rather than waiting for the hour.
+  release:
+    types:
+      - published
 
 permissions:
   contents: read
@@ -48,9 +53,18 @@ jobs:
       - name: Install dependencies
         run: pnpm --dir recipes-site install --frozen-lockfile
 
-      - name: Use deterministic image metadata for pull requests
+      - name: Use deterministic site data for pull requests
         if: github.event_name == 'pull_request'
-        run: cp recipes-site/tests/fixtures/latest-image.json recipes-site/public/latest-image.json
+        env:
+          FIXTURES: recipes-site/tests/fixtures
+        run: |
+          set -euo pipefail
+          # No network on this path: GitHub Releases, the pinned upstream policy
+          # data and the resolved configurations all come from committed
+          # fixtures, so a pull request builds the same shape the trunk will.
+          cp "$FIXTURES/latest-image.json" recipes-site/public/latest-image.json
+          node recipes-site/scripts/resolve-releases.mjs --fixture "$FIXTURES/releases.json"
+          node recipes-site/scripts/resolve-configs.mjs --fixture-dir "$FIXTURES"
 
       - name: Install checksum-verified crane
         if: github.event_name != 'pull_request'
@@ -99,6 +113,44 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Install the resolver's PyYAML
+        if: github.event_name != 'pull_request'
+        # configs.json is produced by running the launcher's own resolver under
+        # the runner's Python, and that resolver needs exactly one third-party
+        # module. The version is the one the image locks in
+        # profiles/vllmb12x/requirements.lock and the one prepare-pyodide.mjs
+        # packages for the browser, so all three resolve a recipe identically.
+        # Pull requests skip it because they read committed fixtures instead.
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check --no-input pyyaml==6.0.3
+          python3 -c 'import yaml; print("pyyaml", yaml.__version__)'
+
+      - name: Resolve releases, configurations and option documentation
+        if: github.event_name != 'pull_request'
+        env:
+          WORK_DIR: ${{ runner.temp }}/recipes-site-data
+          IMAGE_REF_FILE: recipes-site/public/latest-image.json
+        run: |
+          set -euo pipefail
+          # The two sources of truth, in the order that keeps the build honest:
+          # the published releases, then the launcher's own resolver run against
+          # the pinned upstream policy tree, then the browser's copy of that
+          # resolver. Every artefact is validated as it is produced, so a stale
+          # pin or a recipe that no longer resolves fails here, not on the site.
+          #
+          # The configurations come from the published image, not from the runner's
+          # Python. The resolver reads its own installed packages to decide the
+          # vLLM fallback presets and whether b12x runs the MXFP8 draft experts, so
+          # a runner without vLLM installed would answer differently from the
+          # container that serves the recipe, and the site would print that answer.
+          # Unlike the image-resolution step above, this one does not fall back: a
+          # red Pages build is visible and retriable, a wrong command is silent.
+          image_reference="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["reference"])' "$IMAGE_REF_FILE")"
+          node recipes-site/scripts/resolve-releases.mjs
+          node recipes-site/scripts/resolve-configs.mjs --work-dir "$WORK_DIR" --image "$image_reference"
+          node recipes-site/scripts/prepare-pyodide.mjs --work-dir "$WORK_DIR"
+
       - name: Test image resolver
         run: python3 -m unittest scripts/resolve_recipe_image_test.py
 
@@ -132,3 +184,92 @@ jobs:
       - name: Deploy GitHub Pages
         id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+  # The image_tools host lane: the launcher, data, proxy and parity tests that
+  # need the modules the runtime lock pins. They cannot be py_test targets --
+  # the pip hubs are download_only, so they publish wheels for the image layers
+  # and no importable py_library -- and the pinned Tekton step image carries no
+  # python3 and no pip, so the lane could only ever fail there. The bazel/ lane
+  # stays in the Tekton script, where Bazel hands out its own interpreter and
+  # nothing those tests import is outside the standard library, and the
+  # scripts/ tests are //scripts:all in that same lane. This job is what makes
+  # the parity gate a gate: it is the only place the pinned upstream tree is
+  # fetched, and the only place the lane is told that tree is mandatory.
+  launcher-tests:
+    name: image_tools host lane
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # The parity gate fails instead of skipping when the pinned upstream tree
+      # is mandatory -- and CI is exactly where it is mandatory, because that
+      # is the only place the gate has ever had a chance to catch drift.
+      LIL_RUNTIME_REQUIRED: "1"
+      # Where the fetch step below lands upstream's tree, and the path
+      # image_tools/launcher_parity_test.py resolves it from.
+      LIL_RUNTIME_CHECKOUT: ${{ github.workspace }}/.lil-runtime
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          # The interpreter the image itself runs on: MODULE.bazel pins the
+          # Bazel Python toolchain to 3.12 and the runtime lock was compiled
+          # against it, so the lanes exercise the same language version.
+          python-version: "3.12"
+
+      - name: Install the modules the lane imports
+        run: |
+          set -euo pipefail
+          # Exactly the versions profiles/vllmb12x/requirements-x86_64.lock
+          # carries for the image. A bump must come from a refresh of that
+          # lock, never from this file: a lane that parses YAML or JSON with a
+          # different library than the shipped venv does is not testing the
+          # image, and the parity gate compares two readers of the same files.
+          # jsonschema is here because the parity gate executes upstream's own
+          # runtime/launcher.py, which imports it at module scope -- our port
+          # validates without it, upstream does not.
+          python -m pip install --disable-pip-version-check --no-input \
+              pyyaml==6.0.3 \
+              aiohttp==3.14.3 \
+              huggingface-hub==1.33.0 \
+              jsonschema==4.26.0
+          python -c 'import aiohttp, huggingface_hub, jsonschema, yaml; print("aiohttp", aiohttp.__version__, "huggingface_hub", huggingface_hub.__version__, "jsonschema", jsonschema.__version__, "pyyaml", yaml.__version__)'
+
+      - name: Fetch the pinned upstream launcher tree
+        env:
+          PROFILE: profiles/vllmb12x/profile.json
+        run: |
+          set -euo pipefail
+          # Remote and commit are read from the profile rather than duplicated
+          # here: scripts/refresh-vllmb12x.py moves them together with the vLLM
+          # and B12X pins, and a second literal in this file would go stale in
+          # silence -- which is how the parity gate became a skip.
+          pin="$(python -c 'import json,sys; s=json.load(open(sys.argv[1]))["sources"]["lil_runtime"]; print(s["remote"], s["commit"])' "$PROFILE")"
+          remote="${pin%% *}"
+          commit="${pin##* }"
+          test -n "$commit" || { echo "$PROFILE carries no lil_runtime commit" >&2; exit 1; }
+          rm -rf "$LIL_RUNTIME_CHECKOUT"
+          # Depth 1 on the commit object itself, never a branch, so the tree
+          # cannot move under the run between the fetch and the checkout.
+          git init --quiet "$LIL_RUNTIME_CHECKOUT"
+          git -C "$LIL_RUNTIME_CHECKOUT" remote add origin "$remote"
+          git -C "$LIL_RUNTIME_CHECKOUT" fetch --depth 1 --no-tags origin "$commit"
+          git -C "$LIL_RUNTIME_CHECKOUT" checkout --quiet --detach FETCH_HEAD
+          # The parity gate asserts this against the profile too; printing it
+          # leaves the fetched commit in the log for whoever reads the run.
+          git -C "$LIL_RUNTIME_CHECKOUT" rev-parse HEAD
+
+      - name: Run the image_tools lane
+        run: |
+          set -euo pipefail
+          # The parity gate in this lane fails rather than skips: CI is the one
+          # environment where the pinned upstream tree must be present, and the
+          # lane prints the number of combinations it actually compared.
+          python -m unittest discover -s image_tools -p '*_test.py'
+
