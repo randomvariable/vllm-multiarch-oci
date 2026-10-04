@@ -67,20 +67,30 @@ EOF
 # image carries no python3 interpreter.
 "$BAZEL" test //scripts:all --disk_cache= --test_output=errors
 
-# The three host Python lanes -- bazel/, image_tools/ and scripts/ -- run in
-# the launcher-tests job of .github/workflows/recipes-pages.yaml, not here.
-# This pod cannot host them honestly: the bootstrap above installs the base
-# image's python3 with no pip, so the image_tools lane could never import the
-# PyYAML, aiohttp or huggingface_hub that the runtime lock in profiles/ pins
-# for the image, and the interpreter it would test on is the base's, not the
-# 3.12 the image ships. A lane that cannot resolve its imports fails every
-# pull request without proving anything.
-#
-# Scratch still stays off the pod's /tmp, which is a tmpfs. Every .tekton/
-# lane already exports TMPDIR onto the CSI workspace; an ad-hoc run gets the
-# same place under the staging dir.
+# Scratch stays off the pod's /tmp, which is a tmpfs, for everything below.
+# Every .tekton/ lane already exports TMPDIR onto the CSI workspace; an ad-hoc
+# run gets the same place under the staging dir.
 export TMPDIR="${TMPDIR:-$HOME/.cache/vllm-multiarch-oci}"
 mkdir -p "$TMPDIR"
+
+# The bazel/ lane covers what //scripts:all cannot -- the tests of the Bazel
+# build actions -- and imports nothing beyond the standard library, so it can
+# run here. It runs under Bazel's own hermetic CPython, not the apt python3 the
+# bootstrap installs: the lane has to exercise the 3.12 the image ships, and
+# this pod has no pip, so the base distribution's interpreter could not import
+# anything extra even if a test needed it. The image_tools/ lane, which does
+# need the pyyaml, aiohttp, huggingface_hub and jsonschema that the runtime
+# lock pins, runs in the launcher-tests job of
+# .github/workflows/recipes-pages.yaml instead.
+"$BAZEL" build //bazel:host_python
+host_python="$("$BAZEL" cquery --output=files //bazel:host_python)"
+: "${host_python:?//bazel:host_python names no interpreter for this host: //bazel/BUILD.bazel selects on the CPU and this architecture is not covered}"
+BAZEL_PY="${BAZEL_PY:-$("$BAZEL" info output_base)/${host_python}}"
+test -x "$BAZEL_PY" || {
+    echo "no executable interpreter at $BAZEL_PY" >&2
+    exit 1
+}
+"$BAZEL_PY" -m unittest discover -s bazel -p '*_test.py'
 
 "$BAZEL" build //image:vllmb12x \
     --config=remote-multiarch \

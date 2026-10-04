@@ -723,6 +723,29 @@ def prepare_plan(plan: policy.ResolvedPlan) -> None:
             )
 
 
+def resolution_context() -> dict[str, Any]:
+    """What the resolver was told about the machine it ran on.
+
+    ``--print-config`` output is published by the site and re-run in the browser, so
+    the two environment-dependent inputs the resolver takes have to travel with the
+    record. Without them a browser, which cannot import vLLM, resolves a preset
+    differently from the container that serves it -- and silently, because both
+    answers are well-formed.
+
+    ``source`` names which interpreter answered. ``image`` means the published
+    container resolved for itself; ``host`` means a checkout's Python did, which is
+    what a pull-request preview uses, and the site says so instead of implying the
+    image did.
+    """
+    vllm_environment = policy.installed_vllm_environment()
+    return {
+        "source": "image" if SOURCES_LOCK.is_file() else "host",
+        "vllm_environment": sorted(vllm_environment) if vllm_environment is not None else None,
+        "b12x_mxfp8_moe": policy.installed_b12x_mxfp8_moe(),
+        "runtime_identity": runtime_identity(),
+    }
+
+
 def publish_model(recipe: Recipe) -> None:
     """Fetch and verify the checkpoint this container must load, in place."""
     from image_tools.vllm_image import sync_model
@@ -771,6 +794,7 @@ def run(argv: list[str] | None = None, env: dict[str, str] | None = None) -> int
         "rendezvous_port": topology.rendezvous_port,
         "probe_port": recipe.probe_port if recipe else DEFAULT_PROBE_PORT,
     }
+    public["resolution_context"] = resolution_context()
     if request.print_config:
         print(json.dumps(public, indent=2, allow_nan=False, sort_keys=True))
         return 0

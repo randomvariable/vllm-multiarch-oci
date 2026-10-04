@@ -38,7 +38,28 @@ class LaneScriptTest(unittest.TestCase):
         self.trace.write_text("")
         self.bin = self.directory / "bin"
         self.bin.mkdir()
-        self.stub("bazel")
+        # The hermetic interpreter the lane resolves out of Bazel's output
+        # base. It deliberately lives outside bin/, so it is not on PATH: the
+        # python3 that PATH offers is the stub standing in for the base
+        # image's apt interpreter, which this lane must not run on.
+        self.hermetic = self.directory / "hermetic"
+        (self.hermetic / "external" / "hermetic" / "bin").mkdir(parents=True)
+        self.interpreter = self.hermetic / "external" / "hermetic" / "bin" / "python3"
+        self.interpreter.write_text(
+            "#!/bin/bash\n"
+            'printf \'\\001ARG %s\\n\' "$0" >> "$TRACE"\n'
+            "for argument in \"$@\"; do printf '\\001ARG %s\\n' \"$argument\" >> \"$TRACE\"; done\n"
+            "printf '\\001\\n' >> \"$TRACE\"\n"
+        )
+        self.interpreter.chmod(0o755)
+        self.stub(
+            "bazel",
+            'if [ "${1-}" = cquery ]; then\n'
+            '    printf \'%s\\n\' "external/hermetic/bin/python3"\n'
+            "elif [ \"${1-}\" = info ]; then\n"
+            f'    printf \'%s\\n\' "{self.hermetic}"\n'
+            "fi\n",
+        )
         self.stub("python3")
         self.stub("cargo")
         # git answers the two queries the lane script asks and records nothing:
@@ -130,28 +151,46 @@ class LaneScriptTest(unittest.TestCase):
         # report itself as the call no assertion covers, not silently shift
         # these offsets apart.
         scripts_tests = self.only(["test", "//scripts:all"])
+        host_python = self.only(["build", "//bazel:host_python"])
+        host_python_query = self.only(["cquery", "--output=files", "//bazel:host_python"])
+        output_base = self.only(["info", "output_base"])
+        host_lane = self.only(
+            [str(self.interpreter), "-m", "unittest", "discover", "-s", "bazel", "-p", "*_test.py"]
+        )
         image_build = self.only(["build", "//image:vllmb12x"])
         publisher = self.only(["scripts/publish-vllmb12x.py"])
         contracts = self.positions(["test", "//tests/image:vllmb12x_contract"])
         self.assertEqual(len(contracts), 2, f"one contract run per architecture: {contracts!r}")
-        lanes = {scripts_tests, image_build, publisher, *contracts}
+        lanes = {
+            scripts_tests,
+            host_python,
+            host_python_query,
+            output_base,
+            host_lane,
+            image_build,
+            publisher,
+            *contracts,
+        }
         unclassified = sorted(set(range(len(commands))) - lanes)
         self.assertEqual(
             unclassified,
             [],
             f"the lane made calls no assertion covers: {[commands[i] for i in unclassified]}",
         )
-        # The host Python lanes moved out of this step: the pinned image has
-        # no pip, so a lane importing PyYAML or aiohttp could never run here.
-        # They belong to the launcher-tests job of the Pages workflow.
-        self.assertEqual(
-            [command for command in commands if "unittest" in command],
-            [],
-            "no host unittest lane may come back into this step",
-        )
+        # Exactly one host lane runs here, and it runs on the interpreter
+        # Bazel named: a bare python3 out of PATH would be the apt one, which
+        # is neither the 3.12 the image ships nor able to install anything.
+        discovers = [command for command in commands if "discover" in command]
+        self.assertEqual(len(discovers), 1, f"one host lane belongs in this step: {discovers!r}")
+        # The image_tools lane needs the modules the runtime lock pins, so it
+        # runs in the Pages workflow's launcher-tests job and never here.
+        self.assertEqual([command for command in commands if "image_tools" in command], [])
         # Everything that can fail cheaply runs before the image build; the
         # per-architecture contract runs stay last but one.
-        self.assertLess(scripts_tests, image_build, "the scripts test must precede the image build")
+        for test_lane in (scripts_tests, host_lane):
+            self.assertLess(test_lane, image_build, "every test lane must precede the image build")
+        for resolution in (host_python, host_python_query, output_base):
+            self.assertLess(resolution, host_lane, "the interpreter is resolved before the lane runs")
         self.assertLess(image_build, contracts[0], "the image contract needs the built image")
         self.assertLess(contracts[1], publisher, "the contract runs stay last but one")
         self.assertEqual(
