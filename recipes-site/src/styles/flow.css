@@ -323,6 +323,17 @@
   margin-block-start: 0.75rem;
 }
 
+.output-changes-title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 0.35rem;
+  color: var(--recipe-ink);
+}
+
+.flow-benchmark {
+  margin-block: 1rem;
+}
+
 .output-changes-list {
   color: var(--recipe-muted);
   margin: 0;

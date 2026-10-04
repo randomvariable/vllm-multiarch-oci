@@ -734,7 +734,7 @@ class DeploymentFlow {
     panel.dataset.target = current;
 
     const listed = element("div", "output-changes");
-    const count = element("p", "output-changes-title", `Your changes (${changes.length})`);
+    const count = element("h4", "output-changes-title", `Your changes (${changes.length})`);
     listed.append(count);
     if (changes.length) {
       const list = element("ul", "output-changes-list");
@@ -751,8 +751,9 @@ class DeploymentFlow {
       listed.append(element("p", "output-changes-none", "Every value is the accepted default for this selection."));
     }
 
-    // What the configuration achieved comes before what to paste: a reader deciding
-    // whether to deploy this wants the measurement first, and the artefact last.
+    // What you changed, then what the unchanged configuration achieved, then what to
+    // paste: the edits decide whether the measurement below still applies.
+    slot.append(listed);
     if (this.recipe()?.benchmark) {
       const measured = element("details", "flow-benchmark");
       measured.open = true;
@@ -773,7 +774,6 @@ class DeploymentFlow {
       measured.append(method);
       slot.append(measured);
     }
-    slot.append(listed);
     slot.append(bar, panel);
     if (missing.length) {
       slot.append(
