@@ -2,13 +2,15 @@
 // the exact command the container would produce. Nothing here re-implements a rule: it
 // boots the self-hosted Pyodide tree at `${base}pyodide/`, verifies every file against
 // `manifest.json` before executing any of it, then calls `resolver.resolve()` — the same
-// entry point `launch.py` calls. The reader's `settings` are applied as the CLI layer
-// (`--key value` in `argv`) and `environment` as the config env layer, matching how the
-// container's `resolve()` is fed.
+// entry point `launch.py` calls, with the same keyword arguments and nothing else.
+// The reader's `settings` are applied as the CLI layer (`--key value` in `argv`) and
+// `environment` as the process environment, which is how a container receives them
+// from its pod spec.
 
 // The launcher modules the resolver imports, and the policy files the resolver reads.
 // These must be present for a resolution to run; the manifest is the trust anchor for
 // their bytes, and a mismatch rejects rather than executing unverified code.
+const PYODIDE_MODULE = "pyodide.mjs";
 const REQUIRED_LAUNCHER_FILES = [
   "image_tools/__init__.py",
   "image_tools/launcher/__init__.py",
@@ -118,7 +120,7 @@ function parseSelection(selection) {
 // The reader's edits as the container receives them: `settings` become the native CLI
 // argv (mirroring `launch.py` passing `request.native` to `resolve(argv=...)`, and the
 // same `--key value` / `--key=json` spelling `render.js`'s changeArgs produces), and
-// `environment` becomes the config env layer.
+// `environment` becomes the process environment the pod spec would have set.
 function nativeArgv(settings) {
   const argv = [];
   for (const [name, value] of Object.entries(settings ?? {})) {
@@ -139,19 +141,24 @@ function configEnvironment(environment) {
   return env;
 }
 
-// Boot the verified pyodide.js in a browser. In the Node test lane a fake loader is
-// injected and this never runs.
-async function importLoader(bytes) {
-  const source = new TextDecoder().decode(bytes);
-  const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
-  try {
-    const module = await import(/* @vite-ignore */ url);
-    const loader = module.loadPyodide ?? module.default?.loadPyodide;
-    if (typeof loader !== "function") throw new Error("pyodide.js did not export loadPyodide");
-    return loader;
-  } finally {
-    URL.revokeObjectURL?.(url);
-  }
+// Boot Pyodide in a browser. In the Node test lane a fake loader is injected and
+// this never runs.
+//
+// It is imported from its served URL rather than from a blob of verified bytes,
+// because pyodide.mjs resolves its own siblings (`pyodide.asm.mjs`, the wasm and
+// the lock file) relative to its own URL; a blob at an opaque origin would strand
+// them. The digest is still checked, on the same origin, immediately before the
+// import -- which is the same trust boundary the rest of the tree relies on: this
+// defends against a corrupted or tampered publication, not against the site
+// serving different bytes to the import than it served to the check.
+async function importLoader(root, manifest, fetchImpl) {
+  const entry = manifest.files.find((candidate) => candidate.path === PYODIDE_MODULE);
+  if (!entry) throw new Error(`the pyodide tree at ${root} publishes no ${PYODIDE_MODULE}`);
+  await fetchVerified(root, entry, fetchImpl);
+  const module = await import(/* @vite-ignore */ `${root}${PYODIDE_MODULE}`);
+  const loader = module.loadPyodide ?? module.default?.loadPyodide;
+  if (typeof loader !== "function") throw new Error(`${PYODIDE_MODULE} did not export loadPyodide`);
+  return loader;
 }
 
 async function stageFiles(pyodide, files, rootDir) {
@@ -173,14 +180,28 @@ async function stageFiles(pyodide, files, rootDir) {
   }
 }
 
-async function runResolver(pyodide, { rootDir, selection, settings, environment }) {
+async function runResolver(pyodide, { rootDir, selection, settings, environment, context }) {
+  // `vllm_environment` and `runtime_identity` come from the published record's
+  // `resolution_context`, because they are what the container's installed packages
+  // say and a browser cannot discover them: left to their defaults, a preset that
+  // needs a vLLM capability resolves as if vLLM were absent, and the JIT cache paths
+  // that appear in the command lose their namespace. Both answers are well-formed,
+  // so the only way to catch the difference is to not introduce it.
+  //
+  // The keyword set here is `launch.py`'s `resolved_plan()` exactly, including the
+  // absence of `config`: a container's reader-set variables arrive as process
+  // environment, which `launch.py` hands over twice -- once to resolve from, once to
+  // report origins against. Nothing is inherited from the browser's own environment.
   const call = {
     profile: selection.profile,
     hardware: selection.hardware,
     preset: selection.preset,
     recipe_layer: selection.layer,
     argv: nativeArgv(settings),
-    config: { environment: configEnvironment(environment) },
+    env: { ...configEnvironment(environment) },
+    cli_env: { ...configEnvironment(environment) },
+    vllm_environment: context?.vllm_environment === null ? null : [...(context?.vllm_environment ?? [])],
+    runtime_identity: context?.runtime_identity ?? null,
     root: rootDir,
   };
   pyodide.globals.set("VLLM_IMAGE_RESOLVE_CALL", JSON.stringify(call));
@@ -196,7 +217,10 @@ async function runResolver(pyodide, { rootDir, selection, settings, environment 
     "    preset=_call['preset'],",
     "    recipe_layer=_call['recipe_layer'],",
     "    argv=_call['argv'],",
-    "    config=_call['config'],",
+    "    env=_call['env'],",
+    "    cli_env=_call['cli_env'],",
+    "    vllm_environment=(None if _call['vllm_environment'] is None else frozenset(_call['vllm_environment'])),",
+    "    runtime_identity=_call['runtime_identity'],",
     "    root=Path(_call['root']),",
     ")",
     "json.dumps(_plan.argv)",
@@ -209,7 +233,7 @@ async function runResolver(pyodide, { rootDir, selection, settings, environment 
   return argv;
 }
 
-export async function resolveInBrowser({ base, selection, settings, environment, fetch: fetchImpl = globalThis.fetch, loadPyodide: loadImpl } = {}) {
+export async function resolveInBrowser({ base, selection, settings, environment, context, fetch: fetchImpl = globalThis.fetch, loadPyodide: loadImpl } = {}) {
   if (typeof fetchImpl !== "function") throw new TypeError("resolveInBrowser needs a fetch implementation");
   const root = `${String(base ?? "/").replace(/\/+$/, "")}/pyodide/`;
   const manifest = await loadManifest(root, fetchImpl);
@@ -234,14 +258,22 @@ export async function resolveInBrowser({ base, selection, settings, environment,
   if (parsed.kind === "recipe" && (!parsed.profile || !parsed.hardware)) {
     throw new Error(`the pyodide tree at ${root} publishes no recipe document for ${parsed.name}; the resolved profile and hardware must accompany a recipe selection`);
   }
+  if (!context || typeof context !== "object") {
+    throw new Error(
+      `resolveInBrowser needs the record's resolution_context; without it a browser with no vLLM installed would resolve ${parsed.kind === "recipe" ? parsed.name : "this selection"} differently from the container that serves it`,
+    );
+  }
 
-  const loader = loadImpl ?? (await importLoader(files.get("pyodide.js")));
+  const loader = loadImpl ?? (await importLoader(root, manifest, fetchImpl));
   const pyodide = await loader({ indexUrl: root });
   const wheel = manifest.packages?.find((pkg) => pkg.name === "pyyaml")?.file ?? manifest.files.find((entry) => entry.path.endsWith("pyyaml"))?.path;
   if (!wheel) throw new Error(`the pyodide tree at ${root} publishes no PyYAML wheel`);
-  await pyodide.loadPackage(wheel);
+  // A bare file name is not enough: loadPackage treats it as a name to resolve
+  // against the index and, for a wheel outside pyodide-lock.json, installs nothing.
+  // The absolute URL is what makes the browser fetch this tree's own wheel.
+  await pyodide.loadPackage(`${root}${wheel}`);
 
   const rootDir = "/vllm-image";
   await stageFiles(pyodide, files, rootDir);
-  return runResolver(pyodide, { rootDir, selection: parsed, settings, environment });
+  return runResolver(pyodide, { rootDir, selection: parsed, settings, environment, context });
 }

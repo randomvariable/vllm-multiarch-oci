@@ -37,9 +37,23 @@ const POLICY_DIRECTORIES = ["profiles", "hardware", "templates"];
 
 // A documentation entry for a value this repository sets beyond upstream.
 const DOC_FIELDS = ["group", "summary", "why"];
-const SETTINGS_KEYS = ["schema_version", "status", "qualification", "profile", "hardware", "argv", "settings", "environment", "warnings", "cache_service", "preset", "recipe", "role", "selection", "topology", "resolver_version"];
+const SETTINGS_KEYS = ["schema_version", "status", "qualification", "profile", "hardware", "argv", "settings", "environment", "warnings", "cache_service", "preset", "recipe", "role", "selection", "topology", "resolver_version", "resolution_context"];
+const CONTEXT_KEYS = ["b12x_mxfp8_moe", "runtime_identity", "source", "vllm_environment"];
 const COMMIT = /^[0-9a-f]{40}$/;
+const DIGEST_REFERENCE = /^[a-z0-9][a-z0-9.-]*(?::[0-9]+)?(?:\/[a-z0-9][a-z0-9._-]*)+@sha256:[0-9a-f]{64}$/;
+const ENVIRONMENT_NAME = /^[A-Z][A-Z0-9_]*$/;
 const SELECTOR = /^(?:recipe:[a-z0-9][a-z0-9-]*|profile:[a-z0-9][a-z0-9-]*#[a-z0-9][a-z0-9-]*(?:#[a-z0-9][a-z0-9-]*)?)$/;
+// Only these reach the container. It supplies its own PATH, PYTHONPATH and
+// interpreter, so forwarding the runner's would leak CI state into a public
+// artefact and would not match what a deployment's pod spec can set.
+const DOCKER_PASSTHROUGH = new Set([
+  "LWS_WORKER_INDEX",
+  "LWS_GROUP_SIZE",
+  "LWS_LEADER_ADDRESS",
+  "POD_IP",
+  "VLLM_IMAGE_DATA_ROOT",
+  "VLLM_IMAGE_RECIPE_ROOT",
+]);
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -180,6 +194,21 @@ export function validateRecord(record, key) {
   for (const field of ["lil_runtime", "builder"]) {
     assert(record.resolver_version && COMMIT.test(record.resolver_version[field]), `${source}: resolver_version.${field} must be a full commit OID`);
   }
+  // What the resolver was told about its machine. The site re-runs this resolver in
+  // a browser to show an edited vLLM command, and a browser has no vLLM to import:
+  // `installed_vllm_environment()` answers None and `installed_b12x_mxfp8_moe()`
+  // answers False there, while the container that serves the recipe answers both. That
+  // boolean is what selects moe_backend b12x for the MTP draft, so an edited command
+  // resolved from the browser's own knowledge can differ from what the container
+  // produces for the same edits -- both well-formed, one of them wrong. These fields
+  // travel with the record so the browser resolves against the container's answer.
+  const context = record.resolution_context;
+  assert(context && typeof context === "object" && !Array.isArray(context), `${source}: resolution_context is required`);
+  assert(JSON.stringify(Object.keys(context).sort()) === JSON.stringify(CONTEXT_KEYS), `${source}: resolution_context must carry exactly ${CONTEXT_KEYS.join(", ")}`);
+  assert(["image", "host"].includes(context.source), `${source}: resolution_context.source must be image or host, got ${context.source}`);
+  assert(context.vllm_environment === null || (Array.isArray(context.vllm_environment) && context.vllm_environment.every((name) => ENVIRONMENT_NAME.test(name))), `${source}: resolution_context.vllm_environment must be null or a list of environment names`);
+  assert(typeof context.b12x_mxfp8_moe === "boolean", `${source}: resolution_context.b12x_mxfp8_moe must be a boolean`);
+  assert(context.runtime_identity === null || COMMIT.test(context.runtime_identity), `${source}: resolution_context.runtime_identity must be null or a hex digest`);
   assertNoPrivateReference(JSON.stringify(record), source);
   return record;
 }
@@ -385,7 +414,24 @@ function launchEnvironment(runtimeRoot, topology, groupSize) {
   return environment;
 }
 
-function resolveOne(runtimeRoot, entry) {
+/**
+ * The `docker run` that asks the published image to print one selection.
+ *
+ * Exported and pure so the allowlist is asserted directly rather than through a
+ * stubbed runner: the guarantee that matters is that no runner state can reach a
+ * public artefact, and that is a property of this argument list.
+ */
+export function dockerInvocation(environment, imageReference, argv) {
+  assert(DIGEST_REFERENCE.test(imageReference), `--image must be a digest-pinned reference (repo@sha256:<64 hex>), got ${imageReference}`);
+  const docker = ["run", "--rm", "--entrypoint", "/opt/python/bin/python"];
+  for (const [name, value] of Object.entries(environment)) {
+    if (DOCKER_PASSTHROUGH.has(name)) docker.push("-e", `${name}=${value}`);
+  }
+  docker.push(imageReference, "-m", "image_tools.vllm_image", "launch", ...argv, "--print-config");
+  return docker;
+}
+
+function resolveOne(runtimeRoot, entry, imageReference = null) {
   let recipe = null;
   let groupSize = 1;
   if (entry.recipe) {
@@ -396,16 +442,36 @@ function resolveOne(runtimeRoot, entry) {
   }
   const environment = launchEnvironment(runtimeRoot, recipe?.topology?.kind ?? "single", groupSize);
   let stdout;
-  try {
-    stdout = run("python3", ["-m", "image_tools.vllm_image", "launch", ...entry.argv, "--print-config"], {
-      cwd: REPOSITORY_ROOT,
-      env: environment,
-      stdio: ["ignore", "pipe", "pipe"],
-      timeout: 300_000,
-    });
-  } catch (error) {
-    const detail = String(error.stderr || error.stdout || error.message).trim().split("\n").pop();
-    assert(false, `${entry.key}: the launcher refused the selection: ${detail}`);
+  if (imageReference) {
+    // Ask the published image what it would run rather than asking a checkout's
+    // Python to imitate it. The two diverge exactly where the resolver reads its own
+    // installed packages: whether vLLM is importable decides the fallback presets,
+    // whether b12x runs MXFP8 experts decides the draft's moe_backend, and the source
+    // lock under /opt/vllmb12x keys the JIT paths printed in the command.
+    const docker = dockerInvocation(environment, imageReference, entry.argv);
+    try {
+      stdout = run("docker", docker, {
+        cwd: REPOSITORY_ROOT,
+        env: { PATH: process.env.PATH, HOME: process.env.HOME },
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: 900_000,
+      });
+    } catch (error) {
+      const detail = String(error.stderr || error.stdout || error.message).trim().split("\n").pop();
+      assert(false, `${entry.key}: the image refused the selection: ${detail}`);
+    }
+  } else {
+    try {
+      stdout = run("python3", ["-m", "image_tools.vllm_image", "launch", ...entry.argv, "--print-config"], {
+        cwd: REPOSITORY_ROOT,
+        env: environment,
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: 300_000,
+      });
+    } catch (error) {
+      const detail = String(error.stderr || error.stdout || error.message).trim().split("\n").pop();
+      assert(false, `${entry.key}: the launcher refused the selection: ${detail}`);
+    }
   }
   let record;
   try {
@@ -430,6 +496,7 @@ function parseArguments(argv) {
     fixtureDir: null,
     runtimeDir: null,
     workDir: process.env.RUNNER_TEMP ? join(process.env.RUNNER_TEMP, "recipes-site-data") : join(process.env.HOME || ".", ".cache/vllm-multiarch-oci/pages-data"),
+    image: null,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const value = (name) => {
@@ -452,6 +519,10 @@ function parseArguments(argv) {
         break;
       case "--options":
         options.optionsOutput = value("options");
+        break;
+      case "--image":
+        options.image = value("image");
+        assert(DIGEST_REFERENCE.test(options.image), `--image must be a digest-pinned reference (repo@sha256:<64 hex>), got ${options.image}`);
         break;
       default:
         assert(false, `unknown argument ${argv[index]}`);
@@ -539,7 +610,7 @@ async function main() {
   const version = { lil_runtime: pinned.lilRuntime, builder: builderCommit() };
   const configs = {};
   for (const entry of selections(runtimeRoot, recipeNames)) {
-    const record = resolveOne(runtimeRoot, entry);
+    const record = resolveOne(runtimeRoot, entry, options.image);
     record.resolver_version = version;
     configs[entry.key] = validateRecord(record, entry.key);
   }
@@ -548,7 +619,7 @@ async function main() {
   const document = policyDocument(runtimeRoot, recipeNames);
   writeJson(options.optionsOutput, document);
   process.stdout.write(
-    `${options.configs}: ${Object.keys(configs).length} selections against ${pinned.lilRuntime.slice(0, 12)} (${Object.keys(document.recipe_docs).length} recipes, ${Object.values(document.recipe_docs).reduce((total, entries) => total + Object.keys(entries).length, 0)} documented recipe values)\n`,
+    `${options.configs}: ${Object.keys(configs).length} selections against ${pinned.lilRuntime.slice(0, 12)}, resolved by ${options.image ? `the image ${options.image.split("@")[1]}` : "the host Python"} (${Object.keys(document.recipe_docs).length} recipes, ${Object.values(document.recipe_docs).reduce((total, entries) => total + Object.keys(entries).length, 0)} documented recipe values)\n`,
   );
 }
 

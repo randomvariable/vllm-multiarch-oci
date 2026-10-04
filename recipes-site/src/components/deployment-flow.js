@@ -128,6 +128,54 @@ function download(name, text) {
   URL.revokeObjectURL(link.href);
 }
 
+export function coerceParameters(recipe, supplied = {}) {
+  // A query string can only carry text, so a reader's node selector arrives as
+  // JSON text and an integer arrives as digits. The renderer validates types and
+  // refuses a string where it needs a mapping, which is the right check to keep --
+  // so the conversion happens here, once, against the recipe's own parameter
+  // definitions, and a malformed object is reported instead of passed through.
+  const definitions = recipe?.deployment?.parameters ?? {};
+  const out = {};
+  for (const [name, value] of Object.entries(supplied)) {
+    const definition = definitions[name];
+    if (!definition || value === null || value === undefined || typeof value !== "string") {
+      out[name] = value;
+      continue;
+    }
+    if (definition.type === "stringMap") {
+      let parsed;
+      try {
+        parsed = JSON.parse(value);
+      } catch (error) {
+        throw new TypeError(`${name} must be a JSON object (${error.message})`);
+      }
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new TypeError(`${name} must be a JSON object, not ${Array.isArray(parsed) ? "an array" : typeof parsed}`);
+      }
+      out[name] = parsed;
+    } else if (definition.type === "integer") {
+      const number = Number(value);
+      if (!Number.isSafeInteger(number)) throw new TypeError(`${name} must be an integer, got ${value}`);
+      out[name] = number;
+    } else {
+      out[name] = value;
+    }
+  }
+  return out;
+}
+
+export function browserSelection(recipe, record) {
+  const selection = record?.selection ?? {};
+  const base = { profile: selection.profile, hardware: selection.hardware, preset: selection.preset ?? null };
+  if (!recipe) return base;
+  return {
+    ...base,
+    recipe: recipe.meta.slug,
+    options: recipe.launch?.options ?? {},
+    environment: recipe.launch?.environment ?? {},
+  };
+}
+
 class DeploymentFlow {
   constructor(root) {
     this.root = root;
@@ -627,16 +675,43 @@ class DeploymentFlow {
       row.append(element("span", "site-field-label", definition.label ?? name));
       const input = document.createElement("input");
       input.type = definition.type === "integer" ? "number" : "text";
-      input.value = this.state.parameters[name] ?? (definition.default ?? "");
+      const supplied = this.state.parameters[name];
+      // A stringMap is an object, so it is presented and accepted as JSON. Putting
+      // the object straight into input.value would render "[object Object]" and
+      // send that back as the reader's answer.
+      const text = (value) =>
+        value === undefined || value === null ? "" : definition.type === "stringMap" ? JSON.stringify(value) : String(value);
+      input.value = supplied !== undefined ? supplied : text(definition.default);
+      if (definition.type === "stringMap") input.setAttribute("aria-describedby", `${name}-format`);
       if (definition.required) input.required = true;
       input.addEventListener("change", () => {
-        if (input.value === "") delete this.state.parameters[name];
-        else this.state.parameters[name] = input.value;
+        if (input.value === "") {
+          delete this.state.parameters[name];
+          input.removeAttribute("aria-invalid");
+        } else if (definition.type === "stringMap") {
+          try {
+            const parsed = JSON.parse(input.value);
+            if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("not an object");
+            this.state.parameters[name] = parsed;
+            input.removeAttribute("aria-invalid");
+          } catch (error) {
+            // Refuse rather than send a half-parsed selector to the renderer: a
+            // wrong node selector schedules the pod onto the wrong machines.
+            input.setAttribute("aria-invalid", "true");
+            note.textContent = `Not JSON (${error.message}). Expected an object such as {"node-role.kubernetes.io/dgx": ""}.`;
+            return;
+          }
+        } else {
+          this.state.parameters[name] = input.value;
+        }
         window.history.replaceState({}, "", payload(this.state));
         this.#renderRun();
       });
       row.append(input);
-      if (definition.description) row.append(element("span", "site-field-help", definition.description));
+      const note = element("span", "site-field-help");
+      note.textContent = definition.description ?? "";
+      if (definition.type === "stringMap") note.id = `${name}-format`;
+      row.append(note);
       wrapper.append(row);
     }
     return wrapper;
@@ -645,8 +720,15 @@ class DeploymentFlow {
   #missingFields() {
     const recipe = this.recipe();
     const parameters = recipe?.deployment?.parameters ?? {};
+    // A field is answered when the reader supplied it or the recipe offers a
+    // default that is actually usable. `default: null` and `default: ""` are how a
+    // recipe says "no default", not a supplied answer, so they must not silence the
+    // prompt -- and an object default for a stringMap counts as an answer.
+    const usable = (value) =>
+      value !== undefined && value !== null && value !== "" &&
+      !(Array.isArray(value) && value.length === 0);
     return Object.entries(parameters)
-      .filter(([name, definition]) => definition.required && !this.state.parameters[name] && definition.default === undefined)
+      .filter(([name, definition]) => definition.required && !usable(this.state.parameters[name]) && !usable(definition.default))
       .map(([name, definition]) => ({ name, label: definition.label ?? name }));
   }
 
@@ -664,9 +746,14 @@ class DeploymentFlow {
         try {
           argv = await resolveInBrowser({
             base: this.base,
-            selection: this.model,
+            // The browser tree carries the resolver and the policy data, not the
+            // recipe files or the entry point, so the recipe's own layer has to come
+            // from the record the site already publishes. Passing the bare selection
+            // string would fall back to the unedited command for every recipe.
+            selection: browserSelection(this.recipe(), record),
             settings: this.state.settings,
             environment: this.state.environment,
+            context: record.resolution_context,
           });
         } catch (error) {
           note = `Showing the unedited command: the in-browser resolver could not run (${error.message}). Run the printed command on a host with the image for the exact result.`;
@@ -685,7 +772,7 @@ class DeploymentFlow {
     }
     try {
       const rendered = renderRecipe(recipe, {
-        parameters: this.state.parameters,
+        parameters: coerceParameters(this.recipe(), this.state.parameters),
         settings: this.state.settings,
         environment: this.state.environment,
         target,

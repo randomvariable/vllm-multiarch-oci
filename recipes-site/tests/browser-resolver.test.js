@@ -96,16 +96,24 @@ test("a clean pyodide tree returns the resolver's argv", async () => {
   const result = await resolveInBrowser({
     base: BASE,
     selection: "profile:qwen38-flash-next#gb10-roce",
+    // What the published container answered for itself. A browser cannot import
+    // vLLM, so these have to come from the record or the edited command is resolved
+    // against the wrong machine.
+    context: { source: "image", vllm_environment: ["VLLM_USE_V1"], b12x_mxfp8_moe: true, runtime_identity: "a".repeat(40) },
     settings: { "max-num-seqs": "16" },
     environment: { NCCL_NET: "Socket" },
     fetch: fetchImpl,
     loadPyodide: fake.loadPyodide,
   });
-  assert.deepEqual(result, argv, "the argv the resolver produced comes back");
+
+  assert.deepEqual(
+    fake.state.loads,
+    [`${ROOT}pyyaml-6.0.3-cp312-cp312-emscripten_20_19_wasm32.whl`],
+    "the tree's own wheel is fetched by URL, not resolved as a package name",
+  );
   // The boot used the self-hosted tree, loaded exactly the PyYAML wheel, staged the
   // verified launcher modules, and ran the resolver.
   assert.deepEqual(fake.state.indexUrls, [ROOT], "booted from the pyodide tree");
-  assert.deepEqual(fake.state.loads, ["pyyaml-6.0.3-cp312-cp312-emscripten_20_19_wasm32.whl"]);
   assert.ok(fake.state.written.some((path) => path.endsWith("image_tools/launcher/resolver.py")));
   assert.equal(fake.state.runs.length, 1, "ran the resolver exactly once");
   assert.ok(fake.state.runs[0].includes("resolver.resolve"), "the program calls resolver.resolve");
@@ -113,9 +121,33 @@ test("a clean pyodide tree returns the resolver's argv", async () => {
   assert.equal(call.profile, "qwen38-flash-next");
   assert.equal(call.hardware, "gb10-roce");
   assert.deepEqual(call.argv, ["--max-num-seqs", "16"], "settings are the CLI layer");
-  assert.deepEqual(call.config.environment, { NCCL_NET: "Socket" }, "environment is the env layer");
+  assert.deepEqual(call.env, { NCCL_NET: "Socket" }, "reader-set variables arrive as process environment");
+  assert.deepEqual(call.cli_env, { NCCL_NET: "Socket" }, "and are reported against the same layer");
+  // The keyword set is `launch.py`'s resolved_plan() and nothing more: one extra
+  // layer here, such as a `config` the container never passes, means the browser
+  // answered from a different set of inputs than the image would have.
+  assert.deepEqual(
+    Object.keys(call).sort(),
+    ["argv", "cli_env", "env", "hardware", "preset", "profile", "recipe_layer", "root", "runtime_identity", "vllm_environment"].sort(),
+  );
+  assert.deepEqual(call.vllm_environment, ["VLLM_USE_V1"], "the container's answer is forwarded");
+  assert.equal(call.b12x_mxfp8_moe, undefined);
+  assert.equal(call.runtime_identity, "a".repeat(40), "the JIT namespace comes from the record");
+  assert.deepEqual(call.env, { NCCL_NET: "Socket" }, "reader-set variables resolve as process environment");
 });
 
+test("a resolution without the published context rejects instead of guessing", async () => {
+  // Without vllm_environment and runtime_identity the browser would answer as if no
+  // vLLM were installed: both outputs are well-formed, and only one is what runs.
+  const { fetchImpl } = await buildTree();
+  const fake = fakePyodide(["unused"]);
+  await assert.rejects(
+    () => resolveInBrowser({ base: BASE, selection: "profile:qwen38-flash-next#gb10-roce", settings: {}, environment: {}, fetch: fetchImpl, loadPyodide: fake.loadPyodide }),
+    /resolution_context/,
+    "the rejection names the missing field",
+  );
+  assert.equal(fake.state.runs.length, 0, "nothing ran without a context");
+});
 test("a tampered file rejects before anything runs", async () => {
   const argv = ["should", "not", "run"];
   const { fetchImpl } = await buildTree({ tamper: { path: "image_tools/launcher/resolver.py", bytes: "import os; os.system('rm -rf /')\n" } });

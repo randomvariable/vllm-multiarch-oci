@@ -9,7 +9,7 @@ import test from "node:test";
 // The module imports the renderer and the browser resolver at load time, so the
 // globals those expect have to exist before the import resolves.
 globalThis.window = { location: { pathname: "/vllm-multiarch-oci/", hash: "" } };
-const { changesFor, payload, readState } = await import("../src/components/deployment-flow.js");
+const { changesFor, coerceParameters, payload, readState } = await import("../src/components/deployment-flow.js");
 
 const record = {
   settings: {
@@ -79,4 +79,31 @@ test("a differing or new value is a change", () => {
 
 test("no record yields no changes instead of an error", () => {
   assert.deepEqual(changesFor(null, { "max-num-seqs": "16" }, { NCCL_NET: "Socket" }), []);
+});
+
+const recipe = {
+  deployment: {
+    parameters: {
+      node_selector: { type: "stringMap", required: true },
+      rdma_units: { type: "integer", required: true },
+      namespace: { type: "string", required: true },
+    },
+  },
+};
+
+test("text from the URL becomes the type the renderer asks for", () => {
+  // The renderer refuses a string where it needs a mapping, which is the right
+  // check; the query string simply cannot carry the difference.
+  const out = coerceParameters(recipe, {
+    node_selector: '{"node-role.kubernetes.io/dgx":""}',
+    rdma_units: "63",
+    namespace: "openai",
+  });
+  assert.deepEqual(out, { node_selector: { "node-role.kubernetes.io/dgx": "" }, rdma_units: 63, namespace: "openai" });
+});
+
+test("a malformed selector is reported, never passed through", () => {
+  assert.throws(() => coerceParameters(recipe, { node_selector: "not json" }), /node_selector must be a JSON object/);
+  assert.throws(() => coerceParameters(recipe, { node_selector: "[1,2]" }), /not an array/);
+  assert.throws(() => coerceParameters(recipe, { rdma_units: "many" }), /rdma_units must be an integer/);
 });

@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { buildRoute, publishBuildPages, publishDeploymentData } from "../scripts/build-data.mjs";
 import { assemble, pins, verifyPublished } from "../scripts/prepare-pyodide.mjs";
 import { assertNoPrivateReference, validateRecord, validateReleases } from "../scripts/resolve-releases.mjs";
-import { recipeInventory, validateConfigs, validateOptions } from "../scripts/resolve-configs.mjs";
+import { dockerInvocation, recipeInventory, validateConfigs, validateOptions, validateRecord as validateConfigRecord } from "../scripts/resolve-configs.mjs";
 
 const siteRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const fixtureRoot = join(siteRoot, "tests/fixtures");
@@ -334,4 +334,55 @@ test("build pages are regenerated for the published set and stale ones removed",
   assert.ok(page.includes(`docker pull ${repository}@${newest.digest}`), "the pull command is digest-pinned");
   assert.ok(page.includes(newest.publication_tag), "the publication tag is recorded");
   assert.ok(!page.includes("harbor."), "a generated page holds no private registry");
+});
+
+test("a record must say what it was resolved against", () => {
+  // The browser re-runs the resolver to show an edited vLLM command and cannot
+  // import vLLM itself. Without these fields it would resolve as if the container's
+  // packages were absent, and the printed command would differ from what runs.
+  const key = "recipe:qwen38-flash-next-gb10-tp2";
+  const good = fixture("configs.json")[key];
+  assert.doesNotThrow(() => validateConfigRecord(structuredClone(good), key));
+
+  for (const [mutate, expected] of [
+    [(record) => delete record.resolution_context, /resolution_context/],
+    [(record) => (record.resolution_context = { ...record.resolution_context, source: "runner" }), /source must be image or host/],
+    [(record) => (record.resolution_context = { ...record.resolution_context, vllm_environment: ["not-a-name"] }), /must be null or a list of environment names/],
+    [(record) => (record.resolution_context = { ...record.resolution_context, b12x_mxfp8_moe: "yes" }), /must be a boolean/],
+    [(record) => (record.resolution_context = { ...record.resolution_context, runtime_identity: "latest" }), /hex digest/],
+  ]) {
+    const broken = structuredClone(good);
+    mutate(broken);
+    assert.throws(() => validateConfigRecord(broken, key), expected, `expected ${expected}`);
+  }
+});
+
+test("asking the image forwards only the allowlisted variables", () => {
+  const reference = "ghcr.io/randomvariable/vllm-b12x-multi@sha256:" + "a".repeat(64);
+  const docker = dockerInvocation(
+    {
+      PATH: "/should/not/appear",
+      PYTHONPATH: "/repository/should/not/appear",
+      HOME: "/runner",
+      AWS_SECRET_ACCESS_KEY: "leak",
+      LWS_WORKER_INDEX: "0",
+      LWS_GROUP_SIZE: "2",
+      LWS_LEADER_ADDRESS: "$(LWS_LEADER_ADDRESS)",
+      POD_IP: "192.0.2.10",
+      VLLM_IMAGE_DATA_ROOT: "/opt/vllm-image/runtime",
+    },
+    reference,
+    ["--recipe", "qwen38-flash-next-gb10-tp2"],
+  );
+  const forwarded = docker.filter((_, index) => docker[index - 1] === "-e");
+  assert.deepEqual(
+    forwarded.map((entry) => entry.split("=")[0]).sort(),
+    ["LWS_GROUP_SIZE", "LWS_LEADER_ADDRESS", "LWS_WORKER_INDEX", "POD_IP", "VLLM_IMAGE_DATA_ROOT"],
+  );
+  assert.equal(docker[0], "run");
+  assert.equal(docker[2], "--entrypoint");
+  assert.equal(docker[3], "/opt/python/bin/python");
+  assert.equal(docker[docker.indexOf(reference) + 1], "-m");
+  assert.equal(docker.at(-1), "--print-config");
+  assert.throws(() => dockerInvocation({}, "ghcr.io/x/y:latest", []), /digest-pinned reference/);
 });
