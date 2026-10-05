@@ -1,0 +1,22 @@
+.github/workflows/recipes-pages.yaml
+  h_15da545fc8cfbe 28-33,183-283
+image_tools/BUILD.bazel
+  h_15da545fc8cfbe 40-44
+image_tools/launcher_parity_test.py
+  h_15da545fc8cfbe 6-9,17-27,33,35-37,44,47,49-82,85-95,98-128,130-137,224,250,515,644,1011-1029
+scripts/ci/vllmb12x-build-and-publish.sh
+  h_15da545fc8cfbe 66,70-81
+scripts/ci/vllmb12x_lane_test.py
+  h_15da545fc8cfbe 137,144-151,154
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e01c5320de3c224b476e7fad8a1e0b2bc6100ca8",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
