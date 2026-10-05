@@ -1,0 +1,24 @@
+recipes-site/scripts/build-data.mjs
+  h_15da545fc8cfbe 215-340,376
+recipes-site/src/render.js
+  h_15da545fc8cfbe 51-58,331-405,411-412,419-420,432-433,435-440,452-461,522,526-530,536-537,543-551,557,579,581,600,618-649
+recipes-site/tests/render.test.js
+  h_15da545fc8cfbe 15-16,49-95,97-99,117-123,131-149,173-176,178,209,226-227,231-260,264,271-347,349,367,390,408,480-491
+recipes/deepseek-ai/deepseek-v4-flash-vision-gb10-tp2.yaml
+  h_15da545fc8cfbe 337-391,474,477
+recipes/local-inference-lab/qwen38-27b.yaml
+  h_15da545fc8cfbe 449-490
+recipes/local-inference-lab/qwen38-flash-next-gb10-tp2.yaml
+  h_15da545fc8cfbe 507-580,658,661
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b74e7d1a52b4607d75e75c2af43bcbfc43930f4b",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
