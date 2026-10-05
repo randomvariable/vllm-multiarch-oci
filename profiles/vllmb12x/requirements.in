@@ -30,6 +30,9 @@ mooncake-transfer-engine-cuda13
 # SSD registration and SPDK target modules use Paramiko. The remaining
 # optional Mooncake imports are already supplied by the vLLM profile.
 paramiko
+# LMCache's source-built wheel does not install its Python dependencies.
+# The multiprocess server imports SortedDict during CLI registration.
+sortedcontainers
 # SparkCache: persistent rank-local NVMe prefix cache for vLLM on GB10
 # (github.com/FujitsuPolycom/sparkcache), loaded as a vLLM KV connector. Pure
 # Python; its `connector` extra only adds torch, which the image builds from

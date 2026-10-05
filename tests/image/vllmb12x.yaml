@@ -167,6 +167,13 @@ commandTests:
       - key: "POD_IP"
         value: "192.0.2.10"
     expectedOutput: ["\"argv\":", "vllm.entrypoints.cli.main", "--moe-backend", "b12x"]
+  - name: "LMCache multiprocess server registers its arguments"
+    command: "/opt/venv/bin/lmcache"
+    args: ["server", "--help"]
+    envVars:
+      - key: "CUDA_VISIBLE_DEVICES"
+        value: ""
+    expectedOutput: ["--instance-id", "--supported-transfer-mode", "--shm-name"]
   # SparkCache is loaded by vLLM through its KV-Connector-V1 configuration, so the
   # contract imports that connector module against the image's own vLLM rather than
   # just the package, which deliberately imports nothing at package import time.
