@@ -1,0 +1,22 @@
+recipes-site/src/components/deployment-flow.js
+  h_15da545fc8cfbe 16,18,31,33-37,235-237,344,504-505,507,509,513-516,551-555,557-569,571,599-616,626-646,649-721,729-731,733-734,754-755,757-759,764,773-774,776-777,783,787-798,801,803-805,807,854-858,860-862,935
+recipes-site/src/data/tunable-options.js
+  h_15da545fc8cfbe 1-74
+recipes-site/src/render.js
+  h_15da545fc8cfbe 220-226,228-234,236-237
+recipes-site/src/styles/flow.css
+  h_15da545fc8cfbe 507-509,511-531,588-600
+recipes-site/tests/deployment-flow.test.js
+  h_15da545fc8cfbe 7,11-12,191,217-221,236-237,240-241,257,259,265-267,269-271,278,280
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ccf7619c646dad30d5e8e841082211bc8ac52896",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
