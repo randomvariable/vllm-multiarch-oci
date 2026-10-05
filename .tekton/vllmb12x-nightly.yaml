@@ -60,7 +60,7 @@ spec:
           accessModes: [ReadWriteOnce]
           resources:
             requests:
-              storage: 256Gi
+              storage: "{{ workspace_size }}"
   pipelineSpec:
     params:
       - {name: repo_url, type: string}
