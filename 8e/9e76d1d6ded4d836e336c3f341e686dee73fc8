@@ -1,0 +1,16 @@
+bazel/action_lib.py
+  h_15da545fc8cfbe 569-572
+bazel/hermetic_cc_toolchain_test.py
+  h_15da545fc8cfbe 42-56,58,70,83,99,114
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "8e9e76d1d6ded4d836e336c3f341e686dee73fc8",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
