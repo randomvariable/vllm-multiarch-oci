@@ -344,17 +344,26 @@ test("a record must say what it was resolved against", () => {
   const key = "recipe:qwen38-flash-next-gb10-tp2";
   const good = fixture("configs.json")[key];
   assert.doesNotThrow(() => validateConfigRecord(structuredClone(good), key));
+  // The host lane answers null for this field, so a fixture of nulls alone would leave
+  // the digest arm unexercised forever and the validator could confuse a 64-hex SHA-256
+  // with a 40-hex git OID -- which is what red the trunk lane. This record is one the
+  // image resolves, so its published shape is the contract.
+  const fromImage = structuredClone(good);
+  fromImage.resolution_context.runtime_identity = "0".repeat(64);
+  assert.doesNotThrow(() => validateConfigRecord(fromImage, key), "a container's source-lock digest is a valid identity");
 
-  for (const [mutate, expected] of [
+  for (const [mutate, expected, note] of [
     [(record) => delete record.resolution_context, /resolution_context/],
     [(record) => (record.resolution_context = { ...record.resolution_context, source: "runner" }), /source must be image or host/],
     [(record) => (record.resolution_context = { ...record.resolution_context, vllm_environment: ["not-a-name"] }), /must be null or a list of environment names/],
     [(record) => (record.resolution_context = { ...record.resolution_context, b12x_mxfp8_moe: "yes" }), /must be a boolean/],
     [(record) => (record.resolution_context = { ...record.resolution_context, runtime_identity: "latest" }), /hex digest/],
+    [(record) => (record.resolution_context = { ...record.resolution_context, runtime_identity: "a".repeat(40) }), /hex digest/, "a git OID is 40 hex, not a source-lock digest"],
+    [(record) => (record.resolution_context = { ...record.resolution_context, runtime_identity: "g".repeat(64) }), /hex digest/],
   ]) {
     const broken = structuredClone(good);
     mutate(broken);
-    assert.throws(() => validateConfigRecord(broken, key), expected, `expected ${expected}`);
+    assert.throws(() => validateConfigRecord(broken, key), expected, note ?? `expected ${expected}`);
   }
 });
 

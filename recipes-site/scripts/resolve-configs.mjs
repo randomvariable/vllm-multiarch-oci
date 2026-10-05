@@ -40,6 +40,11 @@ const DOC_FIELDS = ["group", "summary", "why"];
 const SETTINGS_KEYS = ["schema_version", "status", "qualification", "profile", "hardware", "argv", "settings", "environment", "warnings", "cache_service", "preset", "recipe", "role", "selection", "topology", "resolver_version", "resolution_context"];
 const CONTEXT_KEYS = ["b12x_mxfp8_moe", "runtime_identity", "source", "vllm_environment"];
 const COMMIT = /^[0-9a-f]{40}$/;
+// Not COMMIT: `runtime_identity` is hashlib.sha256(...).hexdigest() of the image's
+// source lock (image_tools/launcher/launch.py), 64 hex, while a git OID is 40. The two
+// are the same alphabet and different widths, so only a test on a real container's
+// answer tells them apart -- every host-resolved record carries null.
+const SHA256 = /^[0-9a-f]{64}$/;
 const DIGEST_REFERENCE = /^[a-z0-9][a-z0-9.-]*(?::[0-9]+)?(?:\/[a-z0-9][a-z0-9._-]*)+@sha256:[0-9a-f]{64}$/;
 const ENVIRONMENT_NAME = /^[A-Z][A-Z0-9_]*$/;
 const SELECTOR = /^(?:recipe:[a-z0-9][a-z0-9-]*|profile:[a-z0-9][a-z0-9-]*#[a-z0-9][a-z0-9-]*(?:#[a-z0-9][a-z0-9-]*)?)$/;
@@ -216,7 +221,7 @@ export function validateRecord(record, key) {
   assert(["image", "host"].includes(context.source), `${source}: resolution_context.source must be image or host, got ${context.source}`);
   assert(context.vllm_environment === null || (Array.isArray(context.vllm_environment) && context.vllm_environment.every((name) => ENVIRONMENT_NAME.test(name))), `${source}: resolution_context.vllm_environment must be null or a list of environment names`);
   assert(typeof context.b12x_mxfp8_moe === "boolean", `${source}: resolution_context.b12x_mxfp8_moe must be a boolean`);
-  assert(context.runtime_identity === null || COMMIT.test(context.runtime_identity), `${source}: resolution_context.runtime_identity must be null or a hex digest`);
+  assert(context.runtime_identity === null || SHA256.test(context.runtime_identity), `${source}: resolution_context.runtime_identity must be null or a hex digest`);
   assertNoPrivateReference(JSON.stringify(record), source);
   return record;
 }
