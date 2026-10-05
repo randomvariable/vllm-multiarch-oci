@@ -170,15 +170,12 @@ commandTests:
   - name: "LMCache multiprocess server registers its arguments"
     command: "/opt/venv/bin/lmcache"
     args: ["server", "--help"]
-    envVars:
-      - key: "CUDA_VISIBLE_DEVICES"
-        value: ""
     expectedOutput: ["--instance-id", "--supported-transfer-mode", "--shm-name"]
   - name: "LMCache recurrent connector loads against the image's vLLM"
     command: "/opt/venv/bin/python"
     args:
       - "-c"
-      - "from lmcache.integration.vllm.recurrent_checkpoint_connector import LMCacheRecurrentCheckpointConnector; print(LMCacheRecurrentCheckpointConnector.__name__)"
+      - "import os; os.environ['CUDA_VISIBLE_DEVICES'] = ''; from lmcache.integration.vllm.recurrent_checkpoint_connector import LMCacheRecurrentCheckpointConnector; print(LMCacheRecurrentCheckpointConnector.__name__)"
     expectedOutput: ["LMCacheRecurrentCheckpointConnector"]
   # SparkCache is loaded by vLLM through its KV-Connector-V1 configuration, so the
   # contract imports that connector module against the image's own vLLM rather than
