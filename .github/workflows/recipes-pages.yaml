@@ -131,6 +131,13 @@ jobs:
         env:
           WORK_DIR: ${{ runner.temp }}/recipes-site-data
           IMAGE_REF_FILE: recipes-site/public/latest-image.json
+          # resolve-releases.mjs asks GitHub for the published releases through
+          # the `gh` CLI, which refuses to call the API inside Actions without
+          # this: a runner carries no credential file of its own. The job's
+          # `contents: read` permission is what authorises the listing, and the
+          # pull-request lane never needs it because it reads committed
+          # fixtures instead.
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           # The two sources of truth, in the order that keeps the build honest:

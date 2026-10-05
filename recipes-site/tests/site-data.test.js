@@ -11,6 +11,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { parse as parseYaml } from "yaml";
 
 import { buildRoute, publishBuildPages, publishDeploymentData } from "../scripts/build-data.mjs";
 import { assemble, pins, verifyPublished } from "../scripts/prepare-pyodide.mjs";
@@ -385,4 +386,24 @@ test("asking the image forwards only the allowlisted variables", () => {
   assert.equal(docker[docker.indexOf(reference) + 1], "-m");
   assert.equal(docker.at(-1), "--print-config");
   assert.throws(() => dockerInvocation({}, "ghcr.io/x/y:latest", []), /digest-pinned reference/);
+});
+
+// The trunk lane of the Pages workflow is the only place the published releases are
+// read from GitHub, and it reads them through the `gh` CLI, which refuses to call the
+// API there at all: a runner carries no credential file of its own, so the step needs
+// the run's token. A pull request builds green from committed fixtures without ever
+// reaching that step, so the invariant is pinned here, where every lane runs.
+test("the release resolver reaches GitHub authenticated", () => {
+  const workflow = parseYaml(readFileSync(join(repositoryRoot, ".github/workflows/recipes-pages.yaml"), "utf8"));
+  const job = workflow.jobs.build;
+  const runText = (step) => String(step.run ?? "");
+  // The pull-request lane resolves from committed fixtures and never calls the API, so
+  // the trunk lane is exactly the step that runs the resolver without --fixture.
+  const trunk = job.steps.filter((step) => runText(step).includes("resolve-releases.mjs") && !runText(step).includes("--fixture"));
+  assert.equal(trunk.length, 1, "exactly one step resolves the published releases from GitHub");
+  const token = trunk[0].env?.GH_TOKEN ?? job.env?.GH_TOKEN;
+  assert.match(String(token), /\$\{\{\s*github\.token\s*\}\}/, "gh needs the run's token to call the API on a runner");
+  // The token is only useful with the permission that authorises the listing, so a
+  // step that is authenticated but unauthorised is the same red build.
+  assert.equal(job.permissions?.["contents"], "read", "listing releases needs contents:read");
 });
