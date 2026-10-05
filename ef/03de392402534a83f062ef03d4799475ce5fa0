@@ -1,0 +1,32 @@
+recipes-site/scripts/build-data.mjs
+  h_15da545fc8cfbe 10-12,386-398
+recipes-site/src/components/deployment-flow.js
+  h_15da545fc8cfbe 16-17,70-72,85,199-203,215-217,224,276-304,306-308,334,355,357-358,414,682,742,791-797,832-838,841-842,852-863,866-872
+recipes-site/src/content/docs/index.mdx
+  h_15da545fc8cfbe 20-26
+recipes-site/src/data/site-parameters.js
+  h_15da545fc8cfbe 1-201
+recipes-site/src/render.js
+  h_15da545fc8cfbe 2,21-26,37-45,53-87,173-183,186,189-191,209-215,220-243,263-438,497-502,559-568,576-582,677,730,746-766,785-788,865-866,869-875,891-894,931,943,978-987,991-992,994,1002,1004-1006,1009-1010,1012,1018-1019,1235-1237
+recipes-site/tests/deployment-flow.test.js
+  h_15da545fc8cfbe 7-9,11,16,51,54,58,64-75,127-293
+recipes-site/tests/render.test.js
+  h_15da545fc8cfbe 2,6-8,493-498,500,502-506,508-712
+recipes/deepseek-ai/deepseek-v4-flash-vision-gb10-tp2.yaml
+  h_15da545fc8cfbe 415-422
+recipes/local-inference-lab/qwen38-27b.yaml
+  h_15da545fc8cfbe 494-516
+recipes/local-inference-lab/qwen38-flash-next-gb10-tp2.yaml
+  h_15da545fc8cfbe 599-611
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ef03de392402534a83f062ef03d4799475ce5fa0",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
