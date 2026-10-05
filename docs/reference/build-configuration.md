@@ -180,6 +180,12 @@ NativeLink is our optional CI backend. The public `remote-aarch64` configuration
 
 Source: [image rule](../../bazel/vllm_image.bzl). Each image uses a native architecture-specific PyTorch wheel, not a `torch_libtorch`/Python-only split.
 
+LMCache is installed from its source-built wheel without resolving wheel
+dependencies. Its multiprocess server requires `sortedcontainers` from the
+profile's Python lock. Without it, CLI registration fails and `lmcache server`
+reports its server arguments as unrecognised. The image contract exercises
+`lmcache server --help` with CUDA hidden to cover this startup path.
+
 Run `just toolchain-check` to compile the `@gawk` bootstrap dependency through the registered toolchain and verify that poisoned worker include paths do not enter C/C++ actions.
 
 On an x86-64 build client, ARM64 Python build actions use the pinned `qemu-user-binfmt-hwe` package with the declared GCC sysroot. Native ARM64 workers run the same interpreter directly. Neither path uses host binfmt registration or `/lib/ld-linux-aarch64.so.1`.
