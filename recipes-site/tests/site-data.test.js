@@ -370,7 +370,10 @@ test("asking the image forwards only the allowlisted variables", () => {
       LWS_GROUP_SIZE: "2",
       LWS_LEADER_ADDRESS: "$(LWS_LEADER_ADDRESS)",
       POD_IP: "192.0.2.10",
-      VLLM_IMAGE_DATA_ROOT: "/opt/vllm-image/runtime",
+      // The host lane's own values: paths in the checkout, which the container is
+      // given no mount for. They must not be forwarded; see DOCKER_PASSTHROUGH.
+      VLLM_IMAGE_DATA_ROOT: "/home/runner/work/_temp/recipes-site-data/runtime",
+      VLLM_IMAGE_RECIPE_ROOT: "/home/runner/work/vllm-multiarch-oci/vllm-multiarch-oci/recipes",
     },
     reference,
     ["--recipe", "qwen38-flash-next-gb10-tp2"],
@@ -378,8 +381,12 @@ test("asking the image forwards only the allowlisted variables", () => {
   const forwarded = docker.filter((_, index) => docker[index - 1] === "-e");
   assert.deepEqual(
     forwarded.map((entry) => entry.split("=")[0]).sort(),
-    ["LWS_GROUP_SIZE", "LWS_LEADER_ADDRESS", "LWS_WORKER_INDEX", "POD_IP", "VLLM_IMAGE_DATA_ROOT"],
+    ["LWS_GROUP_SIZE", "LWS_LEADER_ADDRESS", "LWS_WORKER_INDEX", "POD_IP"],
   );
+  // Nothing forwarded may name a path: every one is either the literal a pod
+  // controller injects or a value the manifest itself sets.
+  for (const entry of forwarded) assert.doesNotMatch(entry, /=.*\//, `${entry}: a filesystem path reached the container`);
+  assert.doesNotMatch(docker.join(" "), /vllm-multiarch-oci/, "the runner's checkout path reached the container");
   assert.equal(docker[0], "run");
   assert.equal(docker[2], "--entrypoint");
   assert.equal(docker[3], "/opt/python/bin/python");

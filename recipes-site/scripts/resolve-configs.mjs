@@ -46,13 +46,21 @@ const SELECTOR = /^(?:recipe:[a-z0-9][a-z0-9-]*|profile:[a-z0-9][a-z0-9-]*#[a-z0
 // Only these reach the container. It supplies its own PATH, PYTHONPATH and
 // interpreter, so forwarding the runner's would leak CI state into a public
 // artefact and would not match what a deployment's pod spec can set.
+//
+// The two launcher roots are deliberately absent. `launchEnvironment` sets them to
+// paths in this checkout because the host lane has no other way to find the recipes
+// and the fetched policy tree, and a `docker run` with no volume mount carries
+// neither: forwarded, the container is ordered to read a directory that does not
+// exist inside it and refuses every recipe selection with `no recipe NAME.yaml under
+// <runner path>`. Left unset, the launcher uses its own defaults,
+// /opt/vllm-image/recipes and /opt/vllm-image/runtime, which is exactly the tree
+// //bazel/launcher_data_layer.bzl installs from //recipes and the pinned upstream
+// policy data -- what a pod actually reads when it serves the recipe.
 const DOCKER_PASSTHROUGH = new Set([
   "LWS_WORKER_INDEX",
   "LWS_GROUP_SIZE",
   "LWS_LEADER_ADDRESS",
   "POD_IP",
-  "VLLM_IMAGE_DATA_ROOT",
-  "VLLM_IMAGE_RECIPE_ROOT",
 ]);
 
 function assert(condition, message) {
