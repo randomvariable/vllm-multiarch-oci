@@ -1,0 +1,96 @@
+bazel/launcher_data_layer_action.py
+  h_15da545fc8cfbe 142,147-153
+bazel/launcher_data_layer_test.py
+  h_15da545fc8cfbe 71-73,75-77,88,120-124,127-128,193-215
+bazel/reproducibility_test.py
+  h_15da545fc8cfbe 164-169
+image/BUILD.bazel
+  h_15da545fc8cfbe 211
+image_tools/data/BUILD.bazel
+  h_15da545fc8cfbe 4-10,20-25,31-35
+image_tools/data/accepted/deepseek-v4-flash-vision-gb10-tp2.json
+  h_15da545fc8cfbe 1-115
+image_tools/data/accepted/qwen38-27b.json
+  h_15da545fc8cfbe 1-79
+image_tools/data/accepted/qwen38-flash-next-gb10-tp2.json
+  h_15da545fc8cfbe 1-133
+image_tools/launcher/launch.py
+  h_15da545fc8cfbe 49-52,100-112,117-129,160-177,180,182-190,192-193,195,197-202,276-285,288,291,294,296,299-308,316,318-319,325-345,347,353,364-369,732
+image_tools/launcher_data_test.py
+  h_15da545fc8cfbe 77-78,113-115,355-362,379,448,472-482
+image_tools/launcher_test.py
+  h_15da545fc8cfbe 182-200,219-225,230-231,234-238,242,244,253,255,258,264,267,271,273,278,282,362-371,373-382,406,408-410,475,477-483
+recipes-site/astro.config.mjs
+  h_15da545fc8cfbe 28-32,36
+recipes-site/scripts/build-data.mjs
+  h_15da545fc8cfbe 1-2,8,17,22-44,62-214,218-225,246-255,269-286,344,350-461,471,473-474
+recipes-site/scripts/resolve-configs.mjs
+  h_15da545fc8cfbe 5,27,62-89,392,470-471,486
+recipes-site/scripts/resolve-releases.mjs
+  h_15da545fc8cfbe 28
+recipes-site/src/components/BenchmarkPanel.astro
+  h_15da545fc8cfbe 1-73
+recipes-site/src/components/DeploymentFlow.astro
+  h_15da545fc8cfbe 2-6,9-25,28-31
+recipes-site/src/components/browser-resolver.js
+  h_15da545fc8cfbe 1-247
+recipes-site/src/components/deployment-flow.js
+  h_15da545fc8cfbe 1-33,36-44,47-80,82-150,152-157,159-176,178-194,196-209,211-226,228-230,232-237,239-246,248-319,321,323-362,364-374,376-402,404-414,416-453,455,457-495,497-500,502-523,526-534,536-542,544-546,548-567,570-651,654-664,666-681,684-709
+recipes-site/src/content/docs/builds/v20260917-1/index.md
+  h_15da545fc8cfbe 1-54
+recipes-site/src/content/docs/builds/v20261001-1/index.md
+  h_15da545fc8cfbe 1-54
+recipes-site/src/content/docs/builds/v20261003-1/index.md
+  h_15da545fc8cfbe 1-50
+recipes-site/src/content/docs/guides/deploy-tp2.mdx
+  h_15da545fc8cfbe 35
+recipes-site/src/content/docs/guides/llm-d-routing.mdx
+  h_15da545fc8cfbe 23
+recipes-site/src/content/docs/guides/multus-rdma.mdx
+  h_15da545fc8cfbe 211
+recipes-site/src/content/docs/image-releases/index.mdx
+  h_15da545fc8cfbe 2,8-11,13,15-19,21-24,47,61-67
+recipes-site/src/content/docs/index.mdx
+  h_15da545fc8cfbe 3,6,8-10,14-24
+recipes-site/src/content/docs/recipes/deepseek-v4-flash-vision-gb10-tp2.mdx
+  h_15da545fc8cfbe 8,37-42,50-54
+recipes-site/src/content/docs/recipes/index.mdx
+  h_15da545fc8cfbe 8-12,14-16
+recipes-site/src/content/docs/recipes/qwen38-27b.mdx
+  h_15da545fc8cfbe 1-63
+recipes-site/src/content/docs/recipes/qwen38-flash-next-gb10-tp2.mdx
+  h_15da545fc8cfbe 8,37,55-60,68-72
+recipes-site/src/content/docs/tutorials/k3s-to-deepseek.mdx
+  h_15da545fc8cfbe 81
+recipes-site/src/render.js
+  h_15da545fc8cfbe 3-12,18-23,31-32,35-72,94-97,99-104,106-108,110-120,125-126,151-158,163,167-278,282-296,305-306,309-313,315-319,323-330,333-341,343,346,348-352,354-360,362,364-369,374-378,380-381,383,385-397,401-407,409-410,412-417,419-420,422,428-452,455-471,473-478,482-494,496-497,500-503,506-541,543-548,553,555-602,604-605,608-641,644-663,666-667,669-742,744-751,754-760,796,818,820,823,833-842,845-852,855-859
+recipes-site/src/styles/flow.css
+  h_15da545fc8cfbe 1-437
+recipes-site/tests/browser-resolver.test.js
+  h_15da545fc8cfbe 1-168
+recipes-site/tests/deployment-flow.test.js
+  h_15da545fc8cfbe 1-77
+recipes-site/tests/render.test.js
+  h_15da545fc8cfbe 2,9-16,18-22,24-45,48-69,72-81,84-85,88-91,94-98,100-103,105-115,117-119,121-123,125-134,136-141,143-151,154-162,164-169,172-176,179-187,190-193,195-210,213-217,220-228,231-263,265-273,275-280,282-310
+recipes-site/tests/site-data.test.js
+  h_15da545fc8cfbe 10,15,307-337
+recipes/BUILD.bazel
+  h_15da545fc8cfbe 1-17
+recipes/deepseek-ai/deepseek-v4-flash-vision-gb10-tp2.yaml
+  h_15da545fc8cfbe 1-20,23,144-333,337-341,343-346,349-350,355-359,506-630,633-635
+recipes/local-inference-lab/qwen38-27b.yaml
+  h_15da545fc8cfbe 2,4-11,14,16-22,24-139,442-619
+recipes/local-inference-lab/qwen38-flash-next-gb10-tp2.yaml
+  h_15da545fc8cfbe 1-21,24,235-503,507-511,671-831,834-836
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d307e70a09b78380226f7714ccd9b49c6aaefa8a",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
