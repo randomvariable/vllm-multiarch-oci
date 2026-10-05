@@ -1,0 +1,20 @@
+profiles/vllmb12x/requirements-x86_64.lock
+  h_15da545fc8cfbe 2751,2772-2775,2790,2965
+profiles/vllmb12x/requirements.in
+  h_15da545fc8cfbe 36-37
+profiles/vllmb12x/requirements.lock
+  h_15da545fc8cfbe 2697,2718-2721,2736,2911
+tests/image/vllmb12x.yaml
+  h_15da545fc8cfbe 180-185
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e89a48fca1215a153c18ec1e0c0c0a06ae5b7014",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
