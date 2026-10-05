@@ -30,6 +30,12 @@ mooncake-transfer-engine-cuda13
 # SSD registration and SPDK target modules use Paramiko. The remaining
 # optional Mooncake imports are already supplied by the vLLM profile.
 paramiko
+# SparkCache: persistent rank-local NVMe prefix cache for vLLM on GB10
+# (github.com/FujitsuPolycom/sparkcache), loaded as a vLLM KV connector. Pure
+# Python; its `connector` extra only adds torch, which the image builds from
+# source, so the bare package is installed. Pinned exactly because every release
+# so far is a pre-release.
+sparkcache==0.1.0a2
 # GPU video decode backend (vllm/multimodal/video_decoders/pynvvideocodec.py).
 PyNvVideoCodec
 quack-kernels
