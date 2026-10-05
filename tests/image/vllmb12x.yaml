@@ -177,6 +177,12 @@ commandTests:
       - "-c"
       - "export LD_LIBRARY_PATH=/usr/local/cuda/compat:$LD_LIBRARY_PATH; exec /opt/venv/bin/python -c \"import os; os.environ['CUDA_VISIBLE_DEVICES'] = ''; from lmcache.integration.vllm.recurrent_checkpoint_connector import LMCacheRecurrentCheckpointConnector; print(LMCacheRecurrentCheckpointConnector.__name__)\""
     expectedOutput: ["LMCacheRecurrentCheckpointConnector"]
+  - name: "LMCache server initializes Prometheus telemetry"
+    command: "/bin/bash"
+    args:
+      - "-c"
+      - "export LD_LIBRARY_PATH=/usr/local/cuda/compat:$LD_LIBRARY_PATH; exec /opt/venv/bin/python -c \"import os; os.environ['CUDA_VISIBLE_DEVICES'] = ''; from lmcache.v1.multiprocess.http_server import run_http_server; from lmcache.v1.mp_observability.otel_init import init_otel_metrics; init_otel_metrics(start_http_server=False); print('server telemetry initialized')\""
+    expectedOutput: ["server telemetry initialized"]
   # SparkCache is loaded by vLLM through its KV-Connector-V1 configuration, so the
   # contract imports that connector module against the image's own vLLM rather than
   # just the package, which deliberately imports nothing at package import time.
