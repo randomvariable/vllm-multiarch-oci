@@ -1,0 +1,22 @@
+recipes-site/astro.config.mjs
+  h_15da545fc8cfbe 70
+recipes-site/src/components/DeploymentFlow.astro
+  h_15da545fc8cfbe 9
+recipes-site/src/components/deployment-flow.js
+  h_15da545fc8cfbe 21-31,102,106,399-409,461,484,512-516,519,565,568,631-645
+recipes-site/src/content/docs/index.mdx
+  h_15da545fc8cfbe 4
+recipes-site/src/styles/flow.css
+  h_15da545fc8cfbe 438-532
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "4dc8d341222db2e3f32131452bbd0f4b81f93fe8",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
