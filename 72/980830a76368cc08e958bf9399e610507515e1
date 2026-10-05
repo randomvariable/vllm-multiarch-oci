@@ -1,0 +1,26 @@
+bazel/BUILD.bazel
+  h_15da545fc8cfbe 44-52,57
+bazel/hermetic_cc_toolchain_test.py
+  h_15da545fc8cfbe 5,16-20
+recipes-site/src/benchmark.js
+  h_15da545fc8cfbe 1-80
+recipes-site/src/components/BenchmarkPanel.astro
+  h_15da545fc8cfbe 5-10,12-15,23,28
+recipes-site/src/components/deployment-flow.js
+  h_15da545fc8cfbe 15,344-354,358-359,361,444-451,453,459-466,592-596
+recipes-site/tests/benchmark.test.js
+  h_15da545fc8cfbe 1-70
+recipes-site/tests/deployment-flow.test.js
+  h_15da545fc8cfbe 1-4,9-10,25-28,34-38,42,45,53-56,60-62,66-68,71,80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "72980830a76368cc08e958bf9399e610507515e1",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
