@@ -344,17 +344,26 @@ test("a record must say what it was resolved against", () => {
   const key = "recipe:qwen38-flash-next-gb10-tp2";
   const good = fixture("configs.json")[key];
   assert.doesNotThrow(() => validateConfigRecord(structuredClone(good), key));
+  // The host lane answers null for this field, so a fixture of nulls alone would leave
+  // the digest arm unexercised forever and the validator could confuse a 64-hex SHA-256
+  // with a 40-hex git OID -- which is what red the trunk lane. This record is one the
+  // image resolves, so its published shape is the contract.
+  const fromImage = structuredClone(good);
+  fromImage.resolution_context.runtime_identity = "0".repeat(64);
+  assert.doesNotThrow(() => validateConfigRecord(fromImage, key), "a container's source-lock digest is a valid identity");
 
-  for (const [mutate, expected] of [
+  for (const [mutate, expected, note] of [
     [(record) => delete record.resolution_context, /resolution_context/],
     [(record) => (record.resolution_context = { ...record.resolution_context, source: "runner" }), /source must be image or host/],
     [(record) => (record.resolution_context = { ...record.resolution_context, vllm_environment: ["not-a-name"] }), /must be null or a list of environment names/],
     [(record) => (record.resolution_context = { ...record.resolution_context, b12x_mxfp8_moe: "yes" }), /must be a boolean/],
     [(record) => (record.resolution_context = { ...record.resolution_context, runtime_identity: "latest" }), /hex digest/],
+    [(record) => (record.resolution_context = { ...record.resolution_context, runtime_identity: "a".repeat(40) }), /hex digest/, "a git OID is 40 hex, not a source-lock digest"],
+    [(record) => (record.resolution_context = { ...record.resolution_context, runtime_identity: "g".repeat(64) }), /hex digest/],
   ]) {
     const broken = structuredClone(good);
     mutate(broken);
-    assert.throws(() => validateConfigRecord(broken, key), expected, `expected ${expected}`);
+    assert.throws(() => validateConfigRecord(broken, key), expected, note ?? `expected ${expected}`);
   }
 });
 
@@ -370,7 +379,10 @@ test("asking the image forwards only the allowlisted variables", () => {
       LWS_GROUP_SIZE: "2",
       LWS_LEADER_ADDRESS: "$(LWS_LEADER_ADDRESS)",
       POD_IP: "192.0.2.10",
-      VLLM_IMAGE_DATA_ROOT: "/opt/vllm-image/runtime",
+      // The host lane's own values: paths in the checkout, which the container is
+      // given no mount for. They must not be forwarded; see DOCKER_PASSTHROUGH.
+      VLLM_IMAGE_DATA_ROOT: "/home/runner/work/_temp/recipes-site-data/runtime",
+      VLLM_IMAGE_RECIPE_ROOT: "/home/runner/work/vllm-multiarch-oci/vllm-multiarch-oci/recipes",
     },
     reference,
     ["--recipe", "qwen38-flash-next-gb10-tp2"],
@@ -378,8 +390,12 @@ test("asking the image forwards only the allowlisted variables", () => {
   const forwarded = docker.filter((_, index) => docker[index - 1] === "-e");
   assert.deepEqual(
     forwarded.map((entry) => entry.split("=")[0]).sort(),
-    ["LWS_GROUP_SIZE", "LWS_LEADER_ADDRESS", "LWS_WORKER_INDEX", "POD_IP", "VLLM_IMAGE_DATA_ROOT"],
+    ["LWS_GROUP_SIZE", "LWS_LEADER_ADDRESS", "LWS_WORKER_INDEX", "POD_IP"],
   );
+  // Nothing forwarded may name a path: every one is either the literal a pod
+  // controller injects or a value the manifest itself sets.
+  for (const entry of forwarded) assert.doesNotMatch(entry, /=.*\//, `${entry}: a filesystem path reached the container`);
+  assert.doesNotMatch(docker.join(" "), /vllm-multiarch-oci/, "the runner's checkout path reached the container");
   assert.equal(docker[0], "run");
   assert.equal(docker[2], "--entrypoint");
   assert.equal(docker[3], "/opt/python/bin/python");

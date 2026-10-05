@@ -99,7 +99,7 @@ test("a clean pyodide tree returns the resolver's argv", async () => {
     // What the published container answered for itself. A browser cannot import
     // vLLM, so these have to come from the record or the edited command is resolved
     // against the wrong machine.
-    context: { source: "image", vllm_environment: ["VLLM_USE_V1"], b12x_mxfp8_moe: true, runtime_identity: "a".repeat(40) },
+    context: { source: "image", vllm_environment: ["VLLM_USE_V1"], b12x_mxfp8_moe: true, runtime_identity: "a".repeat(64) },
     settings: { "max-num-seqs": "16" },
     environment: { NCCL_NET: "Socket" },
     fetch: fetchImpl,
@@ -132,7 +132,7 @@ test("a clean pyodide tree returns the resolver's argv", async () => {
   );
   assert.deepEqual(call.vllm_environment, ["VLLM_USE_V1"], "the container's answer is forwarded");
   assert.equal(call.b12x_mxfp8_moe, undefined);
-  assert.equal(call.runtime_identity, "a".repeat(40), "the JIT namespace comes from the record");
+  assert.equal(call.runtime_identity, "a".repeat(64), "the JIT namespace comes from the record");
   assert.deepEqual(call.env, { NCCL_NET: "Socket" }, "reader-set variables resolve as process environment");
 });
 
