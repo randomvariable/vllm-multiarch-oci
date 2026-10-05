@@ -1,0 +1,16 @@
+recipes-site/scripts/resolve-configs.mjs
+  h_15da545fc8cfbe 49-58
+recipes-site/tests/site-data.test.js
+  h_15da545fc8cfbe 373-376,384,386-389
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "763ddae3e5fdb5850bb9d6e45af51cff674bf935",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
