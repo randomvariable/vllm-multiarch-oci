@@ -2694,6 +2694,7 @@ opentelemetry-api==1.44.0 \
     #   mcp
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
+    #   opentelemetry-exporter-prometheus
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
 opentelemetry-exporter-otlp==1.44.0 \
@@ -2714,6 +2715,10 @@ opentelemetry-exporter-otlp-proto-http==1.44.0 \
     --hash=sha256:838592fce774c1c8bb7b9a0a7facbfa82e17be5a8a4e94cef10cb84ae026bae3 \
     --hash=sha256:c633d7270ad6b57cd4cfbe8b0007a9e2e7c0cb50bd6c50fe2a7b245f721a09d8
     # via opentelemetry-exporter-otlp
+opentelemetry-exporter-prometheus==0.65b0 \
+    --hash=sha256:2777cbf41c403c119e10f418fce5d645c956b47f673a2ee120285d1d0c6df2d5 \
+    --hash=sha256:3b3d24b586d0ad9712c7b52b7d19c8a9dfbb318b9b284121b5f95e90ed019367
+    # via -r profiles/vllmb12x/requirements.in
 opentelemetry-proto==1.44.0 \
     --hash=sha256:898b155a0e1557afd867478fb6158e8122a46329ca0bb8dc53cc55e98f017f56 \
     --hash=sha256:c547a79c2f8c0c515d31509154682e5921c7cfd5ca67b70e1f9266e2c3e103f3
@@ -2728,6 +2733,7 @@ opentelemetry-sdk==1.44.0 \
     #   -r profiles/vllmb12x/../../third_party/vllm-common-requirements.txt
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
+    #   opentelemetry-exporter-prometheus
     #   opentelemetry-semantic-conventions-ai
 opentelemetry-semantic-conventions==0.65b0 \
     --hash=sha256:1cacde7b0ad306f84c5ef08c3dbe1bbaf20165bba6f8bff43b670e555a086bcb \
@@ -2902,6 +2908,7 @@ prometheus-client==0.26.0 \
     --hash=sha256:fa93d06737aa02bacd05794768508bb97d2fbee28cb3bca04eaae92f0ca953d6
     # via
     #   -r profiles/vllmb12x/../../third_party/vllm-common-requirements.txt
+    #   opentelemetry-exporter-prometheus
     #   prometheus-fastapi-instrumentator
 prometheus-fastapi-instrumentator==8.1.0 \
     --hash=sha256:b77f3043665e8d28e2bbd21017506195a43d9adf1d402d01bf95b494b7e560e1 \

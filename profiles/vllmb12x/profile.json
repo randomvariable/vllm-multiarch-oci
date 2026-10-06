@@ -47,7 +47,7 @@
       "remote": "https://github.com/microsoft/llguidance.git"
     },
     "lmcache": {
-      "commit": "9cebd405d0caf4bebe01d694b5a8bf4e3e354314",
+      "commit": "820af25ff630f4c00f7faefbcc31bc5ccd7bab71",
       "recursive_init_submodules": true,
       "remote": "https://github.com/local-inference-lab/LMCache.git"
     },
