@@ -1,14 +1,9 @@
 {
-  "b12x_ref": "refs/heads/integration/karmic-kraken-beta",
+  "flashinfer_ref": "refs/heads/main",
   "lil_runtime_ref": "refs/heads/main",
   "name": "vllmb12x",
   "source_ref": "refs/heads/cycle/karmic-kraken",
   "sources": {
-    "b12x": {
-      "commit": "52640cb15d4ad1c7230f747e72c45d45dc2da681",
-      "recursive_init_submodules": true,
-      "remote": "https://github.com/local-inference-lab/b12x.git"
-    },
     "cutlass": {
       "commit": "e6233cbac5d7c7a865c19c91cd684ceece19513c",
       "recursive_init_submodules": true,
@@ -25,9 +20,9 @@
       "remote": "https://github.com/brandonmmusic-max/exllamav3.git"
     },
     "flashinfer": {
-      "commit": "1ac6942776b383c6b03c7a5805a22e72a3e3349f",
+      "commit": "8f4ee770e49fdfb084408d50f5f0dc823d1ecfc9",
       "recursive_init_submodules": true,
-      "remote": "https://github.com/voipmonitor/flashinfer.git"
+      "remote": "https://github.com/local-inference-lab/flashinfer.git"
     },
     "instanttensor": {
       "commit": "49b4010afc1cae0441e71fe0b0bffc24fa05e932",
@@ -35,7 +30,7 @@
       "remote": "https://github.com/voipmonitor/InstantTensor.git"
     },
     "lil_runtime": {
-      "commit": "353efc679f631206e0b001e67047dea80ee6d76e",
+      "commit": "966c341bbd10a2874bd133b8fcdf6a8ac19102cc",
       "recursive_init_submodules": false,
       "remote": "https://github.com/local-inference-lab/blackwell-llm-docker.git"
     },
@@ -73,7 +68,7 @@
     },
     "vllm": {
       "cargo_vendor": true,
-      "commit": "d07312cb9c5ed51ec7a6b8d11cee6840c0dc1e3d",
+      "commit": "dfbd00d10dec5b5a5a4e65bd8580e120ca7af8c3",
       "recursive_init_submodules": true,
       "remote": "https://github.com/randomvariable/vllm.git"
     },

@@ -12,18 +12,14 @@ A change reaches the build in one of two ways. It is either already merged into 
 {/* included-changes:start */}
 ## vLLM
 
-Pinned at [`d07312cb9c5e`](https://github.com/randomvariable/vllm/commit/d07312cb9c5ed51ec7a6b8d11cee6840c0dc1e3d), branched from [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm) `integration/karmic-kraken-beta`.
+Pinned at [`dfbd00d10dec`](https://github.com/randomvariable/vllm/commit/dfbd00d10dec5b5a5a4e65bd8580e120ca7af8c3), branched from [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm) `integration/karmic-kraken-beta`.
 
 - **[local-inference-lab/vllm#800](https://github.com/local-inference-lab/vllm/pull/800)** — Bounded shared-memory broadcast waits
   - Merged into the pinned revision (1 commits).
-  - The only change this branch carries beyond the base: cherry-picked from randomvariable/vllm arm-spinloop-karmic-gated (29ebd2dfb82c) onto the karmic-kraken-beta tip 58d05bc7626d.
+  - The only change this branch carries beyond the base: cherry-picked from randomvariable/vllm arm-spinloop-karmic-gated (29ebd2dfb82c) onto the integration/karmic-kraken-beta tip abdf960a1abf (result dfbd00d10dec).
 - **Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute** — no upstream pull request
   - Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch`.
   - Packaging repair for this builder's symlink install path, which skips the import rewrite the upstream CMake copy performs. It carries no upstream change.
-
-## B12X
-
-Pinned at [`52640cb15d4a`](https://github.com/local-inference-lab/b12x/commit/52640cb15d4ad1c7230f747e72c45d45dc2da681), branched from [`local-inference-lab/b12x`](https://github.com/local-inference-lab/b12x) `integration/karmic-kraken-beta`.
 {/* included-changes:end */}
 
 ## Keeping this list honest

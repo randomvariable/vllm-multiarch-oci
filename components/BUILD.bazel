@@ -87,9 +87,13 @@ _FLASHINFER_ENV = select({
     "//platforms:cuda_sm12x": {"FLASHINFER_CUDA_ARCH_LIST": "12.0f"},
     "//platforms:cuda_sm120": {"FLASHINFER_CUDA_ARCH_LIST": "12.0"},
 })
-_FLASHINFER_JIT_ENV = select({
-    "//platforms:cuda_sm12x": {"FLASHINFER_CUDA_ARCH_LIST": "12.0f", "FLASHINFER_DISABLE_VERSION_CHECK": "1"},
-    "//platforms:cuda_sm120": {"FLASHINFER_CUDA_ARCH_LIST": "12.0", "FLASHINFER_DISABLE_VERSION_CHECK": "1"},
+_FLASHINFER_JIT_PROVIDER_ENV = select({
+    "//platforms:cuda_sm12x": {"FLASHINFER_CUDA_ARCH_LIST": "12.0f", "FLASHINFER_DISABLE_VERSION_CHECK": "1", "FLASHINFER_JIT_CACHE_PROVIDER_ARCH": "12.0f"},
+    "//platforms:cuda_sm120": {"FLASHINFER_CUDA_ARCH_LIST": "12.0", "FLASHINFER_DISABLE_VERSION_CHECK": "1", "FLASHINFER_JIT_CACHE_PROVIDER_ARCH": "12.0"},
+})
+_FLASHINFER_JIT_SHIM_ENV = select({
+    "//platforms:cuda_sm12x": {"FLASHINFER_DISABLE_VERSION_CHECK": "1", "FLASHINFER_JIT_CACHE_PROVIDER_ARCHS": "12.0f"},
+    "//platforms:cuda_sm120": {"FLASHINFER_DISABLE_VERSION_CHECK": "1", "FLASHINFER_JIT_CACHE_PROVIDER_ARCHS": "12.0"},
 })
 _TORCH_ENV = select({
     "//platforms:cuda_sm12x": {"BUILD_CAFFE2": "0", "BUILD_TEST": "0", "CMAKE_CUDA_ARCHITECTURES": "120f", "PYTORCH_BUILD_NUMBER": "1", "PYTORCH_BUILD_VERSION": "2.13.0", "TORCH_CUDA_ARCH_LIST": "12.0+PTX", "USE_CUDA": "1", "USE_CUDNN": "1", "USE_CUFILE": "0", "USE_CUSPARSELT": "1", "USE_DISTRIBUTED": "1", "USE_NCCL": "1", "USE_SYSTEM_NCCL": "1"},
@@ -139,28 +143,28 @@ cuda_wheel(
     build = "//bazel:build_flashinfer_wheel.py",
     env = _FLASHINFER_ENV,
     host_wheels = _FLASHINFER_BUILD_WHEELS,
-    output = "flashinfer_python-0.6.18-py3-none-any.whl",
+    output = "flashinfer_python-0.7.1-py3-none-any.whl",
     cpu = 20,
     memory = 32768,
 )
 
 cuda_wheel(
-    name = "flashinfer_jit_cache",
+    name = "flashinfer_jit_cache_provider",
     src = "@vllmb12x_flashinfer//:source.tar",
     cuda = _CUDA_TOOLKIT,
     target_cpu = _TARGET_CPU,
     python = "@python_3_12//:python3",
-    build = "//bazel:build_flashinfer_jit_cache_wheel.py",
+    build = "//bazel:build_flashinfer_jit_cache_provider_wheel.py",
     deps = [
         ":flashinfer_python",
         ":torch",
     ],
-    env = _FLASHINFER_JIT_ENV,
+    env = _FLASHINFER_JIT_PROVIDER_ENV,
     host_wheels = _FLASHINFER_BUILD_WHEELS,
     nccl = "//components/nccl:sdk",
     output = select({
-        "//platforms:linux_aarch64": "flashinfer_jit_cache-0.6.18-cp39-abi3-manylinux_2_28_aarch64.whl",
-        "//platforms:linux_x86_64": "flashinfer_jit_cache-0.6.18-cp39-abi3-manylinux_2_28_x86_64.whl",
+        "//platforms:linux_aarch64": "flashinfer_jit_cache_sm120f-0.7.1-cp39-abi3-manylinux_2_28_aarch64.whl",
+        "//platforms:linux_x86_64": "flashinfer_jit_cache_sm120-0.7.1-cp39-abi3-manylinux_2_28_x86_64.whl",
     }),
     cpu = 20,
     memory = 49152,
@@ -169,6 +173,24 @@ cuda_wheel(
     # compiler processes, 12.91GiB peak for a single translation unit, and
     # 37.25GiB summed resident compiler memory, so roughly 7.5GiB per job.
     memory_per_job = 8192,
+)
+
+# Pure-Python shim whose dependency metadata names the provider wheel built
+# above; runtime discovers the provider through the flashinfer.jit_cache.providers
+# entry-point group.
+cuda_wheel(
+    name = "flashinfer_jit_cache_shim",
+    src = "@vllmb12x_flashinfer//:source.tar",
+    cuda = _CUDA_TOOLKIT,
+    target_cpu = _TARGET_CPU,
+    python = "@python_3_12//:python3",
+    build = "//bazel:build_flashinfer_jit_cache_wheel.py",
+    deps = [
+        ":flashinfer_python",
+    ],
+    env = _FLASHINFER_JIT_SHIM_ENV,
+    host_wheels = _FLASHINFER_BUILD_WHEELS,
+    output = "flashinfer_jit_cache-0.7.1-py3-none-any.whl",
 )
 
 cuda_wheel(
@@ -197,7 +219,7 @@ vllm_wheel(
     python = "@python_3_12//:python3",
     build = "//bazel:build_vllm_wheel.py",
     deps = [
-        ":b12x",
+        ":flashinfer_python",
         ":deepgemm",
         ":torch",
         ":xgrammar",
@@ -235,7 +257,7 @@ vllm_preflight(
     target_cpu = _TARGET_CPU,
     python = "@python_3_12//:python3",
     deps = [
-        ":b12x",
+        ":flashinfer_python",
         ":deepgemm",
         ":torch",
         ":xgrammar",
@@ -302,20 +324,6 @@ cuda_wheel(
         "//platforms:linux_aarch64": "deep_gemm-2.5.0-cp312-cp312-linux_aarch64.whl",
         "//platforms:linux_x86_64": "deep_gemm-2.5.0-cp312-cp312-linux_x86_64.whl",
     }),
-    cpu = 20,
-    memory = 32768,
-)
-
-cuda_wheel(
-    name = "b12x",
-    src = "@vllmb12x_b12x//:source.tar",
-    cuda = _CUDA_TOOLKIT,
-    target_cpu = _TARGET_CPU,
-    python = "@python_3_12//:python3",
-    build = "//bazel:build_source_wheel.py",
-    env = _TORCH_ARCH_ENV,
-    host_wheels = _HOST_WHEELS,
-    output = "b12x-1.3.0-py3-none-any.whl",
     cpu = 20,
     memory = 32768,
 )

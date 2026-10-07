@@ -239,7 +239,6 @@ sources.profile(
 )
 use_repo(
     sources,
-    "vllmb12x_b12x",
     "vllmb12x_cutlass",
     "vllmb12x_deepgemm",
     "vllmb12x_exllamav3",

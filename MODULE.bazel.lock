@@ -295,20 +295,9 @@
         "bzlTransitiveDigest": "hc26F5s55jBCXFimaxIvPmNc1rt22HMVwgH4iuCjKBU=",
         "usagesDigest": "27S2nJnWs7icY1Yi+UWrPv4nfudZ01z3cIqvW9izwLY=",
         "recordedInputs": [
-          "FILE:@@//profiles/vllmb12x/profile.json fc782844b3d54497593464a288494e4363f4295f6008740216d243fdbaaf9b2c"
+          "FILE:@@//profiles/vllmb12x/profile.json 9237815bd7bf435bb497a376ca01785050441fc68d7dd694a9f968e9b620fa4c"
         ],
         "generatedRepoSpecs": {
-          "vllmb12x_b12x": {
-            "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
-            "attributes": {
-              "remote": "https://github.com/local-inference-lab/b12x.git",
-              "commit": "a77b3f85e5e2a81315ff4a90088912f187708005",
-              "recursive_init_submodules": true,
-              "patches": [],
-              "cargo_vendor": false,
-              "cargo_manifest": "rust/Cargo.toml"
-            }
-          },
           "vllmb12x_cutlass": {
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
@@ -345,8 +334,8 @@
           "vllmb12x_flashinfer": {
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
-              "remote": "https://github.com/voipmonitor/flashinfer.git",
-              "commit": "1ac6942776b383c6b03c7a5805a22e72a3e3349f",
+              "remote": "https://github.com/local-inference-lab/flashinfer.git",
+              "commit": "8f4ee770e49fdfb084408d50f5f0dc823d1ecfc9",
               "recursive_init_submodules": true,
               "patches": [],
               "cargo_vendor": false,
@@ -368,7 +357,7 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/local-inference-lab/blackwell-llm-docker.git",
-              "commit": "353efc679f631206e0b001e67047dea80ee6d76e",
+              "commit": "966c341bbd10a2874bd133b8fcdf6a8ac19102cc",
               "recursive_init_submodules": false,
               "patches": [],
               "cargo_vendor": false,
@@ -390,7 +379,7 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/local-inference-lab/LMCache.git",
-              "commit": "9cebd405d0caf4bebe01d694b5a8bf4e3e354314",
+              "commit": "820af25ff630f4c00f7faefbcc31bc5ccd7bab71",
               "recursive_init_submodules": true,
               "patches": [],
               "cargo_vendor": false,
@@ -445,7 +434,7 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/randomvariable/vllm.git",
-              "commit": "28d82aa6479a32171788048b0d31ed008dd099cd",
+              "commit": "dfbd00d10dec5b5a5a4e65bd8580e120ca7af8c3",
               "recursive_init_submodules": true,
               "patches": [
                 "@@//third_party:vllm_flash_attn_cute_namespace.patch"

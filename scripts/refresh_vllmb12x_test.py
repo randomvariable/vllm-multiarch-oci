@@ -18,11 +18,11 @@ SPEC.loader.exec_module(REFRESH)
 
 FORK_PAIR = {
     "name": "vllmb12x",
-    "b12x_ref": "refs/heads/integration/karmic-kraken-beta",
+    "flashinfer_ref": "refs/heads/main",
     "source_ref": "refs/heads/cycle/karmic-kraken",
     "vllm_base_version": "0.29.0",
     "sources": {
-        "b12x": {"commit": "a" * 40, "remote": "https://example.invalid/b12x.git"},
+        "flashinfer": {"commit": "a" * 40, "remote": "https://example.invalid/flashinfer.git"},
         "vllm": {"commit": "b" * 40, "remote": "https://example.invalid/vllm.git"},
     },
 }
@@ -61,14 +61,14 @@ class RefreshVLLMB12XTest(unittest.TestCase):
 
         emitted = json.loads(result["output"].split("\n# SPDX", 1)[0])
         self.assertEqual(emitted["source_ref"], "refs/heads/cycle/karmic-kraken")
-        self.assertEqual(emitted["b12x_ref"], "refs/heads/integration/karmic-kraken-beta")
+        self.assertEqual(emitted["flashinfer_ref"], "refs/heads/main")
         self.assertEqual(emitted["sources"]["vllm"], {
             "commit": "c" * 40,
             "remote": "https://example.invalid/vllm.git",
         })
-        self.assertEqual(emitted["sources"]["b12x"], {
+        self.assertEqual(emitted["sources"]["flashinfer"], {
             "commit": "d" * 40,
-            "remote": "https://example.invalid/b12x.git",
+            "remote": "https://example.invalid/flashinfer.git",
         })
         result["checkout"].assert_called_once_with(
             "https://example.invalid/vllm.git", "c" * 40, ANY
@@ -95,11 +95,11 @@ class RefreshVLLMB12XTest(unittest.TestCase):
                 "--vllm-remote", "https://github.com/local-inference-lab/vllm.git",
                 "--vllm-ref", "refs/heads/dev/karmic-kraken",
             )
-        with self.assertRaisesRegex(RuntimeError, "b12x is tracked at"):
+        with self.assertRaisesRegex(RuntimeError, "flashinfer is tracked at"):
             run_refresh(
                 FORK_PAIR,
-                "--b12x-remote", "https://github.com/local-inference-lab/b12x.git",
-                "--b12x-ref", "refs/heads/master",
+                "--flashinfer-remote", "https://github.com/local-inference-lab/flashinfer.git",
+                "--flashinfer-ref", "refs/heads/master",
             )
 
     def test_source_change_is_recorded_when_the_flag_asks_for_it(self):
@@ -119,8 +119,8 @@ class RefreshVLLMB12XTest(unittest.TestCase):
 
     def test_missing_recorded_pair_is_named_rather_than_guessed(self):
         without_ref = json.loads(json.dumps(FORK_PAIR))
-        del without_ref["b12x_ref"]
-        with self.assertRaisesRegex(RuntimeError, "does not record b12x_ref"):
+        del without_ref["flashinfer_ref"]
+        with self.assertRaisesRegex(RuntimeError, "does not record flashinfer_ref"):
             run_refresh(without_ref)
 
 
@@ -159,10 +159,10 @@ class VersionCompositionTest(unittest.TestCase):
     def test_sources_digest_tracks_every_pin_and_ignores_order(self):
         sources = {
             "vllm": {"commit": "a" * 40, "remote": "https://example.invalid/vllm.git"},
-            "b12x": {"commit": "b" * 40, "remote": "https://example.invalid/b12x.git"},
+            "flashinfer": {"commit": "b" * 40, "remote": "https://example.invalid/flashinfer.git"},
         }
         digest = REFRESH.sources_digest("refs/heads/cycle/karmic-kraken", sources)
-        reordered = {"b12x": sources["b12x"], "vllm": sources["vllm"]}
+        reordered = {"flashinfer": sources["flashinfer"], "vllm": sources["vllm"]}
         self.assertEqual(digest, REFRESH.sources_digest("refs/heads/cycle/karmic-kraken", reordered))
 
         moved = json.loads(json.dumps(sources))

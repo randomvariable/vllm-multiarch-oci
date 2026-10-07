@@ -169,7 +169,7 @@ def release_notes(reference: str, publication_tag: str, release_tag: str, module
         f"| Release tag | `{repository}:{release_tag}` |",
         f"| Publication tag | `{repository}:{publication_tag}` |",
         f"| vLLM | `{lock['sources']['vllm']['commit']}` |",
-        f"| B12X | `{lock['sources']['b12x']['commit']}` |",
+        f"| FlashInfer | `{lock['sources']['flashinfer']['commit']}` |",
         f"| Builder | `{run('git', 'rev-parse', 'HEAD').strip()}` |",
         "",
         "## Base vLLM image additions",

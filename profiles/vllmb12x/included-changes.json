@@ -12,7 +12,7 @@
           "title": "Bounded shared-memory broadcast waits",
           "inclusion": "branch",
           "commits": 1,
-          "note": "The only change this branch carries beyond the base: cherry-picked from randomvariable/vllm arm-spinloop-karmic-gated (29ebd2dfb82c) onto the karmic-kraken-beta tip 58d05bc7626d."
+          "note": "The only change this branch carries beyond the base: cherry-picked from randomvariable/vllm arm-spinloop-karmic-gated (29ebd2dfb82c) onto the integration/karmic-kraken-beta tip abdf960a1abf (result dfbd00d10dec)."
         },
         {
           "pull_request": null,
@@ -22,14 +22,6 @@
           "note": "Packaging repair for this builder's symlink install path, which skips the import rewrite the upstream CMake copy performs. It carries no upstream change."
         }
       ]
-    },
-    {
-      "name": "b12x",
-      "title": "B12X",
-      "branch": "refs/heads/integration/karmic-kraken-beta",
-      "upstream": "local-inference-lab/b12x",
-      "upstream_base": "refs/heads/integration/karmic-kraken-beta",
-      "changes": []
     }
   ]
 }
