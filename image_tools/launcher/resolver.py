@@ -166,6 +166,7 @@ _SCHEMA_KEYWORDS = {
     "propertyNames",
     "items",
     "minimum",
+    "minProperties",
 }
 _SCHEMA_ANNOTATIONS = {
     "$schema",
@@ -213,6 +214,10 @@ def _validate_schema(instance: Any, schema: dict, defs: dict, trail: str) -> Non
             _validate_schema(item, schema["items"], defs, f"{trail}[{position}]")
     if not isinstance(instance, dict):
         return
+    if "minProperties" in schema and len(instance) < schema["minProperties"]:
+        raise ConfigError(
+            f"{trail} has fewer than {schema['minProperties']} properties"
+        )
     for required in schema.get("required", []):
         if required not in instance:
             raise ConfigError(f"{trail} is a required property: {required}")

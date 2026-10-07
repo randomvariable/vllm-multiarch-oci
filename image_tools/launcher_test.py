@@ -569,5 +569,22 @@ class ResolutionTests(unittest.TestCase):
         self.assertEqual(resolved.environment_origins["HF_HOME"], "recipe:test")
 
 
+class SchemaKeywordTests(unittest.TestCase):
+    """The pure validator enforces the constraint keywords the profile schema uses."""
+
+    def test_min_properties_is_enforced_not_refused(self):
+        schema = {"type": "object", "minProperties": 2}
+        # Two or more members satisfy it; one is a violation, not an unsupported keyword.
+        resolver._validate_schema({"csf": {}, "original": {}}, schema, {}, "")
+        with self.assertRaises(resolver.ConfigError) as caught:
+            resolver._validate_schema({"csf": {}}, schema, {}, "")
+        self.assertIn("has fewer than 2 properties", str(caught.exception))
+
+    def test_unknown_constraint_keyword_is_still_refused(self):
+        with self.assertRaises(resolver.ConfigError) as caught:
+            resolver._validate_schema({"a": 1, "b": 2}, {"minItems": 3}, {}, "")
+        self.assertIn("Unsupported schema keywords: minItems", str(caught.exception))
+
+
 if __name__ == "__main__":
     unittest.main()
