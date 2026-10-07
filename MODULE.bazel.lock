@@ -292,8 +292,8 @@
     },
     "//bazel:sources.bzl%profile_sources": {
       "general": {
-        "bzlTransitiveDigest": "hc26F5s55jBCXFimaxIvPmNc1rt22HMVwgH4iuCjKBU=",
-        "usagesDigest": "27S2nJnWs7icY1Yi+UWrPv4nfudZ01z3cIqvW9izwLY=",
+        "bzlTransitiveDigest": "PlQrasKK7uhGwT44KdQxo55ORbetuJwFgpKcWztYtY4=",
+        "usagesDigest": "RjlScQSkqyUcDU5oLy3Nyu68A0gCUlhaojLCY2tGTmk=",
         "recordedInputs": [
           "FILE:@@//profiles/vllmb12x/profile.json 9237815bd7bf435bb497a376ca01785050441fc68d7dd694a9f968e9b620fa4c"
         ],
@@ -337,7 +337,9 @@
               "remote": "https://github.com/local-inference-lab/flashinfer.git",
               "commit": "8f4ee770e49fdfb084408d50f5f0dc823d1ecfc9",
               "recursive_init_submodules": true,
-              "patches": [],
+              "patches": [
+                "@@//third_party:flashinfer_b12x_loader_unity_order.patch"
+              ],
               "cargo_vendor": false,
               "cargo_manifest": "rust/Cargo.toml"
             }
