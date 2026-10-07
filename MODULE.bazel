@@ -236,6 +236,13 @@ sources.profile(
     vllm_patches = [
         "//third_party:vllm_flash_attn_cute_namespace.patch",
     ],
+    # flashinfer vendors b12x's loader with _storage.c including _batch.c
+    # before _direct.c, so _bounce.c uses IO_ALIGNMENT and validate_direct_range
+    # before they are defined. The archived b12x tree orders them the other way;
+    # restore it so the in-container C99 loader build compiles.
+    flashinfer_patches = [
+        "//third_party:flashinfer_b12x_loader_unity_order.patch",
+    ],
 )
 use_repo(
     sources,

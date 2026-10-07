@@ -1,5 +1,6 @@
 exports_files([
     "rules_python_raw_wheel.patch",
     "vllm_flash_attn_cute_namespace.patch",
+    "flashinfer_b12x_loader_unity_order.patch",
 
 ])

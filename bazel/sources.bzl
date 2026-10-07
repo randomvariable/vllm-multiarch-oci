@@ -156,10 +156,17 @@ def _sources_impl(ctx):
                     remote = source["remote"],
                     commit = source["commit"],
                     recursive_init_submodules = source.get("recursive_init_submodules", False),
-                    patches = tag.vllm_patches if name == "vllm" else [],
+                    patches = _patches_for(tag, name),
                     cargo_vendor = source.get("cargo_vendor", False),
                     cargo_manifest = source.get("cargo_manifest", "rust/Cargo.toml"),
                 )
+
+def _patches_for(tag, name):
+    if name == "vllm":
+        return tag.vllm_patches
+    if name == "flashinfer":
+        return tag.flashinfer_patches
+    return []
 
 profile_sources = module_extension(
     implementation = _sources_impl,
@@ -167,6 +174,7 @@ profile_sources = module_extension(
         "profile": tag_class(attrs = {
             "manifest": attr.label(mandatory = True, allow_single_file = True),
             "vllm_patches": attr.label_list(allow_files = True),
+            "flashinfer_patches": attr.label_list(allow_files = True),
         }),
     },
 )
