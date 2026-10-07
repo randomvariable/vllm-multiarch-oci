@@ -32,7 +32,7 @@ MARKERS: Final = {
 }
 
 # Each ledger component claims the branch whose ref the lock selects for it.
-BRANCH_CLAIMS: Final = {"vllm": "source_ref", "b12x": "b12x_ref"}
+BRANCH_CLAIMS: Final = {"vllm": "source_ref"}
 
 
 def pull_request_url(reference: str) -> str:
@@ -44,7 +44,6 @@ def load_lock() -> dict[str, Any]:
     profile = json.loads(PROFILE.read_text())
     return {
         "source_ref": profile["source_ref"],
-        "b12x_ref": profile["b12x_ref"],
         "sources": profile["sources"],
     }
 

@@ -1,0 +1,12 @@
+--- a/flashinfer/experimental/b12x/loader/_storage.c
++++ b/flashinfer/experimental/b12x/loader/_storage.c
+@@ -67,8 +67,8 @@
+   return result;
+ }
+ 
++#include "_direct.c"
+ #include "_batch.c"
+-#include "_direct.c"
+ #include "_ple_reader.c"
+ 
+ static PyMethodDef methods[] = {

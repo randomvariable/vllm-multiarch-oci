@@ -3,13 +3,13 @@
 """PEP 440 distribution version for the vLLM wheel this profile builds.
 
 Composed from the upstream vLLM base version declared in profile.json, the
-local-inference-lab cycle that VLLM_SOURCE_REF names, the vLLM and B12X
+local-inference-lab cycle that VLLM_SOURCE_REF names, the vLLM and FlashInfer
 commits the manifest pins, and the first twelve hexadecimal digits of the
 digest over the locked source set. Every part is a pure function of the
 manifest, so identical inputs rebuild the same version; recompute it with
 `scripts/refresh-vllmb12x.py --dry-run`.
 """
 
-VLLM_BUILD_VERSION = "0.29.0+karmic.kraken.d07312cb9c5e.52640cb15d4a.3789fee759bf"
+VLLM_BUILD_VERSION = "0.29.0+karmic.kraken.dfbd00d10dec.8f4ee770e49f.c0c0404863b6"
 VLLM_SOURCE_REF = "refs/heads/cycle/karmic-kraken"
-VLLM_SOURCE_REVISION = "d07312cb9c5ed51ec7a6b8d11cee6840c0dc1e3d"
+VLLM_SOURCE_REVISION = "dfbd00d10dec5b5a5a4e65bd8580e120ca7af8c3"

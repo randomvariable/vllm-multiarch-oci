@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Refresh the immutable source lock for the VLLMB12X build profile.
 
-The vLLM branch is moving input only to this command. Bazel consumes the
-resulting full commit SHAs and never resolves a branch itself.
+The vLLM and FlashInfer branches are the moving inputs to this command. Bazel
+consumes the resulting full commit SHAs and never resolves a branch itself.
 
 The generated version composes three things: the upstream vLLM base version
 declared in the manifest, the local-inference-lab cycle the source ref names,
@@ -144,15 +144,16 @@ def base_version(declared: str | None, requested: str | None) -> str:
 
 
 def build_version(
-    base: str, cycle: str, vllm_commit: str, b12x_commit: str, digest: str
+    base: str, cycle: str, vllm_commit: str, flashinfer_commit: str, digest: str
 ) -> str:
     """Compose the PEP 440 distribution version recorded in the image.
 
     The image is built from two pins that move independently — the vLLM fork
-    and B12X — so both are named, in the same twelve-hexadecimal form the
-    publication tag uses for the vLLM revision. The digest follows them and
-    covers every remaining source, so a change in torch, NCCL or a CMake
-    download moves the version even though neither named pin did.
+    and FlashInfer (which now vendors B12X) — so both are named, in the same
+    twelve-hexadecimal form the publication tag uses for the vLLM revision.
+    The digest follows them and covers every remaining source, so a change in
+    torch, NCCL or a CMake download moves the version even though neither
+    named pin did.
 
     Packaging normalises "-" and "_" to "." inside a local version segment, so
     a version built from the branch spelling would reach the wheel filename and
@@ -162,7 +163,7 @@ def build_version(
     """
     return (
         f"{base}+{re.sub(r'[-_]+', '.', cycle).lower()}"
-        f".{vllm_commit[:12]}.{b12x_commit[:12]}.{digest[:12]}"
+        f".{vllm_commit[:12]}.{flashinfer_commit[:12]}.{digest[:12]}"
     )
 
 
@@ -186,7 +187,7 @@ def tracked_pair(manifest: dict[str, Any], name: str) -> tuple[str, str]:
 
     The manifest, not this script, decides which lineage a pin follows: the
     remote is recorded per source, and the ref is recorded as `source_ref` for
-    vLLM, `b12x_ref` for B12X, and `lil_runtime_ref` for the upstream launcher
+    vLLM, `flashinfer_ref` for FlashInfer, and `lil_runtime_ref` for the upstream launcher
     policy data. Script defaults cannot hold these, because a default that
     drifts from the profile resolves another lineage and rewrites the pin
     silently.
@@ -233,7 +234,7 @@ def version_module(version: str, source_ref: str, commit: str) -> str:
         '"""PEP 440 distribution version for the vLLM wheel this profile builds.',
         "",
         "Composed from the upstream vLLM base version declared in profile.json, the",
-        "local-inference-lab cycle that VLLM_SOURCE_REF names, the vLLM and B12X",
+        "local-inference-lab cycle that VLLM_SOURCE_REF names, the vLLM and FlashInfer",
         "commits the manifest pins, and the first twelve hexadecimal digits of the",
         "digest over the locked source set. Every part is a pure function of the",
         "manifest, so identical inputs rebuild the same version; recompute it with",
@@ -253,9 +254,9 @@ def main() -> None:
     parser.add_argument("--vllm-ref")
     parser.add_argument("--vllm-commit")
     parser.add_argument("--vllm-base-version")
-    parser.add_argument("--b12x-remote")
-    parser.add_argument("--b12x-ref")
-    parser.add_argument("--b12x-commit")
+    parser.add_argument("--flashinfer-remote")
+    parser.add_argument("--flashinfer-ref")
+    parser.add_argument("--flashinfer-commit")
     parser.add_argument("--lil-runtime-remote")
     parser.add_argument("--lil-runtime-ref")
     parser.add_argument("--lil-runtime-commit")
@@ -269,16 +270,22 @@ def main() -> None:
         vllm_remote, vllm_ref = select_pair(
             "vllm", manifest, args.vllm_remote, args.vllm_ref, args.allow_source_change
         )
-        b12x_remote, b12x_ref = select_pair(
-            "b12x", manifest, args.b12x_remote, args.b12x_ref, args.allow_source_change
+        flashinfer_remote, flashinfer_ref = select_pair(
+            "flashinfer",
+            manifest,
+            args.flashinfer_remote,
+            args.flashinfer_ref,
+            args.allow_source_change,
         )
         source_ref = canonical_source_ref(vllm_ref)
         vllm_commit = resolve_ref(vllm_remote, args.vllm_commit or vllm_ref)
-        b12x_commit = resolve_ref(b12x_remote, args.b12x_commit or b12x_ref)
+        flashinfer_commit = resolve_ref(
+            flashinfer_remote, args.flashinfer_commit or flashinfer_ref
+        )
 
         # The launcher resolves a profile against upstream's pinned policy data, so
         # that pin moves with these two: it is tracked by a ref the manifest records,
-        # exactly as vLLM and B12X are, and one refresh advances the whole lineage
+        # exactly as vLLM and FlashInfer are, and one refresh advances the whole lineage
         # together. A source the manifest does not declare is left alone, because the
         # manifest owns the source set.
         lil_runtime: tuple[str, str, str] | None = None
@@ -302,11 +309,11 @@ def main() -> None:
             manifest.get("vllm_base_version"), args.vllm_base_version
         )
         updated["source_ref"] = source_ref
-        updated["b12x_ref"] = canonical_source_ref(b12x_ref)
+        updated["flashinfer_ref"] = canonical_source_ref(flashinfer_ref)
         updated["sources"]["vllm"]["remote"] = vllm_remote
         updated["sources"]["vllm"]["commit"] = vllm_commit
-        updated["sources"]["b12x"]["remote"] = b12x_remote
-        updated["sources"]["b12x"]["commit"] = b12x_commit
+        updated["sources"]["flashinfer"]["remote"] = flashinfer_remote
+        updated["sources"]["flashinfer"]["commit"] = flashinfer_commit
         if lil_runtime is not None:
             remote, ref, commit = lil_runtime
             updated["lil_runtime_ref"] = ref
@@ -332,7 +339,7 @@ def main() -> None:
                 updated["vllm_base_version"],
                 cycle_name(source_ref),
                 vllm_commit,
-                b12x_commit,
+                flashinfer_commit,
                 sources_digest(source_ref, updated["sources"]),
             ),
             source_ref,
@@ -349,7 +356,7 @@ def main() -> None:
         temporary_version.write_text(version)
         temporary_manifest.replace(PROFILE)
         temporary_version.replace(VERSION)
-        print(f"refreshed vLLMB12X to {vllm_commit} and B12X to {b12x_commit}")
+        print(f"refreshed vLLMB12X to {vllm_commit} and FlashInfer to {flashinfer_commit}")
 
 
 if __name__ == "__main__":
