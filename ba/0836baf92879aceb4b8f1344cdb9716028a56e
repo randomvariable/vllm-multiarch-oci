@@ -1,0 +1,14 @@
+scripts/ci/vllmb12x-build-and-publish.sh
+  h_15da545fc8cfbe 98-99
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ba0836baf92879aceb4b8f1344cdb9716028a56e",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
