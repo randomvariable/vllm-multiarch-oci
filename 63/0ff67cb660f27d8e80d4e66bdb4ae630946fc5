@@ -1,0 +1,36 @@
+profiles/vllmb12x/profile.json
+  h_15da545fc8cfbe 2,23,25,33,71
+profiles/vllmb12x/description.bzl
+  h_15da545fc8cfbe 5
+scripts/vllmb12x-included-changes.py
+  h_15da545fc8cfbe 35
+profiles/vllmb12x/included-changes.json
+  h_15da545fc8cfbe 15
+profiles/vllmb12x/version.bzl
+  h_15da545fc8cfbe 6,13,15
+components/BUILD.bazel
+  h_15da545fc8cfbe 200,238
+README.md
+  h_15da545fc8cfbe 16-17
+MODULE.bazel.lock
+  h_15da545fc8cfbe 298,337-338,360,382,437
+scripts/refresh-vllmb12x.py
+  h_15da545fc8cfbe 4-5,147,152-156,166,190,237,257-259,273-278,282-284,288,312,315-316,342,359
+scripts/refresh_vllmb12x_test.py
+  h_15da545fc8cfbe 21,25,64,69,71,98,101-102,122-123,162,165
+recipes-site/src/content/docs/image-releases/included-changes.mdx
+  h_15da545fc8cfbe 15,19
+scripts/release-vllmb12x.py
+  h_15da545fc8cfbe 172
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "630ff67cb660f27d8e80d4e66bdb4ae630946fc5",
+  "prompts": {},
+  "humans": {
+    "h_15da545fc8cfbe": {
+      "author": "Naadir Jeewa <naadir@randomvariable.co.uk>"
+    }
+  }
+}
