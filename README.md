@@ -13,8 +13,8 @@ The image is built from pinned fork revisions rather than from upstream branches
 
 | Component | Change | Included as |
 | --- | --- | --- |
-| vLLM `dfbd00d10dec` | [local-inference-lab/vllm#800](https://github.com/local-inference-lab/vllm/pull/800) Bounded shared-memory broadcast waits | Merged into the pinned revision (1 commits) |
-| vLLM `dfbd00d10dec` | Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute (no upstream pull request) | Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch` |
+| vLLM `8d3335211b09` | [local-inference-lab/vllm#800](https://github.com/local-inference-lab/vllm/pull/800) Bounded shared-memory broadcast waits | Merged into the pinned revision (1 commits) |
+| vLLM `8d3335211b09` | Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute (no upstream pull request) | Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch` |
 <!-- included-changes:end -->
 
 ## Getting Started
