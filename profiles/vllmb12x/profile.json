@@ -20,7 +20,7 @@
       "remote": "https://github.com/brandonmmusic-max/exllamav3.git"
     },
     "flashinfer": {
-      "commit": "0ed882a60e0188c76d8640ea244f0d1fd1c3b5ea",
+      "commit": "241d979f8aa51cd47e9ac1bfb74d40193c76a3dd",
       "recursive_init_submodules": true,
       "remote": "https://github.com/local-inference-lab/flashinfer.git"
     },
