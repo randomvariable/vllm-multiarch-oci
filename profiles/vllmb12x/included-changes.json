@@ -12,7 +12,7 @@
           "title": "Bounded shared-memory broadcast waits",
           "inclusion": "branch",
           "commits": 1,
-          "note": "The only change this branch carries beyond the base: cherry-picked from randomvariable/vllm arm-spinloop-karmic-gated (29ebd2dfb82c) onto the integration/karmic-kraken-beta tip abdf960a1abf (result dfbd00d10dec)."
+          "note": "The only change this branch carries beyond the base: cherry-picked from randomvariable/vllm arm-spinloop-karmic-gated (29ebd2dfb82c) onto the integration/karmic-kraken-beta tip 2e7b458480fb (result 2f8df2dc8fab; branch head 8d3335211b09 including the retired skinny-GEMM pair that nets to zero)."
         },
         {
           "pull_request": null,
