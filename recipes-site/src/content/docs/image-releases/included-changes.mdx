@@ -20,6 +20,9 @@ Pinned at [`8d3335211b09`](https://github.com/randomvariable/vllm/commit/8d33352
 - **Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute** — no upstream pull request
   - Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch`.
   - Packaging repair for this builder's symlink install path, which skips the import rewrite the upstream CMake copy performs. It carries no upstream change.
+- **Register existing NVFP4-CSF quantizer and loader** — no upstream pull request
+  - Applied at build time by `third_party/vllm_nvfp4_csf_registration.patch`.
+  - Restore the public registrations required to load the Qwen Flash Next NVFP4-CSF checkpoint. The pinned source already contains both implementations.
 {/* included-changes:end */}
 
 ## Keeping this list honest
