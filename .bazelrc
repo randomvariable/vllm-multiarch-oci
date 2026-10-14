@@ -15,20 +15,32 @@ test --test_output=errors
 # Native ARM64 Blackwell builds target the full SM12x family.
 build:spark --platforms=//platforms:blackwell_arm64_sm12x
 
-# Private endpoint, credentials, and worker properties belong in the ignored
-# .bazelrc.user file. The repository owns only remote execution behaviour.
-build:remote-aarch64 --platforms=//platforms:blackwell_arm64_sm12x
-# The ARM64 image configuration materializes the pinned x86 QEMU runtime for
-# its hermetic Python launcher. Make both native execution platforms available.
-build:remote-aarch64 --extra_execution_platforms=//platforms:blackwell_arm64_sm12x,//platforms:blackwell_x86_64_sm120
-build:remote-aarch64 --extra_toolchains=//platforms:hermetic_linux_aarch64_cc_toolchain
-build:remote-aarch64 --remote_timeout=21600
-build:remote-aarch64 --spawn_strategy=remote
-build:remote-aarch64 --remote_local_fallback=false
-build:remote-aarch64 --remote_download_minimal
-build:remote-aarch64 --remote_cache_compression
-build:remote-aarch64 --experimental_remote_cache_compression_threshold=1048576
-test:remote-aarch64 --nocache_test_results
+# Private endpoints and credentials belong in the ignored .bazelrc.user file.
+# Both ARM profiles keep the 120f image target and select execution hardware
+# through NativeLink properties. The x86 executor supplies host/QEMU tools.
+build:remote-sm120a --platforms=//platforms:blackwell_arm64_sm12x
+build:remote-sm120a --extra_execution_platforms=//platforms:blackwell_arm64_sm12x,//platforms:blackwell_x86_64_sm120
+build:remote-sm120a --extra_toolchains=//platforms:hermetic_linux_aarch64_cc_toolchain
+build:remote-sm120a --remote_timeout=21600
+build:remote-sm120a --spawn_strategy=remote
+build:remote-sm120a --remote_local_fallback=false
+build:remote-sm120a --remote_download_minimal
+build:remote-sm120a --remote_cache_compression
+build:remote-sm120a --experimental_remote_cache_compression_threshold=1048576
+test:remote-sm120a --nocache_test_results
+
+# Whole-build GB10 profile. CI instead overrides only its GB10 contract action
+# so the ARM64 image dependencies retain their server21 execution properties.
+build:remote-sm121a --platforms=//platforms:blackwell_arm64_sm12x
+build:remote-sm121a --extra_execution_platforms=//platforms:blackwell_arm64_sm121a_gb10,//platforms:blackwell_x86_64_sm120
+build:remote-sm121a --extra_toolchains=//platforms:hermetic_linux_aarch64_cc_toolchain
+build:remote-sm121a --remote_timeout=21600
+build:remote-sm121a --spawn_strategy=remote
+build:remote-sm121a --remote_local_fallback=false
+build:remote-sm121a --remote_download_minimal
+build:remote-sm121a --remote_cache_compression
+build:remote-sm121a --experimental_remote_cache_compression_threshold=1048576
+test:remote-sm121a --nocache_test_results
 
 # The x86 Blackwell lane builds CUDA sm_120 with native x86 tools. Private
 # scheduler endpoints and container-image properties stay in .bazelrc.user.

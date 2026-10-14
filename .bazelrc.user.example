@@ -1,4 +1,17 @@
 # Copy to .bazelrc.user and set these values for NativeLink remote execution.
-# build:remote-aarch64 --remote_executor=grpcs://nativelink.example:443
-# build:remote-aarch64 --remote_cache=grpcs://nativelink.example:443
-# build:remote-aarch64 --remote_header=x-buildbuddy-api-key=REPLACE_ME
+#
+# CI writes this file from Tekton/PAC endpoint parameters. Execution-platform
+# properties select workers, while this file supplies endpoints and credentials.
+#
+# Internal CI example (no TLS, plaintext):
+# build:remote-sm120a --remote_executor=grpc://nativelink-scheduler.bazel-remote-builders.svc:50062
+# build:remote-sm120a --remote_cache=grpc://nativelink-cas.bazel-remote-builders.svc:50055
+# build:remote-sm121a --remote_executor=grpc://nativelink-scheduler.bazel-remote-builders.svc:50062
+# build:remote-sm121a --remote_cache=grpc://nativelink-cas.bazel-remote-builders.svc:50055
+#
+# External workstation example (mTLS):
+# build:remote-sm120a --remote_executor=grpcs://nativelink.example:50052
+# build:remote-sm120a --remote_cache=grpcs://nativelink.example:50051
+# build:remote-sm120a --tls_certificate=/path/to/ca.crt
+# build:remote-sm120a --tls_client_certificate=/path/to/client.crt
+# build:remote-sm120a --tls_client_key=/path/to/client.key

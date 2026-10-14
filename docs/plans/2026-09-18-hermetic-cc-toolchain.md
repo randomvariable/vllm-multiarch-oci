@@ -143,4 +143,4 @@ just test
 bazel --ignore_all_rc_files test //bazel:reproducibility_test --platforms=//platforms:spark_arm64_sm121 --spawn_strategy=local --incompatible_strict_action_env
 ```
 
-Run the equivalent image target and contract test through the existing `remote-aarch64` configuration after local proof. Record the locked toolchain artifact identity and the external `@gawk` action result in build evidence.
+Run the equivalent image target and contract test through the existing `remote-sm120a` configuration after local proof. Record the locked toolchain artifact identity and the external `@gawk` action result in build evidence.
