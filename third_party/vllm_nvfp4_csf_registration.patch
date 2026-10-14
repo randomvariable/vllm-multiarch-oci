@@ -10,3 +10,14 @@ diff --git a/vllm/model_executor/layers/quantization/__init__.py b/vllm/model_ex
 @@ -189,1 +191,2 @@
          "mxfp4_csf": Mxfp4CsfConfig,
 +        "nvfp4_csf": Nvfp4CsfConfig,
+diff --git a/vllm/model_executor/model_loader/__init__.py b/vllm/model_executor/model_loader/__init__.py
+--- a/vllm/model_executor/model_loader/__init__.py
++++ b/vllm/model_executor/model_loader/__init__.py
+@@ -1,0 +2,1 @@
++from vllm.model_executor.model_loader.nvfp4_csf_loader import Nvfp4CsfModelLoader
+@@ -40,1 +41,2 @@
+     "mxfp4_csf",
++    "nvfp4_csf",
+@@ -60,1 +62,2 @@
+     "mxfp4_csf": Mxfp4CsfModelLoader,
++    "nvfp4_csf": Nvfp4CsfModelLoader,
