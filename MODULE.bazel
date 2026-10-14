@@ -238,12 +238,8 @@ sources.profile(
     vllm_patches = [
         "//third_party:vllm_flash_attn_cute_namespace.patch",
     ],
-    # No flashinfer patches: the b12x loader include-order repair
-    # (flashinfer_b12x_loader_unity_order.patch) became obsolete when
-    # local-inference-lab/flashinfer a22eecc1 fixed _storage.c to include
-    # _direct.c before _batch.c upstream. The pinned flashinfer tip must
-    # contain that fix; if the pin ever predates it, re-add the patch.
-    flashinfer_patches = [],
+    # flashinfer-ai/flashinfer#6358, pinned at 34ba22efd2ec.
+    flashinfer_patches = ["//third_party:flashinfer_b12x_row_cache.patch"],
 )
 use_repo(
     sources,
