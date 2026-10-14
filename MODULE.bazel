@@ -33,10 +33,7 @@ oci.pull(
     name = "cuda_1341_cudnn_devel_ubuntu2604",
     digest = "sha256:a452ee73c60203a0e30c499b4147c30d1e77acaa8230e0ce1b9cb40c6641c82d",
     image = "docker.io/nvidia/cuda",
-    platforms = [
-        "linux/amd64",
-        "linux/arm64",
-    ],
+    platforms = ["linux/amd64", "linux/arm64"],
 )
 use_repo(
     oci,
@@ -49,14 +46,8 @@ use_repo(
 # and B12X need, from a pinned Ubuntu archive for deterministic ARM64 layers.
 apt = use_extension("@rules_distroless//apt:extensions.bzl", "apt")
 apt.sources_list(
-    architectures = [
-        "amd64",
-        "arm64",
-    ],
-    components = [
-        "main",
-        "universe",
-    ],
+    architectures = ["amd64", "arm64"],
+    components = ["main", "universe"],
     suites = [
         "resolute",
         "resolute-security",
@@ -123,23 +114,24 @@ apt.install(
         "resolute-security",
     ],
 )
+
 apt.install(
     dependency_set = "runtime_apt_x86_64",
     packages = [
         "ca-certificates:amd64",
-        "cmake:amd64",
         "ibverbs-providers:amd64",
-        "libcurl4t64:amd64",
-        "libhiredis-dev:amd64",
-        "libibverbs-dev:amd64",
         "libibverbs1:amd64",
-        "libmimalloc3:amd64",
-        "libnuma1:amd64",
-        "liburing-dev:amd64",
+        "libibverbs-dev:amd64",
         "liburing2:amd64",
+        "liburing-dev:amd64",
         "libxxhash-dev:amd64",
-        "pciutils:amd64",
+        "libhiredis-dev:amd64",
+        "cmake:amd64",
+        "libcurl4t64:amd64",
+        "libmimalloc3:amd64",
         "pkgconf:amd64",
+        "libnuma1:amd64",
+        "pciutils:amd64",
         "python3:amd64",
     ],
     suites = [
@@ -183,25 +175,26 @@ apt.install(
         "resolute-security",
     ],
 )
+
 apt.install(
     dependency_set = "gcc_15_sysroot_x86_64",
     packages = [
-        "bash:amd64",
-        "coreutils:amd64",
-        "findutils:amd64",
         "g++:amd64",
+        "coreutils:amd64",
+        "bash:amd64",
         "gawk:amd64",
-        "grep:amd64",
         "libc-bin:amd64",
-        "libdw-dev:amd64",
-        "libibverbs-dev:amd64",
-        "liburing-dev:amd64",
+        "findutils:amd64",
+        "grep:amd64",
         "make:amd64",
-        "patch:amd64",
         "perl:amd64",
+        "patch:amd64",
         "pkgconf:amd64",
         "sed:amd64",
         "which:amd64",
+        "libibverbs-dev:amd64",
+        "libdw-dev:amd64",
+        "liburing-dev:amd64",
     ],
     suites = [
         "resolute",
@@ -239,18 +232,18 @@ use_repo(cuda, "cuda_sbsa", "cuda_x86_64")
 
 sources = use_extension("//bazel:sources.bzl", "profile_sources")
 sources.profile(
-    # No flashinfer patches: the b12x loader include-order repair
-    # (flashinfer_b12x_loader_unity_order.patch) became obsolete when
-    # local-inference-lab/flashinfer a22eecc1 fixed _storage.c to include
-    # _direct.c before _batch.c upstream. The pinned flashinfer tip must
-    # contain that fix; if the pin ever predates it, re-add the patch.
-    flashinfer_patches = [],
     manifest = "//profiles/vllmb12x:profile.json",
     # Builder-specific source repairs are declared inputs. Their hashes become
     # part of source.identity.json.
     vllm_patches = [
         "//third_party:vllm_flash_attn_cute_namespace.patch",
     ],
+    # No flashinfer patches: the b12x loader include-order repair
+    # (flashinfer_b12x_loader_unity_order.patch) became obsolete when
+    # local-inference-lab/flashinfer a22eecc1 fixed _storage.c to include
+    # _direct.c before _batch.c upstream. The pinned flashinfer tip must
+    # contain that fix; if the pin ever predates it, re-add the patch.
+    flashinfer_patches = [],
 )
 use_repo(
     sources,
@@ -260,8 +253,8 @@ use_repo(
     "vllmb12x_flashinfer",
     "vllmb12x_instanttensor",
     "vllmb12x_lil_runtime",
-    "vllmb12x_llguidance",
     "vllmb12x_lmcache",
+    "vllmb12x_llguidance",
     "vllmb12x_nccl",
     "vllmb12x_torch",
     "vllmb12x_torchaudio",
@@ -317,6 +310,7 @@ pip.default(
         "manylinux2014_aarch64",
     ],
 )
+
 pip.default(
     arch_name = "x86_64",
     config_settings = [
