@@ -62,6 +62,9 @@ build:remote-multiarch --remote_executor=${REMOTE_EXECUTOR}
 # runs cargo vendor to seal the llguidance sources, and cargo is not on the default
 # PATH: without this the fetch dies as execvp(cargo): No such file or directory.
 build --repo_env=PATH=${PATH}
+# rules_oci retains its bearer token through repository evaluation. Docker Hub
+# expires it after five minutes, so let Bazel refresh credentials per download.
+build --credential_helper=index.docker.io=%workspace%/scripts/ci/dockerhub-credential-helper.py
 EOF
 
 # Local strategy: this is a host Python test, and the remote ARM64 worker

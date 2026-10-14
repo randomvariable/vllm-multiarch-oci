@@ -75,6 +75,13 @@ the staged files. The shared ccache and remote action cache remain separate.
 The checkout occupies `checkout/` and staging occupies its sibling
 `.build-home/`. Bazel rejects its repository contents cache inside the checkout.
 
+The shared lane configures `scripts/ci/dockerhub-credential-helper.py` for Bazel
+downloads from `index.docker.io`. It uses the bootstrapped host `crane` and the
+lane's existing `DOCKER_CONFIG`. The helper returns an explicit expiry before
+Docker Hub's five-minute bearer-token lifetime. Bazel can then refresh the token
+during long repository evaluations instead of reusing `rules_oci`'s expired
+token. The helper does not change the credentials used to publish the image.
+
 ## Pull-Request Builds
 
 [`.tekton/vllmb12x-pull-request.yaml`](../../.tekton/vllmb12x-pull-request.yaml) builds and contract-tests the same image for a pull request against `main`, then pushes it to the internal registry only. It skips the same documentation-only paths as the nightly, and a new commit on the pull request cancels the run building the previous one.
