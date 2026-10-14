@@ -27,6 +27,13 @@
           "inclusion": "patch",
           "patch": "third_party/vllm_nvfp4_csf_registration.patch",
           "note": "Restore the public registrations required to load the Qwen Flash Next NVFP4-CSF checkpoint. The pinned source already contains both implementations."
+        },
+        {
+          "pull_request": null,
+          "title": "Retain working Qwen NVFP4-CSF loader",
+          "inclusion": "patch",
+          "patch": "third_party/vllm_nvfp4_csf_loader.patch",
+          "note": "Carry the loader and quantizer from the previously deployed d07312cb9c5e source so the pinned branch can load the existing checkpoint."
         }
       ]
     }

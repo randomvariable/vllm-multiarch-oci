@@ -23,6 +23,9 @@ Pinned at [`8d3335211b09`](https://github.com/randomvariable/vllm/commit/8d33352
 - **Register existing NVFP4-CSF quantizer and loader** — no upstream pull request
   - Applied at build time by `third_party/vllm_nvfp4_csf_registration.patch`.
   - Restore the public registrations required to load the Qwen Flash Next NVFP4-CSF checkpoint. The pinned source already contains both implementations.
+- **Retain working Qwen NVFP4-CSF loader** — no upstream pull request
+  - Applied at build time by `third_party/vllm_nvfp4_csf_loader.patch`.
+  - Carry the loader and quantizer from the previously deployed d07312cb9c5e source so the pinned branch can load the existing checkpoint.
 {/* included-changes:end */}
 
 ## Keeping this list honest
