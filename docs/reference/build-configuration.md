@@ -82,6 +82,11 @@ Docker Hub's five-minute bearer-token lifetime. Bazel can then refresh the token
 during long repository evaluations instead of reusing `rules_oci`'s expired
 token. The helper does not change the credentials used to publish the image.
 
+APT keeps the 2026-09-01 snapshot as the package-index and checksum authority.
+The 2026-09-02 snapshot is a blob-only mirror before the current Ubuntu mirrors.
+It supplies the same checksum-verified package versions when the original
+snapshot returns server errors and current mirrors have removed those versions.
+
 ## Pull-Request Builds
 
 [`.tekton/vllmb12x-pull-request.yaml`](../../.tekton/vllmb12x-pull-request.yaml) builds and contract-tests the same image for a pull request against `main`, then pushes it to the internal registry only. It skips the same documentation-only paths as the nightly, and a new commit on the pull request cancels the run building the previous one.
