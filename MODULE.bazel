@@ -65,6 +65,7 @@ apt.sources_list(
         "https://snapshot.ubuntu.com/ubuntu/20260901T000000Z",
         # Preserve the original index and hashes when its blob endpoint fails.
         "mirror+https://snapshot.ubuntu.com/ubuntu/20260902T000000Z",
+        "mirror+https://snapshot.ubuntu.com/ubuntu/20260907T000000Z",
         "mirror+https://archive.ubuntu.com/ubuntu",
         "mirror+https://ports.ubuntu.com/ubuntu-ports",
     ],
