@@ -27,3 +27,9 @@ diff --git a/vllm/config/model.py b/vllm/config/model.py
 @@ -1288,1 +1288,2 @@
                  "mxfp4_csf",
 +                "nvfp4_csf",
+diff --git a/vllm/models/qwen4_exp/config.py b/vllm/models/qwen4_exp/config.py
+--- a/vllm/models/qwen4_exp/config.py
++++ b/vllm/models/qwen4_exp/config.py
+@@ -47,1 +47,1 @@
+-    if quant_config.get("quant_method") == "mxfp4_csf" and (
++    if quant_config.get("quant_method") in ("nvfp4_csf", "mxfp4_csf") and (
