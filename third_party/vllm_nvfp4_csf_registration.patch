@@ -21,3 +21,9 @@ diff --git a/vllm/model_executor/model_loader/__init__.py b/vllm/model_executor/
 @@ -60,1 +62,2 @@
      "mxfp4_csf": Mxfp4CsfModelLoader,
 +    "nvfp4_csf": Nvfp4CsfModelLoader,
+diff --git a/vllm/config/model.py b/vllm/config/model.py
+--- a/vllm/config/model.py
++++ b/vllm/config/model.py
+@@ -1288,1 +1288,2 @@
+                 "mxfp4_csf",
++                "nvfp4_csf",
