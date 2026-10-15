@@ -32,10 +32,15 @@ Every comparison set also asserts that the cases it planned ran, and
 from __future__ import annotations
 
 import ast
+import copy
 import json
+import shutil
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+
+import yaml
 
 from image_tools.launcher import ConfigError
 from image_tools.launcher import resolver
@@ -92,6 +97,10 @@ CACHE_SERVICE_KEYS = {
     "namespace",
     "stop_grace",
     "prune_stale_tiers",
+    # Upstream's CacheService gained this in the pin bump: the supervisor may
+    # shrink an L1 size that came from a profile/preset/recipe default, so it
+    # rides in the public cache_service alongside prune_stale_tiers.
+    "l1_adjustable",
 }
 EDITED_CASES = (
     ("max-num-seqs", ["--max-num-seqs", "16"]),
@@ -131,13 +140,95 @@ def inventory():
     return profiles, hardware, presets
 
 
+# The current pin ships no preset that takes a ``vllm_fallback`` path and none
+# that reserves KV bytes for an external cache, yet the resolver still
+# implements both behaviours and the parity gate must keep measuring them.
+# Rather than assert on a fixture identity the pin has moved past, the fallback
+# and preset-KV comparisons run against an isolated synthetic overlay: the
+# pinned data tree with one extra preset landed beside the real ones, built the
+# way ``launcher_data_test.build_data_root`` builds its merged root (every entry
+# symlinked, ``presets.yaml`` replaced). Both resolvers read the same overlay
+# file, so a comparison there measures the two implementations, not an
+# inventory accident -- and the fixture is a copy of a preset the pin actually
+# resolves, not a hand-written one that could drift from the real schema.
+OVERLAY_PRESET = "parity-overlay"
+OVERLAY_EXTERNAL_CACHE_BYTES = 268435456
+_OVERLAY = {"root": None, "directory": None}
+
+
+def overlay_base_preset(presets):
+    """The shipped preset the synthetic fixture is cloned from."""
+    for name in sorted(presets):
+        item = presets[name]
+        options = item.get("options", {})
+        if (
+            item.get("kv_bytes_per_extra_slot")
+            and "kv-cache-memory-bytes" in options
+            and "max-num-seqs" in options
+            and not item.get("kv_bytes_by_dcp")
+            and not item.get("vllm_fallback")
+            and len(item.get("environment", {})) >= 2
+        ):
+            return name
+    raise AssertionError(
+        "the pinned presets must include one carrying kv_bytes_per_extra_slot, "
+        "kv-cache-memory-bytes, max-num-seqs and two environment names"
+    )
+
+
+def synthetic_overlay():
+    """Build (once) and return the overlay data root beside the pinned tree."""
+    if _OVERLAY["root"] is not None:
+        return _OVERLAY["root"]
+    directory = tempfile.mkdtemp(prefix="launcher-parity-")
+    root = Path(directory) / "runtime"
+    root.mkdir()
+    for entry in sorted(UPSTREAM_RUNTIME.iterdir()):
+        (root / entry.name).symlink_to(entry)
+    document = resolver.read_yaml(UPSTREAM_RUNTIME / "presets.yaml")
+    presets = document["presets"]
+    base = copy.deepcopy(presets[overlay_base_preset(presets)])
+    gated = sorted(n for n in base["environment"] if n.startswith("VLLM_"))
+    requires = (gated or sorted(base["environment"]))[:2]
+    base["description"] = (
+        "Parity fixture: a preset with an installed-vLLM fallback path and an "
+        "external-cache KV reserve, so the gate measures behaviours the current "
+        "pin ships no preset that uses."
+    )
+    base["kv_bytes_for_external_cache"] = OVERLAY_EXTERNAL_CACHE_BYTES
+    base["vllm_fallback"] = {
+        "requires_environment": requires,
+        "options": {"gpu-memory-utilization": 0.9},
+    }
+    presets[OVERLAY_PRESET] = base
+    (root / "presets.yaml").unlink()
+    (root / "presets.yaml").write_text(
+        yaml.safe_dump(
+            {"schema_version": document["schema_version"], "presets": presets},
+            sort_keys=False,
+        )
+    )
+    _OVERLAY["root"] = root
+    _OVERLAY["directory"] = directory
+    return root
+
+
+def destroy_overlay():
+    """Remove the overlay tree; it is rebuilt on the next request."""
+    if _OVERLAY["directory"] is not None:
+        shutil.rmtree(_OVERLAY["directory"], ignore_errors=True)
+    _OVERLAY["root"] = None
+    _OVERLAY["directory"] = None
+
+
 class ParityCase:
     """One comparison: the same arguments into both resolvers, same record out."""
 
-    def __init__(self, label, profile, hardware, **kwargs):
+    def __init__(self, label, profile, hardware, root=None, **kwargs):
         self.label = label
         self.profile = profile
         self.hardware = hardware
+        self.root = root
         self.kwargs = kwargs
 
     def __str__(self):
@@ -168,7 +259,10 @@ class ParityTest(unittest.TestCase):
         kwargs = {"env": {}, "vllm_environment": frozenset(), **case.kwargs}
         try:
             plan = resolver.resolve(
-                case.profile, case.hardware, root=UPSTREAM_RUNTIME, **kwargs
+                case.profile,
+                case.hardware,
+                root=case.root or UPSTREAM_RUNTIME,
+                **kwargs,
             )
         except ConfigError as error:
             return "error", str(error)
@@ -363,14 +457,32 @@ class MatrixParityTest(ParityTest):
 
 
 class FallbackParityTest(ParityTest):
+    """The installed-vLLM fallback path, measured against a synthetic preset.
+
+    No preset in the current pin carries a ``vllm_fallback``, so both resolvers
+    are pointed at the synthetic overlay for the duration of the class: upstream
+    reads it through ``ROOT``, ours through ``root``, and the comparison is still
+    the fallback code running on the same preset on both sides.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.root = synthetic_overlay()
+        cls._saved_root = upstream.ROOT
+        upstream.ROOT = cls.root
+
+    @classmethod
+    def tearDownClass(cls):
+        upstream.ROOT = cls._saved_root
+
     def fallback_preset(self):
-        for name in self.presets:
-            fallback = resolver.deployment_presets(root=UPSTREAM_RUNTIME)[name].get(
-                "vllm_fallback"
-            )
-            if fallback:
-                return name, fallback
-        self.fail("the pinned presets must include a vllm_fallback path")
+        preset = resolver.deployment_presets(root=self.root)[OVERLAY_PRESET]
+        fallback = preset.get("vllm_fallback")
+        self.assertTrue(
+            fallback, "the synthetic overlay must carry a vllm_fallback preset"
+        )
+        return OVERLAY_PRESET, fallback
 
     def test_installed_vllm_decides_the_fallback_both_ways(self):
         name, fallback = self.fallback_preset()
@@ -381,6 +493,7 @@ class FallbackParityTest(ParityTest):
                 f"{name} with {label}",
                 deployment["profile"],
                 deployment["hardware"],
+                root=self.root,
                 preset=name,
                 vllm_environment=names,
             )
@@ -401,7 +514,7 @@ class FallbackParityTest(ParityTest):
         plan = resolver.resolve(
             deployment["profile"],
             deployment["hardware"],
-            root=UPSTREAM_RUNTIME,
+            root=self.root,
             preset=name,
             env={},
             vllm_environment=frozenset(required[1:]),
@@ -415,13 +528,13 @@ class FallbackParityTest(ParityTest):
         self.assertTrue(
             reported, f"a preset missing vLLM features must say so: {sources}"
         )
-        self.assertIn(fallback["requires_environment"][0], reported[0])
+        self.assertIn(required[0], reported[0])
         self.assertNotIn(required[1], reported[0])
         satisfied = resolver.public(
             resolver.resolve(
                 deployment["profile"],
                 deployment["hardware"],
-                root=UPSTREAM_RUNTIME,
+                root=self.root,
                 preset=name,
                 env={},
                 vllm_environment=frozenset(required),
@@ -576,7 +689,13 @@ class RecipeLayerTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        presets = resolver.deployment_presets(root=UPSTREAM_RUNTIME)
+        # The recipe layer is compared against the same synthetic overlay the
+        # fallback gate uses, because the preset-KV reduction it exercises needs
+        # a preset carrying an external-cache reserve the current pin ships none
+        # of. The overlay is the pinned tree plus that one preset, so the real
+        # presets are all still here to name.
+        cls.root = synthetic_overlay()
+        presets = resolver.deployment_presets(root=cls.root)
         # A vLLM that declares every name any preset needs, so no preset takes
         # its vllm_fallback path and the values under test are the declared ones.
         cls.satisfied_vllm = frozenset(
@@ -587,36 +706,40 @@ class RecipeLayerTest(unittest.TestCase):
         return resolver.resolve(
             profile,
             hardware,
-            root=UPSTREAM_RUNTIME,
+            root=self.root,
             env={},
             vllm_environment=self.satisfied_vllm,
             **kwargs,
         )
 
     def deployment(self, name):
-        return resolver.deployment_preset(name, root=UPSTREAM_RUNTIME)
+        return resolver.deployment_preset(name, root=self.root)
 
     def test_recipe_outranks_the_preset_it_names(self):
-        name = "glm53-spark-tp2"
+        # glm53-spark-tp2 was retired upstream in favour of glm53-tp2, which
+        # carries the same managed max-num-seqs and NCCL_MIN_NCHANNELS a recipe
+        # can outrank, so the layer is checked against the shipped preset.
+        name = "glm53-tp2"
+        site = f"recipe:{name}-site"
         plan = self.resolve(
             profile="glm53-flash",
             hardware="rtx-pro-6000-pcie",
             preset=name,
             recipe_layer={
-                "source": "recipe:glm53-spark-tp2-site",
+                "source": site,
                 "options": {"max-num-seqs": 24},
                 "environment": {"NCCL_MIN_NCHANNELS": "4"},
             },
         )
         record = resolver.public(plan)
         self.assertEqual(name, record["preset"])
-        self.assertEqual("glm53-spark-tp2-site", record["recipe"])
+        self.assertEqual(f"{name}-site", record["recipe"])
         self.assertEqual(
-            {"value": 24, "source": "recipe:glm53-spark-tp2-site"},
+            {"value": 24, "source": site},
             record["settings"]["max-num-seqs"],
         )
         self.assertEqual(
-            {"value": "4", "source": "recipe:glm53-spark-tp2-site"},
+            {"value": "4", "source": site},
             record["environment"]["NCCL_MIN_NCHANNELS"],
         )
         self.assertEqual("24", plan.argv[plan.argv.index("--max-num-seqs") + 1])
@@ -648,7 +771,10 @@ class RecipeLayerTest(unittest.TestCase):
         )
 
     def test_recipe_pinned_kv_bytes_shrinks_like_a_preset(self):
-        name = "glm53-spark-tp2"
+        # The preset-KV reduction needs both the per-extra-slot cost and an
+        # external-cache reserve; the shipped presets carry the first but no
+        # longer the second, so the synthetic overlay preset supplies it.
+        name = OVERLAY_PRESET
         deployment = self.deployment(name)
         qualified = deployment["options"]["kv-cache-memory-bytes"]
         slots = deployment["options"]["max-num-seqs"]
@@ -955,6 +1081,9 @@ def tearDownModule():
             "the pinned checkout was available and nothing was compared: the "
             "parity gate has gone vacuous"
         )
+    # The synthetic overlay is rebuilt on demand; removing it here keeps the
+    # scratch disk clean whether or not the fallback or recipe classes ran.
+    destroy_overlay()
 
 if __name__ == "__main__":
     unittest.main()

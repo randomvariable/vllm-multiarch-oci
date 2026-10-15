@@ -88,7 +88,7 @@
     },
     "B12X_CUTE_COMPILE_CACHE_DIR": {
       "source": "derived:runtime-lock and profile identity",
-      "value": "/cache/jit/0000000000000000000000000000000000000000000000000000000000000000/qwen38-flash-next-8caa4b76e9fb7c6e/b12x/cute"
+      "value": "/cache/jit/0000000000000000000000000000000000000000000000000000000000000000/qwen38-flash-next-94b6b25320978ce7/b12x/cute"
     },
     "B12X_DENSE_SPLITK_TURBO": {
       "source": "model:qwen38-flash-next",
@@ -148,7 +148,7 @@
     },
     "CUDA_CACHE_PATH": {
       "source": "derived:runtime-lock and profile identity",
-      "value": "/cache/jit/0000000000000000000000000000000000000000000000000000000000000000/qwen38-flash-next-8caa4b76e9fb7c6e/cuda"
+      "value": "/cache/jit/0000000000000000000000000000000000000000000000000000000000000000/qwen38-flash-next-94b6b25320978ce7/cuda"
     },
     "CUDA_DEVICE_ORDER": {
       "source": "common:single-node-vllm",
@@ -156,7 +156,7 @@
     },
     "CUPY_CACHE_DIR": {
       "source": "derived:runtime-lock and profile identity",
-      "value": "/cache/jit/0000000000000000000000000000000000000000000000000000000000000000/qwen38-flash-next-8caa4b76e9fb7c6e/cupy"
+      "value": "/cache/jit/0000000000000000000000000000000000000000000000000000000000000000/qwen38-flash-next-94b6b25320978ce7/cupy"
     },
     "CUTE_DSL_ARCH": {
       "source": "recipe:qwen38-27b",
@@ -164,7 +164,7 @@
     },
     "CUTE_DSL_CACHE_DIR": {
       "source": "derived:runtime-lock and profile identity",
-      "value": "/cache/jit/0000000000000000000000000000000000000000000000000000000000000000/qwen38-flash-next-8caa4b76e9fb7c6e/cute-dsl"
+      "value": "/cache/jit/0000000000000000000000000000000000000000000000000000000000000000/qwen38-flash-next-94b6b25320978ce7/cute-dsl"
     },
     "FLASHINFER_CUDA_ARCH_LIST": {
       "source": "recipe:qwen38-27b",
@@ -176,7 +176,7 @@
     },
     "FLASH_ATTENTION_CUTE_DSL_CACHE_DIR": {
       "source": "derived:runtime-lock and profile identity",
-      "value": "/cache/jit/0000000000000000000000000000000000000000000000000000000000000000/qwen38-flash-next-8caa4b76e9fb7c6e/flash-attention-cute-dsl"
+      "value": "/cache/jit/0000000000000000000000000000000000000000000000000000000000000000/qwen38-flash-next-94b6b25320978ce7/flash-attention-cute-dsl"
     },
     "HF_HOME": {
       "source": "recipe:qwen38-27b",
@@ -236,7 +236,7 @@
     },
     "NUMBA_CACHE_DIR": {
       "source": "derived:runtime-lock and profile identity",
-      "value": "/cache/jit/0000000000000000000000000000000000000000000000000000000000000000/qwen38-flash-next-8caa4b76e9fb7c6e/numba"
+      "value": "/cache/jit/0000000000000000000000000000000000000000000000000000000000000000/qwen38-flash-next-94b6b25320978ce7/numba"
     },
     "OMP_NUM_THREADS": {
       "source": "recipe:qwen38-27b",
@@ -256,11 +256,11 @@
     },
     "SPARKINFER_COMPILE_CACHE_DIR": {
       "source": "derived:runtime-lock and profile identity",
-      "value": "/cache/jit/0000000000000000000000000000000000000000000000000000000000000000/qwen38-flash-next-8caa4b76e9fb7c6e/b12x/compile"
+      "value": "/cache/jit/0000000000000000000000000000000000000000000000000000000000000000/qwen38-flash-next-94b6b25320978ce7/b12x/compile"
     },
     "TILELANG_CACHE_DIR": {
       "source": "derived:runtime-lock and profile identity",
-      "value": "/cache/jit/0000000000000000000000000000000000000000000000000000000000000000/qwen38-flash-next-8caa4b76e9fb7c6e/tilelang"
+      "value": "/cache/jit/0000000000000000000000000000000000000000000000000000000000000000/qwen38-flash-next-94b6b25320978ce7/tilelang"
     },
     "TORCHINDUCTOR_CACHE_DIR": {
       "source": "recipe:qwen38-27b",
@@ -272,7 +272,7 @@
     },
     "TORCH_EXTENSIONS_DIR": {
       "source": "derived:runtime-lock and profile identity",
-      "value": "/cache/jit/0000000000000000000000000000000000000000000000000000000000000000/qwen38-flash-next-8caa4b76e9fb7c6e/torch-extensions"
+      "value": "/cache/jit/0000000000000000000000000000000000000000000000000000000000000000/qwen38-flash-next-94b6b25320978ce7/torch-extensions"
     },
     "TORCH_NCCL_ASYNC_ERROR_HANDLING": {
       "source": "hardware:gb10-roce",
@@ -284,11 +284,11 @@
     },
     "TVM_CACHE_DIR": {
       "source": "derived:runtime-lock and profile identity",
-      "value": "/cache/jit/0000000000000000000000000000000000000000000000000000000000000000/qwen38-flash-next-8caa4b76e9fb7c6e/tvm"
+      "value": "/cache/jit/0000000000000000000000000000000000000000000000000000000000000000/qwen38-flash-next-94b6b25320978ce7/tvm"
     },
     "TVM_FFI_CACHE_DIR": {
       "source": "derived:runtime-lock and profile identity",
-      "value": "/cache/jit/0000000000000000000000000000000000000000000000000000000000000000/qwen38-flash-next-8caa4b76e9fb7c6e/tvm-ffi"
+      "value": "/cache/jit/0000000000000000000000000000000000000000000000000000000000000000/qwen38-flash-next-94b6b25320978ce7/tvm-ffi"
     },
     "VLLM_B12X_DENSE_ACTIVATION_MODE": {
       "source": "model:qwen38-flash-next",
@@ -296,7 +296,7 @@
     },
     "VLLM_CACHE_DIR": {
       "source": "derived:runtime-lock and profile identity",
-      "value": "/cache/jit/0000000000000000000000000000000000000000000000000000000000000000/qwen38-flash-next-8caa4b76e9fb7c6e/vllm"
+      "value": "/cache/jit/0000000000000000000000000000000000000000000000000000000000000000/qwen38-flash-next-94b6b25320978ce7/vllm"
     },
     "VLLM_CACHE_ROOT": {
       "source": "recipe:qwen38-27b",
@@ -384,7 +384,7 @@
     },
     "XDG_CACHE_HOME": {
       "source": "derived:runtime-lock and profile identity",
-      "value": "/cache/jit/0000000000000000000000000000000000000000000000000000000000000000/qwen38-flash-next-8caa4b76e9fb7c6e"
+      "value": "/cache/jit/0000000000000000000000000000000000000000000000000000000000000000/qwen38-flash-next-94b6b25320978ce7"
     }
   },
   "settings": {

@@ -82,6 +82,13 @@ DATA = IMAGE_TOOLS / "data"
 RECIPE_DIR = REPO / "recipes"
 GOLDEN_DIR = DATA / "golden"
 HARDWARE = "gb10-roce"
+# The hardware each recipe selects, so the load test asserts the value a recipe
+# really uses rather than one universal figure: the single-node CSF deployment
+# correctly selects rtx-pro-6000-pcie, while every other recipe borrows the
+# gb10-roce topology. A name absent here is expected to use HARDWARE.
+RECIPE_HARDWARE: dict[str, str] = {
+    "qwen38-flash-next-rtx6000-tp1": "rtx-pro-6000-pcie",
+}
 PROBE_PORT = 8890
 
 # The three keys the golden records carry. resolver.public() also reports
@@ -98,16 +105,22 @@ UPDATE = "--update" in sys.argv
 # unmanaged key -- so a deployment passes them after `--`, exactly as
 # launch.run forwards request.native. They are recorded in the recipe file's
 # trailing comment and the goldens are generated with them.
+#
+# Not here: --master-port. The pinned options.yaml manages it now, so passing it
+# after `--` would fold it into the resolved values, and upstream's
+# configure_nodes refuses any placement option without nnodes -- which the
+# resolver cannot carry for an LWS group, because --master-addr is per pod and
+# only launch.topology_args knows the rank. The group's rendezvous port is
+# recipe.topology.rendezvous_port (25000), and topology_args hands the engine
+# --master-port beside --nnodes, so the live command line is unchanged.
 NATIVE_ARGS: dict[str, list[str]] = {
     "qwen38-flash-next-gb10-tp2": [
         "--distributed-executor-backend", "mp",
-        "--master-port", "25000",
         "--gdn-prefill-backend", "b12x",
         "--disable-access-log-for-endpoints", "/metrics,/v1/models",
     ],
     "deepseek-v4-flash-vision-gb10-tp2": [
         "--distributed-executor-backend", "mp",
-        "--master-port", "25000",
         "--dcp-comm-backend", "a2a",
         "--reasoning-config",
         '{"reasoning_parser":"deepseek_v4","reasoning_start_str":"","reasoning_end_str":""}',
@@ -121,6 +134,10 @@ NATIVE_ARGS: dict[str, list[str]] = {
         "--kernel-config",
         '{"enable_flashinfer_autotune": false, "linear_backend": "b12x"}',
     ],
+    # The single-node CSF deployment passes no native arguments: every live flag
+    # is a managed option or is derived by the external-cache contract, so this
+    # entry exists to put the recipe under golden and policy coverage.
+    "qwen38-flash-next-rtx6000-tp1": [],
 }
 
 # Shell indirection the accepted deployment's init or serve script interpolated
@@ -368,7 +385,7 @@ class RecipeSchemaTest(unittest.TestCase):
             with self.subTest(recipe=name):
                 recipe = launch.load_recipe(name, root=RECIPE_DIR)
                 self.assertEqual(recipe.name, name)
-                self.assertEqual(recipe.hardware, HARDWARE)
+                self.assertEqual(recipe.hardware, RECIPE_HARDWARE.get(name, HARDWARE))
                 self.assertEqual(recipe.probe_port, PROBE_PORT)
 
     def test_lws_recipes_declare_sync_and_kv_events(self) -> None:
@@ -594,7 +611,11 @@ class TopologyArgumentTest(LauncherDataBase):
             recipe.topology, {**self.RANK_ENVIRONMENT, "LWS_WORKER_INDEX": str(index)}
         )
         arguments = launch.topology_args(
-            rank, plan.values, recipe.topology.kv_events, dict(self.RANK_ENVIRONMENT)
+            rank,
+            plan.values,
+            recipe.topology.kv_events,
+            dict(self.RANK_ENVIRONMENT),
+            rendezvous_port=recipe.topology.rendezvous_port,
         )
         return list(plan.argv), arguments, record(plan)
 
@@ -613,6 +634,7 @@ class TopologyArgumentTest(LauncherDataBase):
                         "--nnodes", "2",
                         "--node-rank", "0",
                         "--master-addr", "127.0.0.1",
+                        "--master-port", str(recipe.topology.rendezvous_port),
                         "--enable-scale-out",
                         "--kv-events-config",
                         json.dumps(
@@ -637,9 +659,16 @@ class TopologyArgumentTest(LauncherDataBase):
                         "--nnodes", "2",
                         "--node-rank", "1",
                         "--master-addr", self.RANK_ENVIRONMENT["LWS_LEADER_ADDRESS"],
+                        "--master-port", str(recipe.topology.rendezvous_port),
                         "--headless",
                     ],
                 )
+                # The port is the group's, not the rank's, so both ranks carry it.
+                for arguments in (added0, added1):
+                    with self.subTest(rank=arguments[3]):
+                        self.assertEqual(
+                            arguments[arguments.index("--master-port") + 1], "25000"
+                        )
 
     def test_kv_topic_is_the_address_the_router_looks_up(self) -> None:
         recipe = self.recipe("qwen38-flash-next-gb10-tp2")

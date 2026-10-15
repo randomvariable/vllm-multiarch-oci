@@ -128,13 +128,20 @@ class RankTests(unittest.TestCase):
         leader = launch.topology_args(launch.Rank(0, 2, LEADER_ADDRESS), BASE_VALUES, KV, LWS_ENV)
         worker = launch.topology_args(launch.Rank(1, 2, LEADER_ADDRESS), BASE_VALUES, KV, LWS_ENV)
         self.assertEqual(worker, [
-            "--nnodes", "2", "--node-rank", "1", "--master-addr", LEADER_ADDRESS, "--headless",
+            "--nnodes", "2", "--node-rank", "1", "--master-addr", LEADER_ADDRESS,
+            "--master-port", str(launch.DEFAULT_RENDEZVOUS_PORT), "--headless",
         ])
         self.assertEqual(leader[:6], [
             "--nnodes", "2", "--node-rank", "0", "--master-addr", "127.0.0.1",
         ])
-        self.assertEqual(leader[6:8], ["--enable-scale-out", "--kv-events-config"])
-        self.assertEqual(leader[8], leader_payload())
+        # The group's rendezvous port travels with the placement, not with the
+        # resolved options: master-port is managed, and upstream's
+        # configure_nodes would refuse it without nnodes.
+        self.assertEqual(leader[6:10], [
+            "--master-port", str(launch.DEFAULT_RENDEZVOUS_PORT),
+            "--enable-scale-out", "--kv-events-config",
+        ])
+        self.assertEqual(leader[10], leader_payload())
         self.assertNotIn("--headless", leader)
         # Publishing belongs to the leader alone: a second publisher would index
         # KV blocks under an address no router lookup can produce.

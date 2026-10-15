@@ -223,7 +223,12 @@ function validateDeploymentAndLaunch(recipe, launch, source) {
   positiveInteger(deployment.storage_min_free_gib, `${where}.storage_min_free_gib`);
   positiveInteger(deployment.download_workers, `${where}.download_workers`);
   stringList(deployment.ignore_patterns, `${where}.ignore_patterns`);
-  stringList(deployment.required_files, `${where}.required_files`, { nonEmpty: true });
+  // A CSF snapshot's container files (manifest.json, build/verification, the
+  // metadata/* set and every tensors/<shard> the index names) are enforced
+  // internally by the model-sync validator against the staged snapshot, not
+  // against the published root -- so a CSF recipe's required_files is correctly
+  // empty. Conventional sync recipes must still name their post-weight files.
+  stringList(deployment.required_files, `${where}.required_files`, { nonEmpty: !deployment.csf });
   assert(options.model === deployment.model_path, `${where}: the engine must load the snapshot the launcher publishes`);
 }
 

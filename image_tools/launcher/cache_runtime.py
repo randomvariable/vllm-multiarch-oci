@@ -7,8 +7,9 @@ its health URL, checks that the cache advertises the exact engine-driven SHM
 pool the server role resolved, and prunes disk-tier namespaces left behind by
 earlier images or cache settings.
 
-Ported from upstream ``runtime/supervisor.py`` (pinned at
-``353efc679f631206e0b001e67047dea80ee6d76e``). Supervision is intentionally
+Ported from upstream ``runtime/supervisor.py`` and the identity step of
+``runtime/cache.py``, both pinned at
+``f5bc69c221dc7933a153cf5340c53f3f795aad85``. Supervision is intentionally
 absent: there is no ``Popen``, no process tree, no signal handling and no HTTP
 server here. The launcher owns starting ``lmcache server`` and the lifetime of
 the descriptors returned by the claim helpers; the arena and tier locks are
@@ -19,6 +20,7 @@ they survive ``os.execv`` (``FD_CLOEXEC`` is never set).
 from __future__ import annotations
 
 import fcntl
+import hashlib
 import json
 import math
 import os
@@ -628,3 +630,88 @@ def verify_installed_transfer(
             "Qwen external cache with DCP>1 requires a vLLM build with atomic QSA "
             "checkpoint transfer; use DCP1 or an image that includes it"
         )
+
+
+def identity_helper(root: Path) -> Path:
+    """The checkpoint identity helper the image installs beside its policy data."""
+    return root / "checkpoint_identity.py"
+
+
+def _load_identity_helper(helper: Path):
+    """Import the image's source-locked checkpoint identity helper.
+
+    Upstream loads it only when an external cache needs an identity, and refuses
+    a build that shipped without it, because a cache whose persistent namespace
+    cannot be tied to the weights that filled it would replay one checkpoint's
+    blocks under another's name.
+    """
+    if not helper.is_file():
+        raise ConfigError(
+            "The image must package its source-locked checkpoint identity helper"
+        )
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("lil_checkpoint_identity", helper)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def resolve_identity(plan, contract: dict, helper: Path) -> None:
+    """Pin loaded weights and persistent namespace without re-resolving policy.
+
+    Ported from upstream ``runtime/cache.py`` ``resolve_identity``. The plan's
+    own identity wins when the launcher has one: a target served from files the
+    image staged itself (the FP4-CSF serving directory ``sync_model`` publishes)
+    holds no weights to hash, so the helper's checkpoint scan cannot describe it
+    and the digest of the container's manifest is used instead. Everything else
+    is upstream's: the drafter of an MTP or DSpark mode follows the target, a
+    DFlash drafter is hashed on its own, a revision the helper pinned is written
+    back so the engine loads exactly what was identified, the identity rides the
+    connector's extra config, and the persistent namespace is the digest of the
+    three revisions, replacing the resolver's ``UNRESOLVED-CHECKPOINT`` marker in
+    the service argv, its directories and its namespace.
+    """
+    service = plan.cache_service
+    if not service or not service.get("identity_required"):
+        return
+    values = plan.values
+    module = None
+    target = plan.target_identity
+    if target is None:
+        module = _load_identity_helper(helper)
+        target = module.resolve_checkpoint(values["model"], values.get("revision"))
+    draft = {"identity": "", "revision": ""}
+    if values["mode"] == "mtp" or values["mode"] == "dspark":
+        draft = target
+    elif values["mode"] == "dflash2":
+        draft_spec = values["speculative-config"]
+        if module is None:
+            module = _load_identity_helper(helper)
+        draft = module.resolve_checkpoint(
+            draft_spec["model"], draft_spec.get("revision")
+        )
+    if target["revision"]:
+        values["revision"] = target["revision"]
+        plan.origins["revision"] = "resolved:checkpoint identity"
+    if draft["revision"] and "speculative-config" in values:
+        values["speculative-config"]["revision"] = draft["revision"]
+    identity = {
+        "target_revision": target["identity"],
+        "draft_revision": draft["identity"],
+        "source_revision": contract["runtime_lock_sha256"],
+    }
+    config = values["kv-transfer-config"]
+    if config["kv_connector"] == "LMCacheRecurrentCheckpointConnector":
+        config["kv_connector_extra_config"]["lmcache.mp.checkpoint_identity"] = identity
+    suffix = hashlib.sha256(
+        json.dumps(identity, sort_keys=True).encode()
+    ).hexdigest()
+    service["argv"] = [
+        arg.replace("UNRESOLVED-CHECKPOINT", suffix) for arg in service["argv"]
+    ]
+    service["directories"] = [
+        path.replace("UNRESOLVED-CHECKPOINT", suffix)
+        for path in service["directories"]
+    ]
+    service["namespace"] = service["namespace"].replace("UNRESOLVED-CHECKPOINT", suffix)

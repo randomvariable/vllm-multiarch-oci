@@ -178,12 +178,18 @@ export function validateReleases(document, source) {
   return document;
 }
 
-/** The `lil_runtime` pin and the lineage commits this build is anchored to. */
+/** The `lil_runtime` pin and the lineage commits this build is anchored to.
+ *
+ * B12X is no longer a standalone source: it is integrated into the pinned vLLM
+ * fork, so `sources` carries `vllm` (whose commit is the b12x lineage now) and
+ * `lil_runtime`, and there is no `sources.b12x` to assert. Provenance stays
+ * honest -- each required pin must be a full commit OID from a public GitHub
+ * remote; nothing is invented for the retired standalone component. */
 export function pinnedSources(path = PROFILE) {
   const profile = JSON.parse(readFileSync(path, "utf8"));
   const sources = profile.sources;
   assert(sources && typeof sources === "object", `${path}: sources mapping is required`);
-  for (const name of ["vllm", "b12x", "lil_runtime"]) {
+  for (const name of ["vllm", "lil_runtime"]) {
     assert(sources[name] && COMMIT.test(sources[name].commit), `${path}: sources.${name}.commit must be a full commit OID`);
     assert(/^https:\/\/github\.com\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+\.git$/.test(sources[name].remote || ""), `${path}: sources.${name}.remote must be a public GitHub URL`);
   }
@@ -191,7 +197,6 @@ export function pinnedSources(path = PROFILE) {
     lilRuntime: sources.lil_runtime.commit,
     lilRemote: sources.lil_runtime.remote,
     vllm: sources.vllm.commit,
-    b12x: sources.b12x.commit,
   };
 }
 

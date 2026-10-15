@@ -1,0 +1,55 @@
+---
+title: Qwen3.8 Flash Next NVFP4-CSF on one RTX PRO 6000 system
+description: The single-node FP4-CSF deployment recipe with disk PLE and an LMCache host-RAM KV tier.
+sidebar:
+  label: Qwen3.8 Flash Next (single-node CSF)
+---
+
+<p class="eyebrow">Runtime recipe · Qwen3.8 Flash Next NVFP4-CSF · TP=1</p>
+
+This is the public form of the single-node deployment run for the FP4-CSF container `local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD` at revision `285dfa06cc7c`. One discrete RTX PRO 6000 Blackwell Max-Q (`sm_120`, 97,887 MiB) owns the whole model, so this is a plain single-replica Kubernetes `Deployment` rather than a LeaderWorkerSet: there is no second rank to rendezvous with, no collective to carry over a secondary network, and no KV-event stream for a router to index. It sits outside the two-node LWS inference pool on purpose, under its own Service and served name. Its image is the pinned `local-inference-lab/vLLM` fork built for this GPU class, not an arbitrary upstream vLLM release.
+
+<dl class="fact-grid">
+  <div><dt>Model</dt><dd>local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD</dd></div>
+  <div><dt>Model revision</dt><dd>285dfa06cc7c215eeb4892b7d9ba6a80351d0c72</dd></div>
+  <div><dt>Topology</dt><dd>1 node · TP=1 · one discrete GPU</dd></div>
+  <div><dt>Context</dt><dd>1,048,576 tokens</dd></div>
+  <div><dt>Hardware profile</dt><dd>rtx-pro-6000-pcie</dd></div>
+</dl>
+
+## How the checkpoint reaches the engine
+
+The launcher stages it. `vllm-image launch --recipe qwen38-flash-next-rtx6000-tp1 --topology single --model-sync` runs a model-sync phase before the engine starts. Because this is an NVFP4-CSF container, the recipe sets `deployment.csf: true` with `csf_family: qwen38_flash_next_nvfp4`, which routes the publish through the CSF contract instead of the conventional symlink: the snapshot's `metadata/` files are lifted to the serving root and `config.json`'s `quantization_config` is replaced by the `nvfp4_csf` block whose `checkpoint_root` points back at the snapshot. That whole build is what the live manifest's `prepare-csf` init container did by hand; the launcher retires the shell. The engine then loads the published directory, never the repository id, and the profile's `csf` checkpoint already supplies `--quantization nvfp4_csf` and `--load-format nvfp4_csf`.
+
+This is also why `HF_HUB_OFFLINE` is `1` here where the single-node QAD recipe ships `0`: the checkpoint is already fetched, verified and published by the time the engine reads it, so any hub request at load time would mean the published root was not used.
+
+```bash
+vllm-image launch --recipe qwen38-flash-next-rtx6000-tp1 --topology single --model-sync
+```
+
+`--print-config` on that command is the authoritative list of what the container runs; `docs` in the recipe file carries the per-value explanation for every setting upstream does not document.
+
+## What is fixed
+
+Three deviations from the recorded bench run this deployment replicates are deliberate, and each is argued in the recipe header.
+
+**The context is a derived override, not a copied one.** The checkpoint advertises 262,144 positions with `rope_type` `default`. The recipe sets `max-model-len: 1048576` and nothing rope-related, letting the resolver derive the factor-4 YaRN `--hf-overrides` from that number — the same block the live manifest wrote, including the `mrope_section` and `mrope_interleaved` that `get_rope()` needs present to preserve M-RoPE for the vision position ids. `VLLM_ALLOW_LONG_MAX_MODEL_LEN` stays unset; it would only downgrade the check the override satisfies properly.
+
+**The PLE tables are on disk, not in page-locked RAM.** `additional-config` sets `ple_table_memory: disk`, which maps to the b12x io_uring `DiskTable`: it reads the ~26.8 GiB of n-gram rows out of the snapshot's safetensors by (path, offset) instead of holding them page-locked in host memory the way the bench did. Two things make that work and both are load-bearing here — the loader is file-backed (`nvfp4_csf` provides `(path, offset)` registrations) and the V2 model runner is the only caller of `prepare_disk()` (the common layer sets `VLLM_USE_V2_MODEL_RUNNER=1`) — and a third is a placement requirement: the snapshot must stay readable for the whole process lifetime, so it lives on a node-local hostPath, not just at load. `ple_table_memory` takes precedence over `VLLM_PLE_CPU_OFFLOAD`, so the profile's RAM-offload value is inert under disk mode and is left unset. This is the mode the DGX fleet retired after an asynchronous illegal-address class surfaced through the `DiskTable` synchronize point on prefix-cache-resumed requests; that was the old pin at TP=2 on GB10, and this is the same model class on today's code at TP=1. If Xid 13/31 or an illegal-address abort reappears on resumed long requests, the fallback is `ple_table_memory: ram` (26.8 GiB page-locked host; the box has the headroom).
+
+**The KV cache spills to a host-RAM LMCache tier.** `cache-mode: lmcache` with `cache-l1-gib: 32` drives the resolver's own qwen engine-driven contract, which forces request-boundary checkpoints, retention interval 0, and the `LMCacheRecurrentCheckpointConnector` — the same server argv and connector the live manifest hand-wrote, retired into the resolver so the engine and its cache sidecar cannot disagree about a port, an arena name or a chunk size. Spill is restore-instead-of-recompute for preempted or evicted prefixes; it does not raise the single-sequence ceiling, which still has to fit the model window in GPU KV. The engine-driven pool reserves the full 32 GiB up front in the shared `/dev/shm` arena, so the shm volume and the cache tier's memory both exceed it.
+
+Everything else — block-size 64, the MTP-3 policy on B12X experts, the b12x gdn/linear/moe backends, vision enabled, FP8 KV, and the 0.985 utilization the measured boot needed to admit the 1M window (0.975 rejected it) — comes from the model profile, the `rtx-pro-6000-pcie` hardware profile or the common layer, and the recipe stays a delta rather than restating them.
+
+## Validation status
+
+This recipe is **verified for availability on Kubernetes and makes no throughput claim.** It ran live on the RTX PRO 6000 host at GitOps revision `3209f0cf8` on the digest-pinned internal build: the pod reached 2/2 ready with zero container restarts, and a single chat completion returned 42 tokens. That one request is the only generation recorded here. No benchmark harness has been run against it, so this page shows no throughput panel and the recipe names no public image -- the accepted build is internal-only and no public registry mirror of it is attested. Treat the numbers elsewhere as observations of this stack on one host, not hardware guarantees.
+
+## Before applying output
+
+- The model hostPath needs the 130 GiB free gate for the 95.86 GiB CSF payload, and must stay mounted and readable for the process lifetime because the disk PLE opens its rows on every forward. A node-local hostPath keeps the weights without copying them through an OCI layer.
+- The LMCache arena is a tmpfs `/dev/shm` sized above the 32 GiB L1; tmpfs pages charge the cache container's memory limit, so the cache tier is bounded at 40Gi against the 34Gi request.
+- `HOME`, `HF_HOME` and every compiler-cache path are pinned to the node's persistent volumes on purpose, and the recipe's `docs` block explains each one. Components derive cache locations from `~`, and the container filesystem is not one of them.
+- Keep the 90-minute startup budget (360 x 15s). A first start downloads the snapshot and then loads weights and compiles/captures graphs; shortening it kills an engine still making progress.
+- Never set `CUDA_LAUNCH_BLOCKING`: b12x does not function with synchronous kernel launches.
+- Requests go to one container on one GPU, so nothing here depends on a RoCE fabric, a Multus attachment, an RDMA allocator resource, or a rank-zero-only KV-event stream.

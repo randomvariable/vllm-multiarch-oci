@@ -84,8 +84,6 @@
     "qwen3_xml",
     "--distributed-executor-backend",
     "mp",
-    "--master-port",
-    "25000",
     "--gdn-prefill-backend",
     "b12x",
     "--disable-access-log-for-endpoints",

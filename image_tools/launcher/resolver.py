@@ -3,24 +3,30 @@
 
 This module is a port of ``runtime/launcher.py`` and the policy half of
 ``runtime/cache.py`` from ``local-inference-lab/blackwell-llm-docker`` at
-commit ``353efc679f631206e0b001e67047dea80ee6d76e``. Functions are kept in
-upstream order and upstream shape so that ``launcher_parity_test`` and a
-reviewer can diff the two files side by side.
+commit ``f5bc69c221dc7933a153cf5340c53f3f795aad85``, the ``lil_runtime`` pin of
+``profiles/vllmb12x/profile.json``. Functions are kept in upstream order and
+upstream shape so that ``launcher_parity_test`` and a reviewer can diff the two
+files side by side.
 
 The port is deliberate about three things:
 
 * It reads the pinned upstream data files (``options.yaml``, ``schema.json``,
-  ``platform-environment.json``, ``presets.yaml``, ``profiles/``,
-  ``hardware/``, ``templates/``) relative to a ``root`` argument instead of
-  upstream's module-directory ``ROOT``, because the image installs them under
-  ``/opt/vllm-image/runtime`` while the site ships them next to a copy of this
-  file.
+  ``platform-environment.json`` and its ``linux-arm64`` sibling, ``presets.yaml``,
+  ``profiles/``, ``hardware/``, ``templates/``) relative to a ``root`` argument
+  instead of upstream's module-directory ``ROOT``, because the image installs
+  them under ``/opt/vllm-image/runtime`` while the site ships them next to a
+  copy of this file.
 * It never spawns a process, execs, parses a command line, or touches the
   network, so the same code answers ``--print-config`` in the image, in a CPU
   test, and in the browser under Pyodide. Where upstream reached for a
   subprocess or an optional third-party package, the effect is a parameter the
-  caller supplies (``vllm_environment``, ``fetch_snapshot``, ``fetch_file``,
-  the QSA source text).
+  caller supplies (``vllm_environment``, ``csf_formats``, ``csf_families``,
+  ``fetch_snapshot``, ``fetch_file``, the QSA source text). Of the FP4-CSF work
+  upstream carries, only the policy is here: which checkpoint variant runs,
+  whether the installed vLLM can read it, and what its files must say. Building
+  the directory vLLM opens -- the download, the generated ``config.json`` and
+  safetensors index, the serving tree under ``/tmp/lil-csf`` -- is upstream
+  ``execute()`` work and stays with the launcher.
 * It adds one configuration layer upstream does not have: a ``recipe_layer``
   carrying our own accepted values and environment for a recipe, applied
   immediately after the deployment preset it names and before anything an
@@ -29,11 +35,17 @@ The port is deliberate about three things:
   same value coming from a preset. Upstream's presets.yaml describes itself as
   the overlays "owned by the container recipe", so a recipe is a preset in
   everything but its file. Concretely, ``recipe:`` joins a branch only where
-  ``preset:`` already appears (linked options, the preset KV reduction, the
-  capture-size extension); the branches that recognise only
+  ``preset:`` already appears (linked options, the preset KV reduction and its
+  per-DCP qualification, the capture-size extension, the adjustable LMCache L1
+  size, and the refusal that names which data layer asked for an unreadable
+  FP4-CSF format); the branches that recognise only
   ``common:``/``model:``/``hardware:`` keep upstream's behaviour, because a
   preset-set value is not matched by them either. Every such site is marked
-  ``PORT(recipe)``.
+  ``PORT(recipe)``. The one place a recipe deliberately does *not* join a
+  preset's branch is upstream's guard that a preset serving a checkpoint of its
+  own cannot be swapped by ``CHECKPOINT``: a preset that names a checkpoint also
+  names the settings that read it, while our recipes name only the directory
+  model-sync published and let the variant choose the loader.
 """
 
 from __future__ import annotations
@@ -85,6 +97,18 @@ SECRET = re.compile(
     r"api[-_]?key|password|secret|authorization|access[-_]?token|hf_token",
     re.IGNORECASE,
 )
+# Precision of GLM-5.3-Flash's routed FP4 experts on B12X.
+GLM_PRECISION_OPTIONS = ("expert-activations", "router-weights", "prefill-activations")
+# On images whose vLLM reads B12X_W4A16_A4_PREFILL_MIN_TOKENS, prefill-activations
+# a4 sets it to this value. vLLM then runs the prefill rows of every step with
+# NVFP4 activations and the decode rows with W4A16, whatever the step size
+# (images before vllm #977 used the value as a call-size threshold instead).
+# Newer images take B12X_W4A16_A4_PREFILL=1 instead.
+GLM_A4_PREFILL_MIN_TOKENS = 1536
+# Checkpoints whose routed experts lose accuracy with a4 prefill: the Spark
+# checkpoint's pre-QAD experts answered 456 of 500 needle-checksum requests
+# with a4 and 488 with a16; the QAD checkpoints answered 477-494 with a4.
+GLM_A4_PREFILL_UNQUALIFIED = ("GLM-5.3-Flash-NVFP4-Spark",)
 # PORT: upstream imports this from runtime.replicas at call time; that module
 # belongs to the launcher's replicas role, so the constant is inlined here to
 # keep the resolver's import set at the standard library plus PyYAML.
@@ -237,12 +261,25 @@ def _validate_schema(instance: Any, schema: dict, defs: dict, trail: str) -> Non
             _validate_schema(key, names, defs, f"{trail}.{key}")
 
 
+def platform_environment_path(*, root: Path = DEFAULT_DATA_ROOT) -> Path:
+    """The foundation policy of the machine's image: linux/arm64 images carry
+    platform-environment.linux-arm64.json beside the linux/amd64 default."""
+    # PORT: upstream calls platform.machine(); os.uname keeps this module's
+    # import set inside the subset the browser build provides as well.
+    if os.uname().machine == "aarch64":
+        candidate = root / "platform-environment.linux-arm64.json"
+        if candidate.is_file():
+            return candidate
+    return root / "platform-environment.json"
+
+
 def platform_environment(*, root: Path = DEFAULT_DATA_ROOT) -> dict[str, str]:
     """Read foundation defaults below model policy and explicit user settings."""
+    path = platform_environment_path(root=root)
     try:
-        data = json.loads((root / "platform-environment.json").read_text())
+        data = json.loads(path.read_text())
     except (OSError, ValueError) as error:
-        raise ConfigError("Cannot read platform-environment.json") from error
+        raise ConfigError(f"Cannot read {path.name}") from error
     if (
         not isinstance(data, dict)
         or set(data) != {"schema_version", "source_image", "environment"}
@@ -314,7 +351,7 @@ def deployment_presets(*, root: Path = DEFAULT_DATA_ROOT) -> dict:
             "linked_options",
         }
         kv_fields = {"kv_bytes_per_extra_slot", "kv_bytes_for_external_cache"}
-        optional = kv_fields | {"vllm_fallback"}
+        optional = kv_fields | {"vllm_fallback", "kv_bytes_by_dcp"}
         if not required <= set(item) <= required | optional:
             raise ConfigError(f"Invalid deployment preset fields: {name}")
         fallback = item.get("vllm_fallback")
@@ -329,6 +366,16 @@ def deployment_presets(*, root: Path = DEFAULT_DATA_ROOT) -> dict:
             )
         ):
             raise ConfigError(f"Invalid preset vllm_fallback: {name}")
+        by_dcp = item.get("kv_bytes_by_dcp", {})
+        if not isinstance(by_dcp, dict) or not all(
+            isinstance(size, str)
+            and re.fullmatch(r"[1-9][0-9]*", size)
+            and int(size) > 1
+            and type(amount) is int
+            and amount > 0
+            for size, amount in by_dcp.items()
+        ):
+            raise ConfigError(f"Invalid preset kv_bytes_by_dcp: {name}")
         for fields in kv_fields:
             value = item.get(fields, 0)
             if type(value) is not int or value < 0:
@@ -346,8 +393,26 @@ def deployment_presets(*, root: Path = DEFAULT_DATA_ROOT) -> dict:
     return presets
 
 
+# Removed presets name the preset that replaces them, so an old Compose file
+# fails with the way forward instead of an unknown name.
+RETIRED_PRESETS = {
+    "glm53-spark-tp2": (
+        "glm53-tp2",
+        (
+            "it serves the QAD weights of GLM-5.3-Flash from the FP4-CSF checkpoint "
+            "GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD (a new download)"
+        ),
+    ),
+}
+
+
 def deployment_preset(identifier: str, *, root: Path = DEFAULT_DATA_ROOT) -> dict:
     presets = deployment_presets(root=root)
+    if identifier not in presets and identifier in RETIRED_PRESETS:
+        replacement, reason = RETIRED_PRESETS[identifier]
+        raise ConfigError(
+            f"PRESET={identifier} was removed; use PRESET={replacement}: {reason}"
+        )
     if identifier not in presets:
         raise ConfigError(f"Unknown deployment preset: {identifier}")
     return copy.deepcopy(presets[identifier])
@@ -373,12 +438,76 @@ def installed_source(package: str, relative: str) -> str | None:
     return None
 
 
+def installed_semantic_a4_prefill() -> bool:
+    """Whether the installed vLLM turns hybrid A4 prefill on with
+    B12X_W4A16_A4_PREFILL and picks the prefill rows itself. Images before it
+    took a token threshold, B12X_W4A16_A4_PREFILL_MIN_TOKENS."""
+    source = installed_source("vllm", "utils/b12x.py")
+    return source is not None and '"B12X_W4A16_A4_PREFILL"' in source
+
+
 def installed_vllm_environment() -> frozenset[str] | None:
     """Environment names the installed vLLM declares, or None without vLLM."""
     source = installed_source("vllm", "envs.py")
     if source is None:
         return None
     return frozenset(re.findall(r'^    "(VLLM_[A-Z0-9_]+)"', source, re.MULTILINE))
+
+
+def installed_csf_formats() -> frozenset[str] | None:
+    """FP4-CSF load formats the installed vLLM reads, or None without vLLM.
+
+    A vLLM that reads NVFP4-CSF scales from ModelOpt recipes has no dedicated
+    load format but serves Hugging Face-layout NVFP4-CSF checkpoints.
+    """
+    source = installed_source("vllm", "model_executor/model_loader/__init__.py")
+    if source is None:
+        return None
+    formats = {fmt for fmt in CSF_FORMATS if f'"{fmt}"' in source}
+    if installed_nvfp4_csf_recipes():
+        formats.add("nvfp4_csf")
+    return frozenset(formats)
+
+
+def installed_nvfp4_csf_recipes() -> bool:
+    """Whether the installed vLLM reads NVFP4-CSF expert scales declared by
+    ModelOpt recipes (weight_scale_encoding) instead of a dedicated format."""
+    loaders = installed_source("vllm", "model_executor/model_loader/__init__.py")
+    modelopt = installed_source(
+        "vllm", "model_executor/layers/quantization/modelopt.py"
+    )
+    return (
+        loaders is not None
+        and '"nvfp4_csf"' not in loaders
+        and modelopt is not None
+        and "weight_scale_encoding" in modelopt
+    )
+
+
+def installed_csf_families() -> frozenset[str] | None:
+    """Checkpoint families the installed vLLM's FP4-CSF loaders accept.
+
+    Each loader lists them in its FAMILIES table, for example deepseek_v41 and
+    deepseek_v4_flash in mxfp4_csf_loader.py; a reader of a format can predate
+    a family. None without vLLM.
+    """
+    if installed_source("vllm", "model_executor/model_loader/__init__.py") is None:
+        return None
+    families: set[str] = set()
+    for fmt in CSF_FORMATS:
+        source = installed_source(
+            "vllm", f"model_executor/model_loader/{fmt}_loader.py"
+        )
+        table = re.search(
+            r"^FAMILIES\b[^=\n]*=\s*\{(.*?)^\}", source or "", re.MULTILINE | re.DOTALL
+        )
+        if table:
+            families.update(
+                re.findall(r'^\s+"([a-z][a-z0-9_]*)"\s*:', table.group(1), re.MULTILINE)
+            )
+    return frozenset(families)
+
+
 
 
 def installed_b12x_mxfp8_moe() -> bool:
@@ -552,6 +681,9 @@ class CacheService:
     stop_grace: float = STOP_GRACE_SECONDS
     # Delete unused disk-tier namespaces of earlier images or settings.
     prune_stale_tiers: bool = False
+    # The L1 size is a profile or preset default, so the supervisor may shrink
+    # it to fit the host; an operator's explicit size is never changed.
+    l1_adjustable: bool = False
 
 
 def configure_cache(
@@ -723,8 +855,6 @@ def configure_cache(
                 "Explicit checkpoint retention conflicts with the cache object geometry"
             )
         put("prefix-cache-retention-interval", retention)
-        if engine and origins["gpu-memory-utilization"].startswith("model:"):
-            put("gpu-memory-utilization", 0.950)
     elif qwen:
         # GDN state must be restored with its exact attention/PLE boundary.
         # Independent aligned chunks are not a substitute for that bundle.
@@ -977,6 +1107,13 @@ def configure_cache(
         namespace,
         stop_grace,
         bool(values.get("cache-l2-prune-stale")),
+        # PORT(recipe): an L1 size the recipe pinned is a data-layer default in
+        # the same sense a preset's is, so the supervisor may still shrink it;
+        # only an operator's explicit size is left untouched.
+        l1_adjustable=engine
+        and origins["cache-l1-gib"].startswith(
+            ("model:", "common:", "preset:", "recipe:")
+        ),
     )
 
 
@@ -1049,6 +1186,10 @@ class ResolvedPlan:
     # Drafter shipped inside the target checkpoint; resolved to a local path
     # at launch, so printing a configuration never downloads anything.
     draft_subfolder: str | None = None
+    # Content identity of a target served from generated files (FP4-CSF),
+    # which the checkpoint identity helper cannot hash itself. The launcher's
+    # FP4-CSF preparation fills it in; the resolver never does.
+    target_identity: dict | None = None
 
 
 def public(plan: ResolvedPlan) -> dict:
@@ -1151,6 +1292,8 @@ def resolve(
     cli_env: dict[str, str] | None = None,
     runtime_identity: str | None = None,
     vllm_environment: frozenset[str] | None = None,
+    csf_formats: frozenset[str] | None = None,
+    csf_families: frozenset[str] | None = None,
     root: Path = DEFAULT_DATA_ROOT,
 ) -> ResolvedPlan:
     incoming = dict(os.environ if env is None else env)
@@ -1340,6 +1483,162 @@ def resolve(
         target[parts[-1]] = value
         origins[root_key] = "cli:json-fields"
 
+    # The checkpoint variant (CHECKPOINT) chooses the checkpoint and the settings
+    # that read it, replacing profile defaults only. A model naming a variant's
+    # checkpoint selects that variant. Any other model or revision chosen by a
+    # preset, settings or the operator keeps the profile settings unless
+    # CHECKPOINT is chosen there too; then the variant fills in everything else.
+    # A preset that names a checkpoint of its own serves it as configured, also
+    # when a variant names the same checkpoint.
+    # PORT(recipe): upstream's own-checkpoint guard below stays preset-only on
+    # purpose. A preset that names a checkpoint also names the settings that
+    # read it, so CHECKPOINT cannot swap it; our recipes name only the local
+    # directory model-sync published for a variant's checkpoint and leave the
+    # loader to the variant, which is upstream's MODEL= case rather than a
+    # preset's own checkpoint. data_layer names whichever data layer owns a
+    # loader setting when a format this image cannot read is asked for.
+    def data_layer(key: str) -> tuple[str, str] | None:
+        """The flag and the noun of the data layer that chose a value."""
+        if origins[key].startswith("preset:"):
+            return f"PRESET={preset}", "preset"
+        if origins[key].startswith("recipe:"):
+            return f"RECIPE={recipe_name}", "recipe"
+        return None
+
+    checkpoint_warnings: list[str] = []
+    local_csf = None
+    if "checkpoint" in values:
+        variants = model.get("checkpoints", {})
+        profile_level = ("common:", "model:", "hardware:")
+
+        def chosen(key: str) -> bool:
+            return key in values and not origins[key].startswith(profile_level)
+
+        def is_csf(options: dict) -> bool:
+            return options.get("load-format") in CSF_FORMATS
+
+        def unreadable(item: dict) -> str | None:
+            """The checkpoints the installed vLLM cannot read, if a variant is one."""
+            if not is_csf(item["options"]):
+                return None
+            if (
+                csf_formats is not None
+                and item["options"]["load-format"] not in csf_formats
+            ):
+                return "FP4-CSF checkpoints"
+            family = item.get("csf_family")
+            if family and csf_families is not None and family not in csf_families:
+                return f"FP4-CSF checkpoints of the {family} family"
+            return None
+
+        name, reason = values["checkpoint"], "derived:model"
+        # A local FP4-CSF copy read with a non-CSF variant's settings loads
+        # without an error and serves wrong output, so its files choose.
+        local_csf = local_csf_format(values["model"]) if chosen("model") else None
+        if variants and origins["model"].startswith("preset:"):
+            # CHECKPOINT cannot swap a preset's own checkpoint for one of the
+            # other kind; the preset's settings read only its own.
+            if (
+                chosen("checkpoint")
+                and name in variants
+                and is_csf(variants[name]["options"]) != is_csf(values)
+            ):
+                kind = "an FP4-CSF" if is_csf(values) else "a non-CSF"
+                raise ConfigError(
+                    f"PRESET={preset} serves {kind} checkpoint of its own, "
+                    f"{values['model']}; CHECKPOINT={name} does not apply to it. "
+                    "Choose the checkpoint with the model profile, without this preset"
+                )
+            name = None
+        elif not chosen("checkpoint") and (chosen("model") or chosen("revision")):
+            named = [
+                variant
+                for variant, item in variants.items()
+                if item["options"]["model"] == values["model"]
+            ]
+            if chosen("model") and not named and local_csf:
+                named = [
+                    variant
+                    for variant, item in variants.items()
+                    if item["options"].get("load-format") == local_csf
+                ]
+                if not named:
+                    raise ConfigError(
+                        f"MODEL={values['model']} is a {local_csf} checkpoint; "
+                        f"{identifier} has no checkpoint variant that reads it"
+                    )
+                reason = f"derived:{local_csf} files at MODEL"
+            name = named[0] if chosen("model") and named else None
+        if local_csf and name in variants and not is_csf(variants[name]["options"]):
+            raise ConfigError(
+                f"MODEL={values['model']} is a {local_csf} checkpoint, but "
+                f"CHECKPOINT={name} ({origins['checkpoint']}) reads its compressed "
+                "scales as plain ones and serves wrong output"
+            )
+        missing = {
+            variant: text
+            for variant, item in variants.items()
+            if (text := unreadable(item)) is not None
+        }
+        if name in missing:
+            if local_csf:
+                raise ConfigError(
+                    f"This image's vLLM cannot read {missing[name]}, which "
+                    f"MODEL={values['model']} is"
+                )
+            if chosen("checkpoint") or chosen("model"):
+                raise ConfigError(
+                    f"This image's vLLM cannot read {missing[name]}; "
+                    "use CHECKPOINT=original"
+                )
+            # An image whose vLLM predates the FP4-CSF reader of this checkpoint
+            # serves the checkpoint it can read instead of failing at startup.
+            lacking = missing[name]
+            name = next(v for v in variants if v not in missing)
+            reason = f"derived:installed vLLM cannot read {lacking}"
+            checkpoint_warnings.append(
+                f"This image's vLLM cannot read {lacking}; serving the {name} checkpoint."
+            )
+        if name is None:
+            values.pop("checkpoint")
+            origins.pop("checkpoint")
+        elif name not in variants:
+            raise ConfigError(f"{identifier} has no {name} checkpoint variant")
+        else:
+            if name != values["checkpoint"]:
+                set_value("checkpoint", name, reason)
+            options = variants[name]["options"]
+            # A pinned revision belongs to the variant's own checkpoint.
+            other = chosen("model") and values["model"] != options["model"]
+            for key, value in options.items():
+                if not chosen(key) and not (key == "revision" and other):
+                    set_value(key, value, f"checkpoint:{name}")
+    # Explicit loader settings win over the variant. A local FP4-CSF container
+    # (manifest layout) read by any other loader still serves wrong output; a
+    # Hugging Face-layout copy marks its CSF scales in config.json instead.
+    if (
+        local_csf
+        and values.get("load-format") not in CSF_FORMATS
+        and (Path(values["model"]) / "manifest.json").is_file()
+    ):
+        raise ConfigError(
+            f"MODEL={values['model']} is a {local_csf} checkpoint, but load-format "
+            f"{values.get('load-format')} ({origins.get('load-format')}) reads its "
+            "compressed scales as plain ones and serves wrong output"
+        )
+    # An FP4-CSF checkpoint named by a preset or the operator rather than a
+    # checkpoint variant has no other checkpoint to fall back to.
+    if (
+        values.get("load-format") in CSF_FORMATS
+        and csf_formats is not None
+        and values["load-format"] not in csf_formats
+    ):
+        owner = data_layer("load-format")
+        raise ConfigError(
+            f"This image's vLLM cannot read {values['load-format']} checkpoints"
+            + (f", which {owner[0]} serves" if owner else "")
+        )
+
     # Environment values are explicit only in a model-neutral image. Its build
     # contract is checked before execution; value-equality origin guessing is forbidden.
     consumed = {alias for spec in specs.values() for alias in spec["env"]}
@@ -1397,6 +1696,17 @@ def resolve(
         values[key] = value
         origins[key] = f"derived:{reason}"
 
+    configure_expert_precision(
+        identifier,
+        values,
+        origins,
+        environment_origins=env_origins,
+        explicit_env=explicit_env,
+        vllm_environment=vllm_environment,
+        set_env=set_env,
+        derive=derive,
+    )
+
     if deployment:
         for target, source in deployment["linked_options"].items():
             if target not in specs or source not in values:
@@ -1436,6 +1746,25 @@ def resolve(
                 values["kv-cache-memory-bytes"] - sum(size for size, _ in reductions),
                 "; ".join(reason for _, reason in reductions),
             )
+        # Use the next qualified DCP group to leave room for exchange buffers.
+        by_dcp = {
+            int(size): amount
+            for size, amount in deployment.get("kv_bytes_by_dcp", {}).items()
+        }
+        dcp = values.get("decode-context-parallel-size", 1)
+        qualified = [size for size in sorted(by_dcp) if size >= dcp]
+        if (
+            dcp > 1
+            and qualified
+            and origins.get("kv-cache-memory-bytes", "preset:").startswith(
+                ("preset:", "model:", "common:")
+            )
+        ):
+            derive(
+                "kv-cache-memory-bytes",
+                by_dcp[qualified[0]],
+                f"KV size qualified at DCP={qualified[0]}",
+            )
 
     # A repository-specific code revision must not leak to an operator's model.
     if (
@@ -1446,10 +1775,13 @@ def resolve(
         derive(
             "revision", model["checkpoint_revision"], "profile checkpoint/code revision"
         )
+    # vLLM opens an FP4-CSF checkpoint from generated local serving files that
+    # carry its Hugging Face files, so no Hub code revision applies to it.
     if (
         values.get("trust-remote-code")
         and "revision" in values
         and "code-revision" not in values
+        and values.get("load-format") not in CSF_FORMATS
     ):
         derive(
             "code-revision",
@@ -1465,6 +1797,47 @@ def resolve(
             values["max-num-batched-tokens"] // 2,
             "MiMo target share of the step",
         )
+
+    if identifier == "glm53":
+        # DCP prefill gathers the full compressed KV cache and the indexer
+        # keys on every rank instead of exchanging partial attention: about
+        # 1.4x (DCP2) to 2.6x (DCP6) the prefill speed at the same decode.
+        # Mixed batches gather for their prefill rows too, so a prompt that
+        # arrives while others decode prefills 1.2x (DCP2) to 17x (DCP8)
+        # faster.
+        gather = values["dcp-ckv-gather"]
+        enabled = (
+            str(int(values["decode-context-parallel-size"] > 1))
+            if gather == "auto"
+            else gather
+        )
+        derived = {
+            "VLLM_B12X_MLA_CKV_GATHER": enabled,
+            "VLLM_DCP_INDEXER_KEY_GATHER": enabled,
+            "VLLM_B12X_MLA_CKV_GATHER_MIXED": enabled,
+        }
+        if enabled == "1" and values["decode-context-parallel-size"] == 6:
+            # DCP6 holds the full 1M context; past the default 524,288-token
+            # gather cap its all-gather/reduce-scatter fallback prefills at
+            # about 2,000 tokens/s (a 1M prompt: 360 s, 329 s with this cap,
+            # for 0.9% of the KV cache). At DCP2/3 the cap gains nothing.
+            derived["VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS"] = "1048576"
+        for name, value in derived.items():
+            if name in explicit_env or (
+                vllm_environment is not None and name not in vllm_environment
+            ):
+                continue
+            set_env(name, value, "derived:DCP CKV policy")
+
+    if (
+        identifier == "glm53"
+        and values["decode-context-parallel-size"] == 6
+        and "dcp-comm-backend" not in values
+    ):
+        # The B12X PCIe DCP all-to-all covers 2, 4 and 8 ranks. At DCP6 the
+        # generic all-to-all prefills about seven times slower than
+        # all-gather plus reduce-scatter; at DCP3 it still decodes faster.
+        derive("dcp-comm-backend", "ag_rs", "GLM DCP6 exchange")
 
     if identifier == "qwen38-flash-next":
         # B12X QSA shards compressed KV across DCP ranks in groups of four
@@ -1510,6 +1883,7 @@ def resolve(
     ple_copy_per_replica = False
     if replicas < 1:
         raise ConfigError("replicas must be at least 1")
+    configure_nodes(values, replicas, derive)
     if replicas > 1:
         for key in (
             "tensor-parallel-size",
@@ -1738,7 +2112,8 @@ def resolve(
         if name not in environment:
             set_env(name, path, "derived:runtime-lock and profile identity")
     warnings = [
-        "Model parameters preserve recipe intent; changing installed vLLM/B12X requires independent qualification."
+        "Model parameters preserve recipe intent; changing installed vLLM/B12X requires independent qualification.",
+        *checkpoint_warnings,
     ]
     if identifier.startswith("ds4-") and "linear-backend" not in values:
         warnings.append(
@@ -1790,6 +2165,197 @@ def resolve(
         warnings=warnings,
         cache_service=asdict(cache_service) if cache_service else None,
         draft_subfolder=draft_subfolder,
+    )
+
+
+def configure_expert_precision(
+    identifier: str,
+    values: dict,
+    origins: dict,
+    *,
+    environment_origins: dict,
+    explicit_env: dict,
+    vllm_environment: frozenset[str] | None,
+    set_env,
+    derive,
+) -> None:
+    """Map GLM-5.3-Flash's routed-expert precision options to B12X variables.
+
+    expert-activations bf16 runs the FP4 experts as W4A16 (FP4 weights, BF16
+    activations) and fp4 as W4A4. router-weights fp32 combines W4A16 expert
+    outputs with FP32 router weights. prefill-activations a4 runs the prefill
+    rows of W4A16 calls with NVFP4 activations: B12X_W4A16_A4_PREFILL=1 where
+    vLLM picks the rows itself, else B12X_W4A16_A4_PREFILL_MIN_TOKENS (calls of
+    at least GLM_A4_PREFILL_MIN_TOKENS tokens). A variable the operator sets
+    itself is kept and decides the option it belongs to.
+    """
+    present = [option for option in GLM_PRECISION_OPTIONS if option in values]
+    if not present:
+        return
+    profile_level = ("common:", "model:", "hardware:")
+    if identifier != "glm53-flash":
+        raise ConfigError(f"{present[0]} applies to GLM-5.3-Flash only")
+    if values.get("moe-backend") != "b12x":
+        # Another MoE backend runs the experts in its own precision.
+        named = [
+            item for item in present if not origins[item].startswith(profile_level)
+        ]
+        if named:
+            raise ConfigError(
+                f"{named[0]} applies to B12X routed experts (moe-backend b12x)"
+            )
+        for option in present:
+            values.pop(option)
+            origins.pop(option)
+        return
+
+    def explicit(option: str) -> bool:
+        return origins.get(option, "").startswith(("cli", "settings:", "environment"))
+
+    def effective(option: str, value: str, reason: str) -> None:
+        """Make an option describe what runs; refuse an explicit contradiction."""
+        if option not in values or values[option] == value:
+            return
+        if explicit(option):
+            raise ConfigError(f"{reason} conflicts with {option} {values[option]}")
+        derive(option, value, reason)
+
+    def option_env(option: str, name: str, value: str) -> None:
+        """Set an option's variable unless the operator set it, a preset pinned
+        it while the option kept its profile default, or the installed vLLM
+        does not define it."""
+        if option not in values or name in explicit_env:
+            return
+        if (
+            name.startswith("VLLM_")
+            and vllm_environment is not None
+            and name not in vllm_environment
+        ):
+            return
+        if origins[option].startswith(profile_level) and environment_origins.get(
+            name, ""
+        ).startswith("preset:"):
+            return
+        set_env(name, value, origins[option])
+
+    for option, name, decode in (
+        (
+            "expert-activations",
+            "VLLM_B12X_MOE_FP4_FORCE_A16",
+            {"1": "bf16", "0": "fp4"},
+        ),
+        ("router-weights", "B12X_W4A16_FP32_TOPK_WEIGHTS", {"1": "fp32", "0": "bf16"}),
+    ):
+        if explicit_env.get(name) in decode:
+            effective(
+                option, decode[explicit_env[name]], f"{name}={explicit_env[name]}"
+            )
+    threshold_name = "B12X_W4A16_A4_PREFILL_MIN_TOKENS"
+    semantic = installed_semantic_a4_prefill()
+    if semantic and threshold_name in explicit_env:
+        raise ConfigError(
+            f"{threshold_name} is no longer read: this image picks the prefill "
+            "rows itself. Use prefill-activations (or B12X_W4A16_A4_PREFILL=1)"
+        )
+    # The variable that turns A4 prefill on in the installed image.
+    switch_name = "B12X_W4A16_A4_PREFILL" if semantic else threshold_name
+    switch = explicit_env.get(switch_name)
+    if switch is not None and "prefill-activations" in values:
+        try:
+            enabled = int(switch) > 0
+        except ValueError:
+            enabled = None  # B12X refuses the value at startup
+        if enabled is not None:
+            effective(
+                "prefill-activations",
+                "a4" if enabled else "a16",
+                f"{switch_name}={switch}",
+            )
+
+    bf16 = values.get("expert-activations") == "bf16"
+    option_env(
+        "expert-activations", "VLLM_B12X_MOE_FP4_FORCE_A16", "1" if bf16 else "0"
+    )
+    # FP32 router weights belong to the W4A16 combine.
+    option_env(
+        "router-weights",
+        "B12X_W4A16_FP32_TOPK_WEIGHTS",
+        "1" if bf16 and values.get("router-weights") == "fp32" else "0",
+    )
+    prefill = values.get("prefill-activations")
+    if prefill not in (None, "a16") and not bf16:
+        # FP4 expert activations already quantize prefill and decode alike.
+        if explicit("prefill-activations"):
+            raise ConfigError(
+                f"prefill-activations needs expert-activations bf16; {prefill} "
+                "cannot be combined with expert-activations fp4"
+            )
+        derive("prefill-activations", "a16", "FP4 expert activations")
+        prefill = "a16"
+    model = Path(str(values.get("model", ""))).name
+    if (
+        prefill == "a4"
+        and model in GLM_A4_PREFILL_UNQUALIFIED
+        and switch_name not in explicit_env
+    ):
+        if explicit("prefill-activations"):
+            raise ConfigError(
+                f"prefill-activations a4 is not qualified for {values['model']}: "
+                "its pre-QAD routed experts lose accuracy with NVFP4 prefill "
+                "activations. Use a16, or a QAD checkpoint for a4"
+            )
+        derive("prefill-activations", "a16", f"{model} (pre-QAD experts)")
+        prefill = "a16"
+    if prefill is not None:
+        on = "1" if semantic else str(GLM_A4_PREFILL_MIN_TOKENS)
+        option_env("prefill-activations", switch_name, "0" if prefill == "a16" else on)
+
+
+CSF_FORMATS = ("nvfp4_csf", "mxfp4_csf")
+CSF_SCHEMAS = {
+    "lil-nvfp4-csf-checkpoint/1": "nvfp4_csf",
+    "lil-mxfp4-csf-checkpoint/1": "mxfp4_csf",
+}
+
+# PORT: upstream's remaining csf_* helpers belong to execute(), not to policy:
+# csf_serving_config, csf_format, csf_missing_files, csf_hf_shards,
+# csf_hf_missing_files, csf_hf_content_digest, hub_cache, pinned_csf_*,
+# cached_csf_twin, csf_snapshot, safetensors_header, csf_recipe_serving_files
+# and the three prepare_* functions download and generate the directory vLLM
+# opens. The launcher owns them; only what chooses between checkpoints, and
+# what refuses a checkpoint this image cannot read, is here.
+
+
+def local_csf_format(source: str) -> str | None:
+    """The FP4-CSF load format a local checkpoint directory needs, if it is one."""
+    root = Path(source)
+    if not root.is_dir():
+        return None
+    manifest = root / "manifest.json"
+    if manifest.is_file():
+        try:
+            schema = json.loads(manifest.read_text()).get("schema")
+        except (OSError, ValueError, AttributeError):
+            return None
+        return CSF_SCHEMAS.get(schema)
+    return "nvfp4_csf" if csf_hf_layout(root) else None
+
+
+def csf_hf_layout(root: Path) -> bool:
+    """A Hugging Face-layout FP4-CSF checkpoint: config.json and the safetensors
+    index at the top, with ModelOpt layer recipes marking CSF expert scales."""
+    if (root / "manifest.json").is_file():
+        return False
+    try:
+        config = json.loads((root / "config.json").read_text())
+    except (OSError, ValueError):
+        return False
+    holder = config if "quantization_config" in config else config.get("text_config")
+    quant = (holder or {}).get("quantization_config") or {}
+    layers = quant.get("quantized_layers") or {}
+    return (root / "model.safetensors.index.json").is_file() and any(
+        isinstance(recipe, dict) and recipe.get("weight_scale_encoding") == "csf"
+        for recipe in layers.values()
     )
 
 
@@ -1940,6 +2506,43 @@ def chat_template_path(value: str, *, root: Path = DEFAULT_DATA_ROOT) -> str | N
     return str(path)
 
 
+def configure_nodes(values: dict, replicas: int, derive) -> None:
+    """One tensor-parallel group across several machines (DGX Spark boxes).
+
+    Every node runs this launcher with the same options and its own
+    node-rank; rank 0 serves the API and the other ranks run vLLM headless.
+    """
+    nodes = values.get("nnodes", 1)
+    placement = [
+        key for key in ("node-rank", "master-addr", "master-port") if key in values
+    ]
+    if nodes < 1:
+        raise ConfigError("nnodes must be at least 1")
+    if nodes == 1:
+        if placement or values.get("headless"):
+            raise ConfigError(f"{', '.join(placement) or 'headless'} needs nnodes > 1")
+        return
+    if replicas > 1:
+        raise ConfigError("replicas and nnodes > 1 cannot be combined")
+    if "master-addr" not in values:
+        raise ConfigError(
+            "nnodes > 1 needs master-addr (MASTER_ADDR), the address of the rank-0 node"
+        )
+    rank = values.get("node-rank", 0)
+    if not 0 <= rank < nodes:
+        raise ConfigError(f"node-rank must be between 0 and {nodes - 1}, got {rank}")
+    ranks = values.get("tensor-parallel-size", 1) * values.get(
+        "pipeline-parallel-size", 1
+    )
+    if ranks % nodes:
+        raise ConfigError(
+            f"tensor-parallel-size x pipeline-parallel-size ({ranks}) must split "
+            f"evenly across nnodes={nodes}"
+        )
+    if rank > 0 and not values.get("headless"):
+        derive("headless", True, "multi-node worker rank serves no API")
+
+
 def make_argv(
     values: dict, passthrough: list[str], *, root: Path = DEFAULT_DATA_ROOT
 ) -> list[str]:
@@ -1992,6 +2595,18 @@ def validate(values: dict, environment: dict, identifier: str) -> None:
         raise ConfigError(
             "These profiles support single-node tensor parallelism, not pipeline parallelism"
         )
+    if {values.get("load-format"), values.get("quantization")} & set(CSF_FORMATS):
+        if values.get("load-format") != values.get("quantization"):
+            raise ConfigError(
+                "FP4-CSF checkpoints need matching --quantization and --load-format "
+                "(nvfp4_csf or mxfp4_csf)"
+            )
+        if values.get("moe-backend") != "b12x" or values.get("enable-expert-parallel"):
+            raise ConfigError(
+                "FP4-CSF checkpoints decode their experts on B12X with tensor "
+                "parallelism only; use CHECKPOINT=original with another MoE "
+                "backend or expert parallelism"
+            )
     supported_kv = {"fp8", "fp8_e4m3"}
     if identifier == "glm53-flash":
         supported_kv.add("nvfp4_ds_mla")

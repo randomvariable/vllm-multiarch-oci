@@ -36,16 +36,33 @@ RECIPES = "recipes"
 
 # Every upstream file the resolver reads. Selection is an allowlist rather than a
 # copy of the tree, so upstream's supervisor, its tests, its generated compose
-# files and its requirements stay out of the image.
+# files and its requirements stay out of the image; the one file of upstream
+# code the layer does carry is the checkpoint identity helper named below.
 TOP_LEVEL_FILES = (
     "options.yaml",
     "schema.json",
     "platform-environment.json",
+    # The linux/arm64 foundation policy: the resolver reads this beside the
+    # amd64 default when the machine is aarch64, so an arm64 image that shipped
+    # only the default would apply the other architecture's foundation.
+    "platform-environment.linux-arm64.json",
     "presets.yaml",
     "parameter-docs.yaml",
+    # The FP4-CSF pinned manifest digests and Hugging Face-layout content
+    # digests, which name the checkpoints the CSF readers accept.
+    "checkpoints.yaml",
 )
 YAML_DIRECTORIES = ("profiles", "hardware")
 OPEN_DIRECTORIES = ("templates",)
+
+# The checkpoint identity helper, installed under one canonical name below
+# ``runtime/``. The launcher needs it before an external cache may start: a
+# persistent namespace that cannot be tied to the weights that filled it would
+# replay one checkpoint's blocks under another's name. Upstream packages the
+# same way, and the pinned source keeps the helper outside ``runtime/``, so the
+# fallback is part of the contract rather than an alternative build.
+IDENTITY_HELPER = "checkpoint_identity.py"
+IDENTITY_FALLBACK = ("recipes", "glm53", "glm53_checkpoint_identity.py")
 
 # A rename or removal upstream would otherwise deliver as a launch-time failure.
 # ``profiles/common.yaml`` is the merge base rather than a model, so it is
@@ -53,6 +70,7 @@ OPEN_DIRECTORIES = ("templates",)
 REQUIRED_TOP_LEVEL_FILES = TOP_LEVEL_FILES
 REQUIRED_PROFILES = (
     "glm53-flash.yaml",
+    "glm53.yaml",
     "qwen38-flash-next.yaml",
     "ds4-flash.yaml",
     "ds4-vision.yaml",
@@ -92,6 +110,11 @@ def select_upstream_files(upstream: Path) -> dict[str, Path]:
         for path in sorted((runtime / directory).iterdir()):
             if path.is_file():
                 selected[_relative(f"{directory}/{path.name}")] = path
+    identity = runtime / IDENTITY_HELPER
+    if not identity.is_file():
+        identity = upstream.joinpath(*IDENTITY_FALLBACK)
+    if identity.is_file():
+        selected[_relative(IDENTITY_HELPER)] = identity
     return selected
 
 
@@ -116,6 +139,12 @@ def verify_selection(selected: Mapping[str, Path]) -> None:
                 f"pinned upstream source is missing required profile "
                 f"{_relative(f'profiles/{name}')}"
             )
+    if _relative(IDENTITY_HELPER) not in selected:
+        raise SystemExit(
+            f"pinned upstream source carries no checkpoint identity helper: "
+            f"neither {RUNTIME}/{IDENTITY_HELPER} nor "
+            + "/".join(IDENTITY_FALLBACK)
+        )
 
 
 def install_plan(

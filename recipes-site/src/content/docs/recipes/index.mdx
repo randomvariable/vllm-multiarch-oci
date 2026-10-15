@@ -13,4 +13,5 @@ generated document can carry: what is fixed, why, and what was measured.
 
 - [DeepSeek V4 Flash Vision on two DGX Spark systems](./deepseek-v4-flash-vision-gb10-tp2/) — a one-million-token context, TP=2 across two systems, vision enabled, and the LMCache and InstantTensor settings the accepted boot depends on.
 - [Qwen3.8 Flash Next on two DGX Spark systems](./qwen38-flash-next-gb10-tp2/) — NVFP4 weights, a 4x YaRN override to 1,048,576 tokens, MTP speculation with MXFP8 draft experts on B12X kernels, and PLE tables in page-locked host memory.
+- [Qwen3.8 Flash Next NVFP4-CSF on one system](./qwen38-flash-next-rtx6000-tp1/) — the FP4-CSF container on a single discrete RTX PRO 6000, TP=1, with disk PLE tables, a 4x YaRN override to 1,048,576 tokens, and an LMCache host-RAM KV tier.
 - [Qwen3.8-27B on one system](./qwen38-27b/) — a single-GPU QAD checkpoint with a batch-size-keyed speculation schedule, served by the engine's own downloader rather than a published checkpoint.

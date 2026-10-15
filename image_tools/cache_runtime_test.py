@@ -8,6 +8,7 @@ process is started and no HTTP server other than a loopback stub is used.
 """
 
 import http.server
+import hashlib
 import json
 import os
 import socket
@@ -710,6 +711,155 @@ class VerifyInstalledTransferTests(unittest.TestCase):
             raise AssertionError("must not run")
 
         cache_runtime.verify_installed_transfer({}, run=boom)
-        cache_runtime.verify_installed_transfer(None, run=boom)
+
+
+class ResolveIdentityTests(unittest.TestCase):
+    """The persistent namespace must name the checkpoint the engine loads."""
+
+    MARKER = "UNRESOLVED-CHECKPOINT"
+    REVISION = "a" * 40
+    SOURCE = "b" * 64
+
+    def plan(self, *, mode="mtp", target_identity=None, identity_required=True):
+        service = {
+            "identity_required": identity_required,
+            "argv": ["server", "--namespace", f"/cache/{self.MARKER}"],
+            "directories": [f"/cache/{self.MARKER}"],
+            "namespace": f"/cache/{self.MARKER}",
+        }
+        values = {
+            "model": "local-inference-lab/Some-CSF-QAD",
+            "revision": self.REVISION,
+            "mode": mode,
+            "kv-transfer-config": {
+                "kv_connector": "LMCacheRecurrentCheckpointConnector",
+                "kv_connector_extra_config": {},
+            },
+        }
+        return types.SimpleNamespace(
+            values=values,
+            origins={"revision": "recipe:test"},
+            cache_service=service,
+            target_identity=target_identity,
+        )
+
+    def helper(self, directory: str, identity: str, revision: str | None = None) -> Path:
+        """A stub of the image's packaged identity helper."""
+        path = Path(directory) / "checkpoint_identity.py"
+        path.write_text(
+            "def resolve_checkpoint(model, revision=None):\n"
+            f"    return {{'identity': {identity!r}, 'revision': {(revision or '')!r}}}\n"
+        )
+        return path
+
+    def suffix(self, identity: dict) -> str:
+        return hashlib.sha256(
+            json.dumps(identity, sort_keys=True).encode()
+        ).hexdigest()
+
+    def test_helper_identity_namespaces_the_service(self):
+        digest = "c" * 64
+        with tempfile.TemporaryDirectory() as directory:
+            plan = self.plan()
+            cache_runtime.resolve_identity(
+                plan,
+                {"runtime_lock_sha256": self.SOURCE},
+                self.helper(directory, digest),
+            )
+        expected = {
+            "target_revision": digest,
+            "draft_revision": digest,
+            "source_revision": self.SOURCE,
+        }
+        suffix = self.suffix(expected)
+        self.assertEqual(
+            plan.cache_service["argv"], ["server", "--namespace", f"/cache/{suffix}"]
+        )
+        self.assertEqual(plan.cache_service["directories"], [f"/cache/{suffix}"])
+        self.assertEqual(plan.cache_service["namespace"], f"/cache/{suffix}")
+        self.assertNotIn(self.MARKER, json.dumps(plan.cache_service))
+        self.assertEqual(
+            plan.values["kv-transfer-config"]["kv_connector_extra_config"][
+                "lmcache.mp.checkpoint_identity"
+            ],
+            expected,
+        )
+        # An MTP drafter ships inside the target, so it carries no identity of
+        # its own, and a helper that reports no revision leaves the recipe's
+        # pinned one alone.
+        self.assertEqual(plan.values["revision"], self.REVISION)
+        self.assertEqual(plan.origins["revision"], "recipe:test")
+
+    def test_a_pinned_revision_is_written_back_with_its_source(self):
+        pinned = "d" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            plan = self.plan()
+            cache_runtime.resolve_identity(
+                plan,
+                {"runtime_lock_sha256": self.SOURCE},
+                self.helper(directory, "e" * 64, revision=pinned),
+            )
+            self.assertEqual(plan.values["revision"], pinned)
+            self.assertEqual(plan.origins["revision"], "resolved:checkpoint identity")
+
+    def test_the_staged_digest_wins_and_the_helper_is_never_loaded(self):
+        # A target the image staged itself has no weights to hash: the recorded
+        # manifest digest identifies it, and an absent helper proves the point.
+        staged = {"identity": "f" * 64, "revision": ""}
+        plan = self.plan(target_identity=staged)
+        cache_runtime.resolve_identity(
+            plan,
+            {"runtime_lock_sha256": self.SOURCE},
+            Path("/no/such/checkpoint_identity.py"),
+        )
+        expected = {
+            "target_revision": staged["identity"],
+            "draft_revision": staged["identity"],
+            "source_revision": self.SOURCE,
+        }
+        self.assertEqual(plan.cache_service["namespace"], f"/cache/{self.suffix(expected)}")
+        # The digest carries no revision, so the recipe's pinned one survives.
+        self.assertEqual(plan.values["revision"], self.REVISION)
+        self.assertEqual(plan.origins["revision"], "recipe:test")
+
+    def test_a_dflash_drafter_is_hashed_on_its_own(self):
+        with tempfile.TemporaryDirectory() as directory:
+            plan = self.plan(mode="dflash2")
+            plan.values["speculative-config"] = {
+                "model": "someone/draft",
+                "revision": None,
+            }
+            cache_runtime.resolve_identity(
+                plan,
+                {"runtime_lock_sha256": self.SOURCE},
+                self.helper(directory, "1" * 64),
+            )
+            identity = plan.values["kv-transfer-config"]["kv_connector_extra_config"][
+                "lmcache.mp.checkpoint_identity"
+            ]
+            self.assertEqual(identity["target_revision"], "1" * 64)
+            self.assertEqual(identity["draft_revision"], "1" * 64)
+
+    def test_a_cache_without_an_identity_requirement_is_left_alone(self):
+        plan = self.plan(identity_required=False)
+        before = json.dumps(plan.cache_service, sort_keys=True)
+        cache_runtime.resolve_identity(
+            plan,
+            {"runtime_lock_sha256": self.SOURCE},
+            Path("/no/such/checkpoint_identity.py"),
+        )
+        self.assertEqual(json.dumps(plan.cache_service, sort_keys=True), before)
+
+    def test_a_missing_helper_is_refused(self):
+        plan = self.plan()
+        with self.assertRaises(ConfigError) as ctx:
+            cache_runtime.resolve_identity(
+                plan,
+                {"runtime_lock_sha256": self.SOURCE},
+                Path("/no/such/checkpoint_identity.py"),
+            )
+        self.assertIn("checkpoint identity helper", str(ctx.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

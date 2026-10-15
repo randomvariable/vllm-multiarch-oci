@@ -12,6 +12,8 @@
     "256",
     "--compilation-config",
     "{\"cudagraph_mode\":\"FULL_AND_PIECEWISE\",\"custom_ops\":[\"all\"],\"cudagraph_capture_sizes\":[1,2,3,4,8,12,16]}",
+    "--dcp-comm-backend",
+    "a2a",
     "--decode-context-parallel-size",
     "1",
     "--default-chat-template-kwargs",
@@ -71,10 +73,6 @@
     "--trust-remote-code",
     "--distributed-executor-backend",
     "mp",
-    "--master-port",
-    "25000",
-    "--dcp-comm-backend",
-    "a2a",
     "--reasoning-config",
     "{\"reasoning_parser\":\"deepseek_v4\",\"reasoning_start_str\":\"\",\"reasoning_end_str\":\"\"}",
     "--disable-access-log-for-endpoints",
@@ -432,6 +430,10 @@
           "all"
         ]
       }
+    },
+    "dcp-comm-backend": {
+      "source": "cli",
+      "value": "a2a"
     },
     "decode-context-parallel-size": {
       "source": "common:single-node-vllm",

@@ -155,6 +155,12 @@ class ModelSync:
     workers: int
     ignore_patterns: tuple[str, ...]
     required_files: tuple[str, ...]
+    # NVFP4-CSF staging. ``csf`` selects which of sync_model's two publishers
+    # runs (the CSF serving directory rather than the conventional symlink), and
+    # ``csf_family`` is the manifest family it must validate against. A
+    # non-CSF deployment leaves both out; the defaults keep the symlink publish.
+    csf: bool = False
+    csf_family: str | None = None
 
     @classmethod
     def from_dict(cls, model: Any, deployment: Any, where: str) -> ModelSync:
@@ -191,6 +197,27 @@ class ModelSync:
             ):
                 raise ConfigError(f"{where}: {section}.{name} must be a list of non-empty strings")
             values[name] = tuple(value)
+        # CSF is a publish-mode fact, not a download fact. Validate the pair
+        # here so a recipe that half-declares CSF fails at parse with the field
+        # named, rather than inside the model-sync phase.
+        csf = sections["deployment"].get("csf", False)
+        if not isinstance(csf, bool):
+            raise ConfigError(f"{where}: deployment.csf must be a boolean")
+        csf_family = sections["deployment"].get("csf_family")
+        if csf_family is not None and (
+            not isinstance(csf_family, str) or not csf_family
+        ):
+            raise ConfigError(
+                f"{where}: deployment.csf_family must be a non-empty string or absent"
+            )
+        if csf and not csf_family:
+            raise ConfigError(
+                f"{where}: deployment.csf is true but deployment.csf_family is missing"
+            )
+        if csf_family and not csf:
+            raise ConfigError(
+                f"{where}: deployment.csf_family is set but deployment.csf is not true"
+            )
         return cls(
             repo=values["model_id"],
             revision=revision,
@@ -200,6 +227,8 @@ class ModelSync:
             workers=values["download_workers"],
             ignore_patterns=values["ignore_patterns"],
             required_files=values["required_files"],
+            csf=csf,
+            csf_family=csf_family,
         )
 
 
@@ -377,6 +406,24 @@ def runtime_identity() -> str | None:
         return None
 
 
+def identity_contract() -> dict[str, str]:
+    """The one build-contract field the cache identity step reads.
+
+    Upstream hands ``verify_contract(...)`` to ``runtime.cache.resolve_identity``
+    and takes only ``runtime_lock_sha256`` from it: the digest tying the
+    persistent cache namespace to the source lock the image was built from. This
+    image keys its JIT namespace by the digest of that same lock, so the field is
+    read from it rather than invented here.
+    """
+    digest = runtime_identity()
+    if digest is None:
+        raise ConfigError(
+            f"the cache identity step needs the image source lock {sources_lock()}",
+            EXIT_CACHE,
+        )
+    return {"runtime_lock_sha256": digest}
+
+
 @dataclass(frozen=True)
 class Rank:
     """Where this container sits inside its tensor-parallel group."""
@@ -454,9 +501,22 @@ def kv_events_args(
 
 
 def topology_args(
-    rank: Rank, values: dict[str, Any], events: KvEvents | None, env: dict[str, str]
+    rank: Rank,
+    values: dict[str, Any],
+    events: KvEvents | None,
+    env: dict[str, str],
+    *,
+    rendezvous_port: int = DEFAULT_RENDEZVOUS_PORT,
 ) -> list[str]:
-    """The arguments that differ between the ranks of one tensor-parallel group."""
+    """The arguments that differ between the ranks of one tensor-parallel group.
+
+    The group's rendezvous port travels with the rest of the placement, not with
+    the resolved configuration: ``master-port`` is a managed option upstream's
+    ``configure_nodes`` refuses to accept without ``nnodes``, and a container
+    cannot state ``nnodes`` at resolve time because its leader address is per
+    pod. It is therefore applied here, from the recipe's topology, so the engine
+    still meets the group on the port the pods are qualified with.
+    """
     args: list[str] = []
     if rank.nodes > 1:
         args += [
@@ -466,6 +526,8 @@ def topology_args(
             str(rank.index),
             "--master-addr",
             "127.0.0.1" if rank.is_leader else str(rank.leader),
+            "--master-port",
+            str(rendezvous_port),
         ]
         if not rank.is_leader:
             args += ["--headless"]
@@ -659,6 +721,11 @@ def resolved_plan(
         cli_env=env,
         runtime_identity=runtime_identity(),
         vllm_environment=policy.installed_vllm_environment(),
+        # CSF presets resolve from the build contract; installed_csf_* self-gate
+        # to None off-image, which is upstream's "resolve the preset as written"
+        # path, so the host --print-config lane is unaffected.
+        csf_formats=policy.installed_csf_formats(),
+        csf_families=policy.installed_csf_families(),
         root=data_root(),
     )
 
@@ -765,19 +832,30 @@ def publish_model(recipe: Recipe) -> None:
         workers=sync.workers,
         ignore=list(sync.ignore_patterns),
         require=list(sync.required_files),
+        csf=sync.csf,
+        csf_family=sync.csf_family,
     )
     index = sync.publish / "model.safetensors.index.json"
     if not index.is_file():
         raise ConfigError(f"published model root {sync.publish} has no {index.name} to load", EXIT_MODEL)
 
 
-def run(argv: list[str] | None = None, env: dict[str, str] | None = None) -> int:
-    """Run one role. Only ``--print-config``, ``--role probe`` and ``--role proxy`` return."""
-    request = parse(sys.argv[1:] if argv is None else argv)
-    environment = dict(os.environ if env is None else env)
-    recipe, profile, preset, hardware, layer, topology = selection(request, environment)
-    plan = resolved_plan(profile, hardware, preset, layer, request.native, environment)
-    rank = read_rank(topology, environment)
+def public_record(
+    plan: policy.ResolvedPlan,
+    request: LaunchRequest,
+    recipe: Recipe | None,
+    profile: str,
+    preset: str | None,
+    hardware: str,
+    rank: Rank,
+    topology: Topology,
+) -> dict:
+    """The resolved configuration as the roles publish it.
+
+    Upstream's record, plus what this launcher selected and where the container
+    sits: the probe serves it at ``/status`` and the site republishes the
+    ``--print-config`` form, so both say the same thing the process is running.
+    """
     public = policy.public(plan)
     public["role"] = request.role
     public["selection"] = {
@@ -795,6 +873,43 @@ def run(argv: list[str] | None = None, env: dict[str, str] | None = None) -> int
         "probe_port": recipe.probe_port if recipe else DEFAULT_PROBE_PORT,
     }
     public["resolution_context"] = resolution_context()
+    return public
+
+
+def stamp_staged_identity(plan: policy.ResolvedPlan, recipe: Recipe | None) -> None:
+    """Name the checkpoint the image staged, which no weight scan can describe.
+
+    An FP4-CSF deployment loads the serving directory ``sync_model`` published:
+    the container snapshot's metadata files with a ``config.json`` whose
+    ``quantization_config`` points back at the snapshot, so the directory holds
+    no weights to hash. The digest recorded beside the published snapshot at
+    sync time identifies what is actually read, and both containers derive the
+    same persistent namespace from it -- including this one, whether or not this
+    process ran the sync. The digest carries no revision, so the recipe's pinned
+    ``model.revision`` stays exactly as the resolver resolved it.
+    """
+    if plan.target_identity or recipe is None or recipe.model_sync is None:
+        return
+    sync = recipe.model_sync
+    if not sync.csf:
+        return
+    from image_tools.vllm_image import csf_serving_identity
+
+    plan.target_identity = csf_serving_identity(
+        sync.storage_root, sync.repo, sync.revision
+    )
+
+
+def run(argv: list[str] | None = None, env: dict[str, str] | None = None) -> int:
+    """Run one role. Only ``--print-config``, ``--role probe`` and ``--role proxy`` return."""
+    request = parse(sys.argv[1:] if argv is None else argv)
+    environment = dict(os.environ if env is None else env)
+    recipe, profile, preset, hardware, layer, topology = selection(request, environment)
+    plan = resolved_plan(profile, hardware, preset, layer, request.native, environment)
+    rank = read_rank(topology, environment)
+    public = public_record(
+        plan, request, recipe, profile, preset, hardware, rank, topology
+    )
     if request.print_config:
         print(json.dumps(public, indent=2, allow_nan=False, sort_keys=True))
         return 0
@@ -811,6 +926,10 @@ def run(argv: list[str] | None = None, env: dict[str, str] | None = None) -> int
                 "--role cache needs an external cache; select one with --cache-mode", EXIT_CACHE
             )
         cache_runtime.verify_installed_transfer(service)
+        stamp_staged_identity(plan, recipe)
+        cache_runtime.resolve_identity(
+            plan, identity_contract(), cache_runtime.identity_helper(data_root())
+        )
         cache_runtime.preflight(service, dict(plan.environment))
         if service["shm_name"]:
             cache_runtime.claim_arena(cache_runtime.SHM_ROOT / service["shm_name"])
@@ -838,6 +957,20 @@ def run(argv: list[str] | None = None, env: dict[str, str] | None = None) -> int
                 "--model-sync needs --recipe, which declares the checkpoint to publish", EXIT_MODEL
             )
         publish_model(recipe)
+    # The engine and the cache must agree on the persistent namespace, and the
+    # identity can move the revision the engine loads, so it lands before either
+    # the record or the command is taken. Upstream's execute() rebuilds the
+    # command after this step -- supervise receives make_argv(plan.values, ...)
+    # rather than the plan's argv -- which is what the refresh below replaces.
+    stamp_staged_identity(plan, recipe)
+    if plan.cache_service:
+        cache_runtime.resolve_identity(
+            plan, identity_contract(), cache_runtime.identity_helper(data_root())
+        )
+        plan.argv = policy.make_argv(plan.values, plan.passthrough, root=data_root())
+        public = public_record(
+            plan, request, recipe, profile, preset, hardware, rank, topology
+        )
 
     if not rank.is_leader:
         from image_tools.vllm_image import wait_for_leader
@@ -862,7 +995,10 @@ def run(argv: list[str] | None = None, env: dict[str, str] | None = None) -> int
                 status=public,
             )
         )
-    argv += topology_args(rank, plan.values, topology.kv_events, environment)
+    argv += topology_args(
+        rank, plan.values, topology.kv_events, environment,
+        rendezvous_port=topology.rendezvous_port,
+    )
     if rank.serves_api:
         argv += ["--middleware", PROBE_MIDDLEWARE]
     exec_command(argv, child_environment(plan))

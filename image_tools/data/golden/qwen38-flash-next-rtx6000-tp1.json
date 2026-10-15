@@ -1,0 +1,713 @@
+{
+  "argv": [
+    "/opt/venv/bin/python",
+    "-m",
+    "vllm.entrypoints.cli.main",
+    "serve",
+    "/models/qwen38-flash-next-rtx6000",
+    "--additional-config",
+    "{\"ple_table_memory\":\"disk\"}",
+    "--async-scheduling",
+    "--block-size",
+    "64",
+    "--compilation-config",
+    "{\"cudagraph_mode\":\"FULL_AND_PIECEWISE\",\"custom_ops\":[\"all\"]}",
+    "--decode-context-parallel-size",
+    "1",
+    "--dtype",
+    "bfloat16",
+    "--enable-auto-tool-choice",
+    "--enable-chunked-prefill",
+    "--no-enable-flashinfer-autotune",
+    "--enable-prefix-caching",
+    "--enable-prompt-tokens-details",
+    "--gdn-decode-kernel",
+    "b12x",
+    "--gpu-memory-utilization",
+    "0.985",
+    "--hf-overrides",
+    "{\"text_config\":{\"max_position_embeddings\":1048576,\"rope_parameters\":{\"mrope_interleaved\":true,\"mrope_section\":[11,11,10],\"partial_rotary_factor\":0.25,\"rope_theta\":10000000,\"rope_type\":\"yarn\",\"factor\":4,\"original_max_position_embeddings\":262144}}}",
+    "--host",
+    "0.0.0.0",
+    "--kv-cache-dtype",
+    "fp8",
+    "--kv-transfer-config",
+    "{\"kv_connector\":\"LMCacheRecurrentCheckpointConnector\",\"kv_connector_module_path\":\"lmcache.integration.vllm.recurrent_checkpoint_connector\",\"kv_role\":\"kv_both\",\"kv_load_failure_policy\":\"recompute\",\"kv_connector_extra_config\":{\"lmcache.mp.host\":\"127.0.0.1\",\"lmcache.mp.port\":18888,\"lmcache.mp.mp_transfer_mode\":\"engine_driven\",\"lmcache.mp.mq_timeout\":60.0,\"lmcache.mp.heartbeat_interval\":10.0}}",
+    "--no-language-model-only",
+    "--linear-backend",
+    "b12x",
+    "--load-format",
+    "nvfp4_csf",
+    "--mamba-cache-mode",
+    "align",
+    "--mamba-ssm-cache-dtype",
+    "auto",
+    "--max-cudagraph-capture-size",
+    "64",
+    "--max-model-len",
+    "1048576",
+    "--max-num-batched-tokens",
+    "6019",
+    "--max-num-seqs",
+    "16",
+    "--mm-encoder-tp-mode",
+    "data",
+    "--mm-processor-cache-gb",
+    "0.0",
+    "--moe-backend",
+    "b12x",
+    "--pipeline-parallel-size",
+    "1",
+    "--port",
+    "8888",
+    "--prefix-cache-retention-interval",
+    "0",
+    "--quantization",
+    "nvfp4_csf",
+    "--reasoning-parser",
+    "qwen3",
+    "--recurrent-checkpoint-policy",
+    "request_boundaries",
+    "--revision",
+    "285dfa06cc7c215eeb4892b7d9ba6a80351d0c72",
+    "--served-model-name",
+    "qwen38-flash-next-rtx6000",
+    "--speculative-config",
+    "{\"method\":\"mtp\",\"draft_sample_method\":\"probabilistic\",\"rejection_sample_method\":\"standard\",\"moe_backend\":\"b12x\",\"num_speculative_tokens\":3,\"revision\":\"285dfa06cc7c215eeb4892b7d9ba6a80351d0c72\"}",
+    "--tensor-parallel-size",
+    "1",
+    "--tool-call-parser",
+    "qwen3_xml"
+  ],
+  "environment": {
+    "B12X_COMPILE_CACHE_DIR": {
+      "source": "recipe:qwen38-flash-next-rtx6000-tp1",
+      "value": "/cache/b12x-compile"
+    },
+    "B12X_CUTE_COMPILE_CACHE_DIR": {
+      "source": "recipe:qwen38-flash-next-rtx6000-tp1",
+      "value": "/cache/b12x-cute"
+    },
+    "B12X_DENSE_SPLITK_TURBO": {
+      "source": "model:qwen38-flash-next",
+      "value": "1"
+    },
+    "B12X_DYNAMIC_DETERMINISTIC_OUTPUT": {
+      "source": "model:qwen38-flash-next",
+      "value": "0"
+    },
+    "B12X_DYNAMIC_DIRECT_EXPERT_SCALES": {
+      "source": "model:qwen38-flash-next",
+      "value": "1"
+    },
+    "B12X_DYNAMIC_SKIP_SPLIT_BARRIER_RESET": {
+      "source": "model:qwen38-flash-next",
+      "value": "1"
+    },
+    "B12X_DYNAMIC_SPLIT_COMPUTE_MAC": {
+      "source": "model:qwen38-flash-next",
+      "value": "224"
+    },
+    "B12X_DYNAMIC_SPLIT_FAST_PREPARE": {
+      "source": "model:qwen38-flash-next",
+      "value": "1"
+    },
+    "B12X_DYNAMIC_SPLIT_LOW_SMEM": {
+      "source": "model:qwen38-flash-next",
+      "value": "1"
+    },
+    "B12X_DYNAMIC_SPLIT_ROUTE_COMPUTE": {
+      "source": "model:qwen38-flash-next",
+      "value": "1"
+    },
+    "B12X_DYNAMIC_WORK_SOURCE": {
+      "source": "model:qwen38-flash-next",
+      "value": "persistent_grid"
+    },
+    "B12X_MHC_PDL": {
+      "source": "model:qwen38-flash-next",
+      "value": "1"
+    },
+    "B12X_PCIE_ONESHOT_BLOCK_LIMIT": {
+      "source": "model:qwen38-flash-next",
+      "value": "4"
+    },
+    "B12X_PCIE_ONESHOT_PDL": {
+      "source": "model:qwen38-flash-next",
+      "value": "1"
+    },
+    "B12X_PCIE_ONESHOT_THREADS": {
+      "source": "model:qwen38-flash-next",
+      "value": "512"
+    },
+    "B12X_ROW_CACHE_BYTES": {
+      "source": "recipe:qwen38-flash-next-rtx6000-tp1",
+      "value": "1GB"
+    },
+    "B12X_ROW_CACHE_TIER": {
+      "source": "recipe:qwen38-flash-next-rtx6000-tp1",
+      "value": "host"
+    },
+    "CUDA_CACHE_PATH": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/cuda"
+    },
+    "CUDA_DEVICE_ORDER": {
+      "source": "common:single-node-vllm",
+      "value": "PCI_BUS_ID"
+    },
+    "CUPY_CACHE_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/cupy"
+    },
+    "CUTE_DSL_ARCH": {
+      "source": "hardware:rtx-pro-6000-pcie",
+      "value": "sm_120a"
+    },
+    "CUTE_DSL_CACHE_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/cute-dsl"
+    },
+    "FLASHINFER_CUDA_ARCH_LIST": {
+      "source": "recipe:qwen38-flash-next-rtx6000-tp1",
+      "value": "12.0f"
+    },
+    "FLASHINFER_WORKSPACE_BASE": {
+      "source": "recipe:qwen38-flash-next-rtx6000-tp1",
+      "value": "/cache/flashinfer"
+    },
+    "FLASH_ATTENTION_CUTE_DSL_CACHE_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/flash-attention-cute-dsl"
+    },
+    "HF_HOME": {
+      "source": "recipe:qwen38-flash-next-rtx6000-tp1",
+      "value": "/models"
+    },
+    "HF_HUB_OFFLINE": {
+      "source": "recipe:qwen38-flash-next-rtx6000-tp1",
+      "value": "1"
+    },
+    "HOME": {
+      "source": "recipe:qwen38-flash-next-rtx6000-tp1",
+      "value": "/cache/vllm-home"
+    },
+    "INSTANTTENSOR_BACKEND": {
+      "source": "common:single-node-vllm",
+      "value": "BUFFERED"
+    },
+    "NCCL_BUFFSIZE": {
+      "source": "hardware:rtx-pro-6000-pcie",
+      "value": "2097152"
+    },
+    "NCCL_CUMEM_ENABLE": {
+      "source": "hardware:rtx-pro-6000-pcie/qwen38-flash-next",
+      "value": "0"
+    },
+    "NCCL_IB_DISABLE": {
+      "source": "hardware:rtx-pro-6000-pcie",
+      "value": "1"
+    },
+    "NCCL_MAX_NCHANNELS": {
+      "source": "hardware:rtx-pro-6000-pcie",
+      "value": "16"
+    },
+    "NCCL_MIN_NCHANNELS": {
+      "source": "hardware:rtx-pro-6000-pcie",
+      "value": "16"
+    },
+    "NCCL_NET_PLUGIN": {
+      "source": "platform:foundation",
+      "value": "spcx"
+    },
+    "NCCL_P2P_LEVEL": {
+      "source": "hardware:rtx-pro-6000-pcie",
+      "value": "SYS"
+    },
+    "NCCL_PROTO": {
+      "source": "hardware:rtx-pro-6000-pcie",
+      "value": "LL,LL128,Simple"
+    },
+    "NUMBA_CACHE_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/numba"
+    },
+    "OMP_NUM_THREADS": {
+      "source": "model:qwen38-flash-next",
+      "value": "2"
+    },
+    "PYTORCH_CUDA_ALLOC_CONF": {
+      "source": "common:single-node-vllm",
+      "value": "expandable_segments:True"
+    },
+    "SAFETENSORS_FAST_GPU": {
+      "source": "common:single-node-vllm",
+      "value": "1"
+    },
+    "SPARKINFER_COMPILE_CACHE_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/b12x/compile"
+    },
+    "TILELANG_CACHE_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/tilelang"
+    },
+    "TORCHINDUCTOR_CACHE_DIR": {
+      "source": "recipe:qwen38-flash-next-rtx6000-tp1",
+      "value": "/cache/inductor"
+    },
+    "TORCH_ALLOW_TF32_CUBLAS_OVERRIDE": {
+      "source": "recipe:qwen38-flash-next-rtx6000-tp1",
+      "value": "1"
+    },
+    "TORCH_CUDA_ARCH_LIST": {
+      "source": "hardware:rtx-pro-6000-pcie",
+      "value": "12.0a"
+    },
+    "TORCH_EXTENSIONS_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/torch-extensions"
+    },
+    "TRANSFORMERS_OFFLINE": {
+      "source": "recipe:qwen38-flash-next-rtx6000-tp1",
+      "value": "1"
+    },
+    "TRITON_CACHE_DIR": {
+      "source": "recipe:qwen38-flash-next-rtx6000-tp1",
+      "value": "/cache/triton"
+    },
+    "TRITON_PTXAS_BLACKWELL_PATH": {
+      "source": "recipe:qwen38-flash-next-rtx6000-tp1",
+      "value": "/usr/local/cuda/bin/ptxas"
+    },
+    "TVM_CACHE_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/tvm"
+    },
+    "TVM_FFI_CACHE_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/tvm-ffi"
+    },
+    "VLLM_B12X_DENSE_ACTIVATION_MODE": {
+      "source": "model:qwen38-flash-next",
+      "value": "auto"
+    },
+    "VLLM_CACHE_DIR": {
+      "source": "derived:runtime-lock and profile identity",
+      "value": "/cache/vllm"
+    },
+    "VLLM_CACHE_ROOT": {
+      "source": "recipe:qwen38-flash-next-rtx6000-tp1",
+      "value": "/cache/vllm"
+    },
+    "VLLM_CAUSAL_CONV1D_UPDATE_HOIST": {
+      "source": "model:qwen38-flash-next",
+      "value": "1"
+    },
+    "VLLM_COMPUTE_NANS_IN_LOGITS": {
+      "source": "model:qwen38-flash-next",
+      "value": "0"
+    },
+    "VLLM_DISABLED_KERNELS": {
+      "source": "model:qwen38-flash-next",
+      "value": "MarlinFP8ScaledMMLinearKernel"
+    },
+    "VLLM_ENABLE_PCIE_ALLREDUCE": {
+      "source": "hardware:rtx-pro-6000-pcie",
+      "value": "1"
+    },
+    "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH": {
+      "source": "model:qwen38-flash-next",
+      "value": "1"
+    },
+    "VLLM_LM_HEAD_A16": {
+      "source": "model:qwen38-flash-next",
+      "value": "1"
+    },
+    "VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS": {
+      "source": "model:qwen38-flash-next",
+      "value": "0"
+    },
+    "VLLM_MTP_NVFP4_LM_HEAD": {
+      "source": "model:qwen38-flash-next",
+      "value": "1"
+    },
+    "VLLM_MXFP8_LM_HEAD": {
+      "source": "model:qwen38-flash-next",
+      "value": "0"
+    },
+    "VLLM_PCIE_ALLREDUCE_BACKEND": {
+      "source": "hardware:rtx-pro-6000-pcie",
+      "value": "b12x"
+    },
+    "VLLM_PLE_CPU_OFFLOAD": {
+      "source": "model:qwen38-flash-next",
+      "value": "1"
+    },
+    "VLLM_PLUGINS": {
+      "source": "recipe:qwen38-flash-next-rtx6000-tp1",
+      "value": ""
+    },
+    "VLLM_QWEN3_8_FLASH_NEXT_HC_TP": {
+      "source": "hardware:rtx-pro-6000-pcie/qwen38-flash-next",
+      "value": "0"
+    },
+    "VLLM_QWEN3_8_FLASH_NEXT_MTP_COMPACT": {
+      "source": "model:qwen38-flash-next",
+      "value": "1"
+    },
+    "VLLM_QWEN3_8_FLASH_NEXT_OVERLAP": {
+      "source": "model:qwen38-flash-next",
+      "value": "1"
+    },
+    "VLLM_SSM_CONV_STATE_LAYOUT": {
+      "source": "model:qwen38-flash-next",
+      "value": "DS"
+    },
+    "VLLM_USE_FASTOKENS": {
+      "source": "common:single-node-vllm",
+      "value": "1"
+    },
+    "VLLM_USE_RUST_FRONTEND": {
+      "source": "recipe:qwen38-flash-next-rtx6000-tp1",
+      "value": "0"
+    },
+    "VLLM_USE_V2_MODEL_RUNNER": {
+      "source": "common:single-node-vllm",
+      "value": "1"
+    },
+    "VLLM_WORKER_MULTIPROC_METHOD": {
+      "source": "common:single-node-vllm",
+      "value": "spawn"
+    },
+    "XDG_CACHE_HOME": {
+      "source": "recipe:qwen38-flash-next-rtx6000-tp1",
+      "value": "/cache"
+    }
+  },
+  "settings": {
+    "additional-config": {
+      "source": "recipe:qwen38-flash-next-rtx6000-tp1",
+      "value": {
+        "ple_table_memory": "disk"
+      }
+    },
+    "async-scheduling": {
+      "source": "model:qwen38-flash-next",
+      "value": true
+    },
+    "block-size": {
+      "source": "model:qwen38-flash-next",
+      "value": 64
+    },
+    "cache-broker-directory": {
+      "source": "common:single-node-vllm",
+      "value": "/cache/lmcache-cumem"
+    },
+    "cache-cpu-workers": {
+      "source": "common:single-node-vllm",
+      "value": 4
+    },
+    "cache-directory": {
+      "source": "common:single-node-vllm",
+      "value": "/cache/lmcache"
+    },
+    "cache-gpu-workers": {
+      "source": "derived:external-cache contract",
+      "value": 1
+    },
+    "cache-host": {
+      "source": "common:single-node-vllm",
+      "value": "127.0.0.1"
+    },
+    "cache-http-host": {
+      "source": "recipe:qwen38-flash-next-rtx6000-tp1",
+      "value": "0.0.0.0"
+    },
+    "cache-http-port": {
+      "source": "derived:external-cache contract",
+      "value": 18889
+    },
+    "cache-instance": {
+      "source": "recipe:qwen38-flash-next-rtx6000-tp1",
+      "value": "rtx6000-qwen38-flash-next-8888"
+    },
+    "cache-l1-gib": {
+      "source": "recipe:qwen38-flash-next-rtx6000-tp1",
+      "value": 32.0
+    },
+    "cache-l1-init-gib": {
+      "source": "common:single-node-vllm",
+      "value": 2
+    },
+    "cache-l2-checkpoint-writes": {
+      "source": "model:qwen38-flash-next",
+      "value": "on-evict"
+    },
+    "cache-l2-enabled": {
+      "source": "common:single-node-vllm",
+      "value": false
+    },
+    "cache-l2-gib": {
+      "source": "common:single-node-vllm",
+      "value": 256.0
+    },
+    "cache-l2-odirect": {
+      "source": "common:single-node-vllm",
+      "value": false
+    },
+    "cache-l2-prune-stale": {
+      "source": "common:single-node-vllm",
+      "value": false
+    },
+    "cache-l2-workers": {
+      "source": "common:single-node-vllm",
+      "value": 4
+    },
+    "cache-load-failure-policy": {
+      "source": "common:single-node-vllm",
+      "value": "recompute"
+    },
+    "cache-metrics-port": {
+      "source": "derived:external-cache contract",
+      "value": 18890
+    },
+    "cache-mode": {
+      "source": "recipe:qwen38-flash-next-rtx6000-tp1",
+      "value": "lmcache"
+    },
+    "cache-native-gib": {
+      "source": "common:single-node-vllm",
+      "value": 64.0
+    },
+    "cache-object-tokens": {
+      "source": "common:single-node-vllm",
+      "value": 4096
+    },
+    "cache-port": {
+      "source": "derived:external-cache contract",
+      "value": 18888
+    },
+    "cache-prefetch-policy": {
+      "source": "common:single-node-vllm",
+      "value": "retain"
+    },
+    "cache-shm-name": {
+      "source": "derived:external-cache contract",
+      "value": "lmcache-rtx6000-qwen38-flash-next-8888-18888"
+    },
+    "cache-start-timeout": {
+      "source": "common:single-node-vllm",
+      "value": 120.0
+    },
+    "cache-transfer-mode": {
+      "source": "common:single-node-vllm",
+      "value": "engine_driven"
+    },
+    "compilation-config": {
+      "source": "model:qwen38-flash-next",
+      "value": {
+        "cudagraph_mode": "FULL_AND_PIECEWISE",
+        "custom_ops": [
+          "all"
+        ]
+      }
+    },
+    "decode-context-parallel-size": {
+      "source": "common:single-node-vllm",
+      "value": 1
+    },
+    "draft-tokens": {
+      "source": "derived:effective proposal width",
+      "value": 3
+    },
+    "dtype": {
+      "source": "common:single-node-vllm",
+      "value": "bfloat16"
+    },
+    "enable-auto-tool-choice": {
+      "source": "common:single-node-vllm",
+      "value": true
+    },
+    "enable-chunked-prefill": {
+      "source": "common:single-node-vllm",
+      "value": true
+    },
+    "enable-flashinfer-autotune": {
+      "source": "model:qwen38-flash-next",
+      "value": false
+    },
+    "enable-prefix-caching": {
+      "source": "common:single-node-vllm",
+      "value": true
+    },
+    "enable-prompt-tokens-details": {
+      "source": "common:single-node-vllm",
+      "value": true
+    },
+    "gdn-decode-kernel": {
+      "source": "model:qwen38-flash-next",
+      "value": "b12x"
+    },
+    "gpu-memory-utilization": {
+      "source": "recipe:qwen38-flash-next-rtx6000-tp1",
+      "value": 0.985
+    },
+    "hf-overrides": {
+      "source": "derived:Qwen3.8 YaRN for 1048576 tokens",
+      "value": {
+        "text_config": {
+          "max_position_embeddings": 1048576,
+          "rope_parameters": {
+            "factor": 4,
+            "mrope_interleaved": true,
+            "mrope_section": [
+              11,
+              11,
+              10
+            ],
+            "original_max_position_embeddings": 262144,
+            "partial_rotary_factor": 0.25,
+            "rope_theta": 10000000,
+            "rope_type": "yarn"
+          }
+        }
+      }
+    },
+    "host": {
+      "source": "common:single-node-vllm",
+      "value": "0.0.0.0"
+    },
+    "kv-cache-dtype": {
+      "source": "common:single-node-vllm",
+      "value": "fp8"
+    },
+    "kv-transfer-config": {
+      "source": "derived:external-cache contract",
+      "value": {
+        "kv_connector": "LMCacheRecurrentCheckpointConnector",
+        "kv_connector_extra_config": {
+          "lmcache.mp.heartbeat_interval": 10.0,
+          "lmcache.mp.host": "127.0.0.1",
+          "lmcache.mp.mp_transfer_mode": "engine_driven",
+          "lmcache.mp.mq_timeout": 60.0,
+          "lmcache.mp.port": 18888
+        },
+        "kv_connector_module_path": "lmcache.integration.vllm.recurrent_checkpoint_connector",
+        "kv_load_failure_policy": "recompute",
+        "kv_role": "kv_both"
+      }
+    },
+    "language-model-only": {
+      "source": "model:qwen38-flash-next",
+      "value": false
+    },
+    "linear-backend": {
+      "source": "model:qwen38-flash-next",
+      "value": "b12x"
+    },
+    "load-format": {
+      "source": "recipe:qwen38-flash-next-rtx6000-tp1",
+      "value": "nvfp4_csf"
+    },
+    "mamba-cache-mode": {
+      "source": "model:qwen38-flash-next",
+      "value": "align"
+    },
+    "mamba-ssm-cache-dtype": {
+      "source": "model:qwen38-flash-next",
+      "value": "auto"
+    },
+    "max-cudagraph-capture-size": {
+      "source": "model:qwen38-flash-next",
+      "value": 64
+    },
+    "max-model-len": {
+      "source": "recipe:qwen38-flash-next-rtx6000-tp1",
+      "value": 1048576
+    },
+    "max-num-batched-tokens": {
+      "source": "model:qwen38-flash-next",
+      "value": 6019
+    },
+    "max-num-seqs": {
+      "source": "model:qwen38-flash-next",
+      "value": 16
+    },
+    "mm-encoder-tp-mode": {
+      "source": "model:qwen38-flash-next",
+      "value": "data"
+    },
+    "mm-processor-cache-gb": {
+      "source": "model:qwen38-flash-next",
+      "value": 0.0
+    },
+    "mode": {
+      "source": "model:qwen38-flash-next",
+      "value": "mtp"
+    },
+    "model": {
+      "source": "recipe:qwen38-flash-next-rtx6000-tp1",
+      "value": "/models/qwen38-flash-next-rtx6000"
+    },
+    "moe-backend": {
+      "source": "model:qwen38-flash-next",
+      "value": "b12x"
+    },
+    "pipeline-parallel-size": {
+      "source": "common:single-node-vllm",
+      "value": 1
+    },
+    "port": {
+      "source": "recipe:qwen38-flash-next-rtx6000-tp1",
+      "value": 8888
+    },
+    "prefix-cache-retention-interval": {
+      "source": "derived:external-cache contract",
+      "value": 0
+    },
+    "quantization": {
+      "source": "recipe:qwen38-flash-next-rtx6000-tp1",
+      "value": "nvfp4_csf"
+    },
+    "reasoning-parser": {
+      "source": "model:qwen38-flash-next",
+      "value": "qwen3"
+    },
+    "recurrent-checkpoint-policy": {
+      "source": "derived:external-cache contract",
+      "value": "request_boundaries"
+    },
+    "replicas": {
+      "source": "common:single-node-vllm",
+      "value": 1
+    },
+    "revision": {
+      "source": "recipe:qwen38-flash-next-rtx6000-tp1",
+      "value": "285dfa06cc7c215eeb4892b7d9ba6a80351d0c72"
+    },
+    "served-model-name": {
+      "source": "recipe:qwen38-flash-next-rtx6000-tp1",
+      "value": "qwen38-flash-next-rtx6000"
+    },
+    "speculative-config": {
+      "source": "derived:mtp policy and resolved draft settings",
+      "value": {
+        "draft_sample_method": "probabilistic",
+        "method": "mtp",
+        "moe_backend": "b12x",
+        "num_speculative_tokens": 3,
+        "rejection_sample_method": "standard",
+        "revision": "285dfa06cc7c215eeb4892b7d9ba6a80351d0c72"
+      }
+    },
+    "tensor-parallel-size": {
+      "source": "model:qwen38-flash-next",
+      "value": 1
+    },
+    "tool-call-parser": {
+      "source": "model:qwen38-flash-next",
+      "value": "qwen3_xml"
+    }
+  }
+}
