@@ -25,7 +25,7 @@ Pinned at [`23d838ec0c2a`](https://github.com/randomvariable/vllm/commit/23d838e
   - Restore the public registrations required to load the Qwen Flash Next NVFP4-CSF checkpoint. The pinned source already contains both implementations.
 - **Retain working Qwen NVFP4-CSF loader** — no upstream pull request
   - Applied at build time by `third_party/vllm_nvfp4_csf_loader.patch`.
-  - Carry the loader and quantizer from the previously deployed d07312cb9c5e source so the pinned branch can load the existing checkpoint.
+  - Carry the legacy loader and quantizer from d07312cb9c5e in a separate module for existing checkpoints. Preserve the pinned native NVIDIA nvfp4_csf module and its Nvfp4CsfState API for ModelOpt mixed-precision checkpoints.
 {/* included-changes:end */}
 
 ## Keeping this list honest
