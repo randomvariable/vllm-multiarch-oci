@@ -420,7 +420,7 @@ new file mode 100644
 index 0000000000..392d159c8c
 --- /dev/null
 +++ b/vllm/model_executor/model_loader/nvfp4_csf_loader.py
-@@ -0,0 +1,290 @@
+@@ -0,0 +1,297 @@
 +# SPDX-License-Identifier: Apache-2.0
 +# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 +"""Load retained tensors while the quantization method owns compressed experts."""
@@ -561,7 +561,8 @@ index 0000000000..392d159c8c
 +    stores, manifests and model-specific tensor names belong to the caller.
 +    Expanded scale buffers remain caller-owned for serialized layer execution.
 +    """
-+    from b12x.moe.fused_moe import CsfScalePlanes, Nvfp4CsfWeights, PackedWeights
++    from b12x.loader._csf_blocks import export_csf_blocks
++    from b12x.moe.fused_moe import CsfBlockPlanes, Nvfp4CsfWeights, PackedWeights
 +
 +    if num_experts <= 0 or hidden_size <= 0 or hidden_size % 128:
 +        raise ValueError("NVFP4-CSF requires experts and 128-aligned hidden channels")
@@ -659,14 +660,20 @@ index 0000000000..392d159c8c
 +            intermediate_scale=a2.to(device).reciprocal(),
 +            immutable_input_scales=True,
 +        ),
-+        w13_scales=CsfScalePlanes(
-+            tuple(torch.from_numpy(p) for p in fixed13),
-+            tuple(torch.from_numpy(p) for p in exceptions13),
-+        ),
-+        w2_scales=CsfScalePlanes(
-+            tuple(torch.from_numpy(p) for p in fixed2),
-+            tuple(torch.from_numpy(p) for p in exceptions2),
-+        ),
++        w13_scales=CsfBlockPlanes(tuple(
++            export_csf_blocks(
++                fixed, exceptions, rows=2 * local, columns=hidden_size // 16,
++                quantization="nvfp4",
++            )
++            for fixed, exceptions in zip(fixed13, exceptions13, strict=True)
++        )),
++        w2_scales=CsfBlockPlanes(tuple(
++            export_csf_blocks(
++                fixed, exceptions, rows=hidden_size, columns=local // 16,
++                quantization="nvfp4",
++            )
++            for fixed, exceptions in zip(fixed2, exceptions2, strict=True)
++        )),
 +    )
 +
 +

@@ -19,6 +19,9 @@ The image is built from pinned fork revisions rather than from upstream branches
 | vLLM `c28e1b08e1b6` | Retain working Qwen NVFP4-CSF loader (no upstream pull request) | Applied at build time by `third_party/vllm_nvfp4_csf_loader.patch` |
 <!-- included-changes:end -->
 
+The retained NVFP4-CSF loader converts checkpoint scale streams to FlashInfer's
+lossless `CsfBlockPlanes` representation before preparing expert weights.
+
 ## Getting Started
 
 Start with [Building Locally on DGX Spark](docs/how-to/build-locally-on-spark.md). The current build requires GCC 15, compatible userspace, and persistent writable standard ccache storage. CI replaces this with its durable cache volume. Stock DGX OS is not automatically compatible. A full local Spark build has not yet been verified.
