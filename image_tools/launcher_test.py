@@ -593,5 +593,117 @@ class SchemaKeywordTests(unittest.TestCase):
         self.assertIn("Unsupported schema keywords: minItems", str(caught.exception))
 
 
+class StagedIdentityTests(unittest.TestCase):
+    """Both roles must name the same staged checkpoint, or neither starts."""
+
+    def recipe(self, *, csf: bool = True, publish: str | None = "/models/x") -> launch.Recipe:
+        deployment = {
+            "storage_root": "/models",
+            "storage_min_free_gib": 130,
+            "download_workers": 8,
+            "ignore_patterns": [],
+            "required_files": ["tokenizer_config.json"],
+        }
+        if publish is not None:
+            deployment["model_path"] = publish
+        if csf:
+            deployment["csf"] = True
+            deployment["csf_family"] = "qwen38_flash"
+        return launch.Recipe.from_dict("x", {
+            "model": {"model_id": "org/QAD-CSF", "revision": "6" * 40},
+            "deployment": deployment,
+            "launch": {
+                "profile": "qwen38-flash-next",
+                "hardware": "gb10-roce",
+                "preset": None,
+                "options": {},
+                "environment": {},
+                "topology": TOPOLOGY_SINGLE,
+                "probe_port": 8890,
+            },
+        })
+
+    def plan(self) -> launch.policy.ResolvedPlan:
+        return launch.policy.ResolvedPlan(
+            profile="qwen38-flash-next",
+            hardware="gb10-roce",
+            preset=None,
+            recipe="x",
+            values={},
+            origins={},
+            environment={},
+            environment_origins={},
+            argv=[],
+            passthrough=[],
+            warnings=[],
+        )
+
+    def test_a_staged_digest_becomes_the_plan_identity(self):
+        staged = {"identity": "7" * 64, "revision": ""}
+        plan = self.plan()
+        with mock.patch(
+            "image_tools.vllm_image.csf_serving_identity", return_value=staged
+        ) as reader:
+            launch.stamp_staged_identity(plan, self.recipe())
+        self.assertEqual(plan.target_identity, staged)
+
+    def test_an_unstaged_checkpoint_is_refused_not_fallbacked(self):
+        # The identity helper would hash a serving directory that holds no
+        # weights, so a missing marker has to fail the cache rather than let the
+        # two containers disagree about which namespace the checkpoint owns.
+        plan = self.plan()
+        with mock.patch(
+            "image_tools.vllm_image.csf_serving_identity", return_value=None
+        ):
+            with self.assertRaises(launch.ConfigError) as caught:
+                launch.stamp_staged_identity(plan, self.recipe())
+        self.assertEqual(caught.exception.code, launch.EXIT_CACHE)
+        self.assertIn("org/QAD-CSF", str(caught.exception))
+        self.assertIn("checkpoint identity", str(caught.exception))
+        # The two candidate causes are named: the sync has not run, or this
+        # container cannot see the engine's volume.
+        self.assertIn("/models/.vllm-image/model-sync/", str(caught.exception))
+        self.assertIn("deployment.storage_root", str(caught.exception))
+        self.assertIsNone(plan.target_identity)
+
+    def test_the_cache_waits_for_the_engine_to_record_the_marker(self):
+        staged = {"identity": "7" * 64, "revision": ""}
+        plan = self.plan()
+        with mock.patch(
+            "image_tools.vllm_image.csf_serving_identity",
+            side_effect=[None, None, staged],
+        ) as reader, mock.patch.object(
+            launch, "MODEL_SYNC_MARKER_WAIT_SECONDS", 60
+        ), mock.patch.object(
+            launch, "MODEL_SYNC_MARKER_POLL_SECONDS", 0
+        ):
+            launch.stamp_staged_identity(plan, self.recipe(), wait_for_sync=True)
+        self.assertEqual(plan.target_identity, staged)
+        self.assertEqual(reader.call_count, 3)
+
+    def test_an_expired_wait_is_refused_with_the_missing_staging(self):
+        plan = self.plan()
+        with mock.patch(
+            "image_tools.vllm_image.csf_serving_identity", return_value=None
+        ), mock.patch.object(launch, "MODEL_SYNC_MARKER_WAIT_SECONDS", 0):
+            with self.assertRaises(launch.ConfigError) as caught:
+                launch.stamp_staged_identity(plan, self.recipe(), wait_for_sync=True)
+        self.assertEqual(caught.exception.code, launch.EXIT_CACHE)
+
+    def test_a_conventional_checkpoint_needs_no_marker(self):
+        plan = self.plan()
+        with mock.patch(
+            "image_tools.vllm_image.csf_serving_identity",
+            side_effect=AssertionError("must not read a marker"),
+        ):
+            launch.stamp_staged_identity(plan, self.recipe(csf=False))
+        self.assertIsNone(plan.target_identity)
+
+    def test_a_recipe_without_a_published_path_is_left_to_the_helper(self):
+        plan = self.plan()
+        launch.stamp_staged_identity(plan, self.recipe(publish=None))
+        self.assertIsNone(plan.target_identity)
+
+
 if __name__ == "__main__":
     unittest.main()

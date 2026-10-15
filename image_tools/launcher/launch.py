@@ -29,6 +29,7 @@ import hashlib
 import json
 import os
 import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, NoReturn
@@ -82,6 +83,11 @@ TOPOLOGY_LWS = "lws"
 ROLES = ("server", "cache", "proxy", "probe")
 DEFAULT_RENDEZVOUS_PORT = 25000
 DEFAULT_PROBE_PORT = 8890
+# Cold-node budget for the cache container to wait on the engine's FP4-CSF sync
+# recording its checkpoint identity; polled, because the marker lands in one
+# atomic write, so a present marker is always a complete one.
+MODEL_SYNC_MARKER_WAIT_SECONDS = 3600
+MODEL_SYNC_MARKER_POLL_SECONDS = 2.0
 
 # Fields of a cache health response that identify the instance and change when it
 # restarts. Counters are excluded on purpose: a field that moves during normal
@@ -876,7 +882,9 @@ def public_record(
     return public
 
 
-def stamp_staged_identity(plan: policy.ResolvedPlan, recipe: Recipe | None) -> None:
+def stamp_staged_identity(
+    plan: policy.ResolvedPlan, recipe: Recipe | None, *, wait_for_sync: bool = False
+) -> None:
     """Name the checkpoint the image staged, which no weight scan can describe.
 
     An FP4-CSF deployment loads the serving directory ``sync_model`` published:
@@ -887,6 +895,18 @@ def stamp_staged_identity(plan: policy.ResolvedPlan, recipe: Recipe | None) -> N
     same persistent namespace from it -- including this one, whether or not this
     process ran the sync. The digest carries no revision, so the recipe's pinned
     ``model.revision`` stays exactly as the resolver resolved it.
+
+    ``wait_for_sync`` is for the cache container, which starts in either order
+    relative to the engine: on a cold node the marker only exists once the
+    engine's sync has finished downloading, and the identity step must not fall
+    back to hashing a directory that holds no weights. The marker is written
+    atomically after the snapshot is validated and its identity recorded, so a
+    present marker means a complete one and there is no torn read to guard
+    against. No deadlock is possible: the engine publishes the marker before it
+    waits for this cache to be ready. Without ``wait_for_sync`` -- the engine's
+    own role, which has just done the sync -- a missing marker is a broken
+    deployment and is refused immediately, naming the missing staging rather
+    than the helper's "not a checkpoint".
     """
     if plan.target_identity or recipe is None or recipe.model_sync is None:
         return
@@ -895,9 +915,37 @@ def stamp_staged_identity(plan: policy.ResolvedPlan, recipe: Recipe | None) -> N
         return
     from image_tools.vllm_image import csf_serving_identity
 
-    plan.target_identity = csf_serving_identity(
-        sync.storage_root, sync.repo, sync.revision
+    deadline = time.monotonic() + (
+        MODEL_SYNC_MARKER_WAIT_SECONDS if wait_for_sync else 0.0
     )
+    announced = False
+    while True:
+        plan.target_identity = csf_serving_identity(
+            sync.storage_root, sync.repo, sync.revision
+        )
+        if plan.target_identity is not None or time.monotonic() >= deadline:
+            break
+        if not announced:
+            announced = True
+            print(
+                f"waiting up to {MODEL_SYNC_MARKER_WAIT_SECONDS}s for the FP4-CSF "
+                f"staging of {sync.repo}@{sync.revision[:12]} to record its "
+                "checkpoint identity; the engine container publishes it",
+                file=sys.stderr,
+            )
+        time.sleep(MODEL_SYNC_MARKER_POLL_SECONDS)
+    if plan.target_identity is None:
+        raise ConfigError(
+            f"recipe {recipe.name} serves the FP4-CSF checkpoint {sync.repo} from "
+            f"{sync.storage_root}, whose staging has not recorded a checkpoint "
+            "identity. Either the engine container has not run the sync (start it, "
+            "or run --model-sync, before the cache), or this container does not see "
+            f"the engine's volume: the marker is "
+            f"{sync.storage_root}/.vllm-image/model-sync/<digest>.json, so a CSF "
+            "deployment must mount deployment.storage_root at the same location in "
+            "both roles",
+            EXIT_CACHE,
+        )
 
 
 def run(argv: list[str] | None = None, env: dict[str, str] | None = None) -> int:
@@ -926,7 +974,7 @@ def run(argv: list[str] | None = None, env: dict[str, str] | None = None) -> int
                 "--role cache needs an external cache; select one with --cache-mode", EXIT_CACHE
             )
         cache_runtime.verify_installed_transfer(service)
-        stamp_staged_identity(plan, recipe)
+        stamp_staged_identity(plan, recipe, wait_for_sync=True)
         cache_runtime.resolve_identity(
             plan, identity_contract(), cache_runtime.identity_helper(data_root())
         )
