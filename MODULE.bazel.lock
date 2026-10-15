@@ -248,7 +248,7 @@
   "moduleExtensions": {
     "//bazel:ccache.bzl%ccache": {
       "general": {
-        "bzlTransitiveDigest": "qS0/73HH22T7uB54+DNpocZn2YTPIIj5TD6bw2lkwls=",
+        "bzlTransitiveDigest": "ipNwSSbEBV7gz/MlSJPFGThP8T75Hni3V8uYMOjQlIo=",
         "usagesDigest": "IqCO5s5hoCdv4oOP6pIEX0kwsl4igOEJASd3RHokFWo=",
         "recordedInputs": [],
         "generatedRepoSpecs": {
