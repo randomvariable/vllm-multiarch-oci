@@ -27,7 +27,7 @@ A release lists this as an image addition over base vLLM. It does not list it in
 The Docker-backed image contract checks the exact Mooncake distribution version, the `mooncake` Python module, all six declared console entry points, and their wrappers. Build and test with:
 
 ```bash
-bazel test --config=remote-aarch64 --config=remote-gpu \
+bazel test --config=remote-sm120a \
   //tests/image:vllmb12x_contract --test_output=errors
 ```
 

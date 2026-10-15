@@ -12,7 +12,7 @@
           "title": "Bounded shared-memory broadcast waits",
           "inclusion": "branch",
           "commits": 1,
-          "note": "The only change this branch carries beyond the base: cherry-picked from randomvariable/vllm arm-spinloop-karmic-gated (29ebd2dfb82c) onto the integration/karmic-kraken-beta tip 2e7b458480fb (result 2f8df2dc8fab; branch head 8d3335211b09 including the retired skinny-GEMM pair that nets to zero)."
+          "note": "The only change this branch carries beyond the base: cherry-picked from randomvariable/vllm arm-spinloop-karmic-gated (29ebd2dfb82c) onto the integration/karmic-kraken-beta tip a07bfe440393 (result e3e20cd879; branch head c28e1b08e1b6 including the retired skinny-GEMM pair that nets to zero)."
         },
         {
           "pull_request": null,
@@ -20,6 +20,20 @@
           "inclusion": "patch",
           "patch": "third_party/vllm_flash_attn_cute_namespace.patch",
           "note": "Packaging repair for this builder's symlink install path, which skips the import rewrite the upstream CMake copy performs. It carries no upstream change."
+        },
+        {
+          "pull_request": null,
+          "title": "Register existing NVFP4-CSF quantizer and loader",
+          "inclusion": "patch",
+          "patch": "third_party/vllm_nvfp4_csf_registration.patch",
+          "note": "Restore the public registrations required to load the Qwen Flash Next NVFP4-CSF checkpoint. The pinned source already contains both implementations."
+        },
+        {
+          "pull_request": null,
+          "title": "Retain working Qwen NVFP4-CSF loader",
+          "inclusion": "patch",
+          "patch": "third_party/vllm_nvfp4_csf_loader.patch",
+          "note": "Carry the loader and quantizer from the previously deployed d07312cb9c5e source so the pinned branch can load the existing checkpoint."
         }
       ]
     }

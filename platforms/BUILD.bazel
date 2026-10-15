@@ -44,6 +44,24 @@ platform(
     visibility = ["//visibility:public"],
 )
 
+# GB10 execution platform for --config=remote-sm121a. Code generation stays 120f.
+platform(
+    name = "blackwell_arm64_sm121a_gb10",
+    constraint_values = [
+        "@platforms//cpu:aarch64",
+        "@platforms//os:linux",
+    ],
+    exec_properties = {
+        "ISA": "aarch64",
+        "OSFamily": "linux",
+        "container-image": "harbor.services.home.internal.randomvariable.co.uk/custom/nativelink-worker@sha256:b483619e833d2357441ceff7be598572567556285e52779fe30cd6e344fa7203",
+        "cpu_count": "1",
+        "gpu": "nvidia-gb10",
+    },
+    flags = ["--//platforms:cuda_arch=120f"],
+    visibility = ["//visibility:public"],
+)
+
 platform(
     name = "blackwell_x86_64_sm120",
     constraint_values = [
@@ -92,13 +110,19 @@ filegroup(
 
 config_setting(
     name = "linux_aarch64",
-    constraint_values = ["@platforms//cpu:aarch64", "@platforms//os:linux"],
+    constraint_values = [
+        "@platforms//cpu:aarch64",
+        "@platforms//os:linux",
+    ],
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "linux_x86_64",
-    constraint_values = ["@platforms//cpu:x86_64", "@platforms//os:linux"],
+    constraint_values = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -160,8 +184,8 @@ arm64_python_launcher(
 
 arm64_python_probe(
     name = "arm64_python_probe",
-    launcher = ":arm64_python",
     child_launcher = ":arm64_python3",
+    launcher = ":arm64_python",
     output = "arm64_python_probe.txt",
     visibility = ["//visibility:public"],
 )
@@ -176,11 +200,11 @@ native_python_launcher(
 materialize_tar_tree(
     name = "qemu_aarch64_root",
     archive = "@qemu_aarch64_emulator//:flat",
-    output = "qemu-aarch64-root",
     exec_compatible_with = [
         "@platforms//cpu:x86_64",
         "@platforms//os:linux",
     ],
+    output = "qemu-aarch64-root",
 )
 
 hermetic_cc_toolchain_files(

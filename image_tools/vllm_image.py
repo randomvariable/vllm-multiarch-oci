@@ -16,6 +16,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import signal
 import socket
 import sys
@@ -37,6 +38,36 @@ from image_tools.launcher import (
 )
 
 _COMMIT = re.compile(r"^[0-9a-f]{40}$")
+
+# NVFP4-CSF checkpoints ship as a container the loader reads through an
+# explicit ``manifest.json`` and a ``metadata/`` directory; the conventional
+# root-``config.json``-plus-root-index layout does not apply. ``_CSF_SCHEMA``
+# is the one manifest schema this helper will stage, matching the pinned
+# loader's ``read_csf_contract`` (third_party/vllm_nvfp4_csf_loader.patch).
+_CSF_SCHEMA = "lil-nvfp4-csf-checkpoint/1"
+_CSF_METADATA_DIR = "metadata"
+_CSF_TENSORS_DIR = "tensors"
+# The files ``read_csf_contract`` opens before any weight plus the metadata the
+# serving directory is built from; the tensor shards live under ``tensors/`` and
+# are enumerated from the index rather than pinned here.
+_CSF_REQUIRED_FILES = (
+    "manifest.json",
+    "build-contract.json",
+    "verification.json",
+    f"{_CSF_METADATA_DIR}/config.json",
+    f"{_CSF_METADATA_DIR}/tokenizer_config.json",
+    f"{_CSF_METADATA_DIR}/chat_template.jinja",
+    f"{_CSF_METADATA_DIR}/model.safetensors.index.json",
+)
+
+# Upstream ``prepare_csf_checkpoint`` derives the manifest-layout container's
+# checkpoint identity by hashing ``manifest.json`` with this salt (it then hands
+# the value to ``resolve_identity`` as ``target_identity`` so the identity step
+# never hashes the generated serving directory). The staging is done here at
+# sync time rather than at engine start, so the digest is computed and recorded
+# in the sync marker; the exact byte recipe MUST stay in lockstep with
+# ``image_tools.launcher.resolver``'s CSF contract.
+_CSF_IDENTITY_SALT = b"lil-fp4-csf-v1\0"
 
 
 def _terminated(_signum: int, _frame: object) -> None:
@@ -195,6 +226,64 @@ def _validate_snapshot(snapshot: Path, required: Sequence[str] = ()) -> int:
     return len(shards)
 
 
+def _csf_missing(snapshot: Path, paths: Sequence[str]) -> list[str]:
+    """Return the snapshot-relative paths under *snapshot* that are absent or empty.
+
+    Each name is passed through :func:`_safe_relative`, so an index or a
+    deployment that reaches outside the snapshot fails closed the same way the
+    conventional check does.
+    """
+    missing: list[str] = []
+    for name in paths:
+        path = _safe_relative(name)
+        target = snapshot / path
+        if not target.is_file() or target.stat().st_size == 0:
+            missing.append(str(path))
+    return missing
+
+
+def _validate_csf_snapshot(snapshot: Path, family: str, required: Sequence[str] = ()) -> int:
+    """Verify one NVFP4-CSF container; return the tensor-shard count.
+
+    Detection is explicit and fails closed. The manifest must parse and name
+    :data:`_CSF_SCHEMA` together with the *family* the caller declared, so a
+    snapshot that is not the expected CSF container aborts instead of being
+    mistaken for a conventional one. The container files and every shard the
+    ``metadata/`` index references under ``tensors/`` must exist and be
+    non-empty before anything is published.
+    """
+    manifest = snapshot / "manifest.json"
+    try:
+        contract = json.loads(manifest.read_text())
+    except (OSError, json.JSONDecodeError) as error:
+        raise ConfigError(f"invalid CSF manifest {manifest.name}: {error}", EXIT_MODEL) from error
+    if not isinstance(contract, dict):
+        raise ConfigError(f"invalid CSF manifest {manifest.name}: not a JSON object", EXIT_MODEL)
+    schema = contract.get("schema")
+    actual_family = contract.get("family")
+    if schema != _CSF_SCHEMA or actual_family != family:
+        raise ConfigError(
+            f"unexpected CSF contract {schema}/{actual_family}, "
+            f"require {_CSF_SCHEMA}/{family}",
+            EXIT_MODEL,
+        )
+    index = snapshot / _CSF_METADATA_DIR / "model.safetensors.index.json"
+    try:
+        document = json.loads(index.read_text())
+    except (OSError, json.JSONDecodeError) as error:
+        raise ConfigError(f"invalid CSF safetensors index {index.name}: {error}", EXIT_MODEL) from error
+    weight_map = document.get("weight_map") if isinstance(document, dict) else None
+    if not isinstance(weight_map, dict) or not weight_map:
+        raise ConfigError(f"invalid CSF safetensors index {index.name}: empty or missing weight_map", EXIT_MODEL)
+    shards = {str(name) for name in weight_map.values()}
+    missing = _csf_missing(snapshot, _CSF_REQUIRED_FILES)
+    missing += _csf_missing(snapshot, [f"{_CSF_TENSORS_DIR}/{shard}" for shard in sorted(shards)])
+    missing += _csf_missing(snapshot, required)
+    if missing:
+        raise ConfigError(f"incomplete CSF snapshot: missing or empty files: {', '.join(missing)}", EXIT_MODEL)
+    return len(shards)
+
+
 def _marker_key(repo: str, revision: str) -> str:
     return hashlib.sha256(f"{repo}\0{revision}".encode()).hexdigest()
 
@@ -217,6 +306,104 @@ def _publish(snapshot: Path, destination: Path) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def _stage_csf_serving(snapshot: Path, generated: Path) -> None:
+    """Build the immutable ``nvfp4_csf`` serving directory at *generated*.
+
+    vLLM cannot load the CSF container directly: there is no root ``config.json``.
+    The serving directory is the snapshot's ``metadata/`` files lifted to its root
+    with ``config.json``'s ``quantization_config`` replaced by the ``nvfp4_csf``
+    block whose ``checkpoint_root`` points back at the snapshot -- exactly what the
+    ``prepare-csf`` init container staged by hand.
+
+    A deployment reads weights straight out of the snapshot for the whole process
+    lifetime (disk-PLE), so the serving directory must NEVER be rebuilt in place:
+    that would unlink files live readers hold open. The directory is derived purely
+    from the immutable snapshot, written once to a temp sibling and brought into
+    place with a single ``os.replace``, and left untouched on every later sync of
+    the same revision. Repointing the published path is then an atomic symlink
+    swap done by :func:`_publish`, which refuses to clobber a real directory.
+    """
+    if generated.is_dir():
+        return
+    metadata = snapshot / _CSF_METADATA_DIR
+    staging_root = generated.parent
+    staging_root.mkdir(parents=True, exist_ok=True)
+    temporary = staging_root / f".{generated.name}.tmp-{os.getpid()}"
+    if temporary.exists():
+        shutil.rmtree(temporary)
+    temporary.mkdir(parents=True)
+    try:
+        for source in sorted(metadata.iterdir()):
+            if source.is_file():
+                shutil.copy2(source, temporary / source.name)
+        config = temporary / "config.json"
+        try:
+            document = json.loads(config.read_text())
+        except (OSError, json.JSONDecodeError) as error:
+            raise ConfigError(f"invalid CSF serving config {config.name}: {error}", EXIT_MODEL) from error
+        if not isinstance(document, dict):
+            raise ConfigError(f"invalid CSF serving config {config.name}: not a JSON object", EXIT_MODEL)
+        source_qc = document.get("quantization_config")
+        if not isinstance(source_qc, dict):
+            raise ConfigError("CSF serving config carries no quantization_config to wrap", EXIT_MODEL)
+        document["quantization_config"] = {
+            "quant_method": "nvfp4_csf",
+            "format_version": 1,
+            "checkpoint_root": str(snapshot),
+            "source_quantization_config": source_qc,
+        }
+        config.write_text(json.dumps(document))
+        if generated.is_symlink():
+            generated.unlink()
+        os.replace(temporary, generated)
+    finally:
+        if temporary.exists():
+            shutil.rmtree(temporary)
+
+
+def csf_manifest_identity(manifest: Path) -> str:
+    """Return the manifest-layout container's checkpoint identity digest.
+
+    Hashes ``manifest.json``'s bytes with :data:`_CSF_IDENTITY_SALT`, matching
+    upstream ``prepare_csf_checkpoint``. The identity therefore describes the
+    container that was validated and staged, never the generated serving
+    directory, so republishing or touching the serving tree cannot move it.
+    """
+    return hashlib.sha256(_CSF_IDENTITY_SALT + manifest.read_bytes()).hexdigest()
+
+
+def csf_serving_identity(storage_root: Path, repo: str, revision: str) -> dict[str, str] | None:
+    """Return ``{"identity": <sha256 hex>, "revision": ""}`` for a staged CSF snapshot.
+
+    The launcher sets ``ResolvedPlan.target_identity`` from this so the external
+    cache resolves identity from the digest of what ``sync_model`` actually put on
+    disk instead of hashing the generated serving directory -- the same value
+    upstream ``runtime/cache.py`` ``resolve_identity`` prefers over
+    ``resolve_checkpoint``. Returns ``None`` when nothing CSF-shaped is staged at
+    this revision (conventional snapshots carry no ``manifest.json`` and no
+    recorded ``identity``), so callers fall back to the ordinary checkpoint hash.
+    """
+    root = Path(storage_root).resolve()
+    marker = root / ".vllm-image" / "model-sync" / f"{_marker_key(repo, revision)}.json"
+    if not marker.is_file():
+        return None
+    try:
+        saved = json.loads(marker.read_text())
+    except (OSError, ValueError):
+        return None
+    if saved.get("repo") != repo or saved.get("revision") != revision:
+        return None
+    identity = saved.get("identity")
+    if not identity:
+        snapshot = saved.get("snapshot")
+        manifest = Path(snapshot) / "manifest.json" if snapshot else None
+        if manifest is not None and manifest.is_file():
+            identity = csf_manifest_identity(manifest)
+    if not identity:
+        return None
+    return {"identity": identity, "revision": ""}
+
+
 def sync_model(
     *,
     repo: str,
@@ -230,6 +417,8 @@ def sync_model(
     require: Sequence[str] = (),
     token: str | None = None,
     token_env: str | None = "HF_TOKEN",
+    csf: bool = False,
+    csf_family: str | None = None,
 ) -> int:
     """Fetch, verify and publish one checkpoint revision; return the shard count.
 
@@ -238,9 +427,25 @@ def sync_model(
     still complete is re-validated rather than re-downloaded, and the marker is
     written only after every index-referenced shard verified, so a rank never
     opens a half-written snapshot.
+
+    When *csf* is set the checkpoint is an NVFP4-CSF container instead: the
+    manifest schema and *csf_family* are validated (fail closed), an immutable
+    ``nvfp4_csf`` serving directory is generated once under the state root, and
+    ``--publish`` becomes an atomically repointed symlink to it (never a
+    rebuild-in-place that would unlink files a disk-PLE reader holds open), so a
+    recipe can declare the checkpoint and let the engine load it without a
+    hand-written init container.
     """
     if not _COMMIT.fullmatch(revision):
         raise ConfigError("revision must be a full lowercase 40-hex Hugging Face commit OID", EXIT_CONFIG)
+    if csf and not csf_family:
+        raise ConfigError("CSF sync requires the expected manifest family", EXIT_CONFIG)
+
+    def validate(target: Path) -> int:
+        if csf:
+            return _validate_csf_snapshot(target, csf_family, require)
+        return _validate_snapshot(target, require)
+
     root = Path(storage_root).resolve()
     root.mkdir(parents=True, exist_ok=True)
     _default_env("HF_HOME", str(root))
@@ -263,7 +468,7 @@ def sync_model(
                 saved = json.loads(marker.read_text())
                 if saved.get("repo") == repo and saved.get("revision") == revision:
                     snapshot = Path(saved["snapshot"])
-                    _validate_snapshot(snapshot, require)
+                    validate(snapshot)
             except (OSError, KeyError, ValueError, ConfigError):
                 snapshot = None
         if snapshot is None:
@@ -278,11 +483,19 @@ def sync_model(
                 ignore_patterns=list(ignore) or None,
                 token=credential,
             )).resolve()
-            count = _validate_snapshot(snapshot, require)
-            _atomic_json(marker, {"repo": repo, "revision": revision, "snapshot": str(snapshot)})
+            count = validate(snapshot)
+            record = {"repo": repo, "revision": revision, "snapshot": str(snapshot)}
+            if csf:
+                record["identity"] = csf_manifest_identity(snapshot / "manifest.json")
+            _atomic_json(marker, record)
         else:
-            count = _validate_snapshot(snapshot, require)
-        _publish(snapshot, Path(publish).absolute())
+            count = validate(snapshot)
+        if csf:
+            generated = state / f"{_marker_key(repo, revision)}.csf-serve"
+            _stage_csf_serving(snapshot, generated)
+            _publish(generated, Path(publish).absolute())
+        else:
+            _publish(snapshot, Path(publish).absolute())
     print(f"model-sync: published {repo}@{revision} ({count} shards) at {publish}", flush=True)
     return count
 
@@ -300,6 +513,8 @@ def model_sync(args: argparse.Namespace) -> None:
         require=args.require,
         token=args.token,
         token_env=args.token_env,
+        csf=args.csf,
+        csf_family=args.csf_family,
     )
 
 
@@ -342,6 +557,18 @@ def parser() -> argparse.ArgumentParser:
     token = sync.add_mutually_exclusive_group()
     token.add_argument("--token")
     token.add_argument("--token-env", default="HF_TOKEN")
+    # An NVFP4-CSF container has no root config.json and keeps its weights in
+    # tensors/; --csf switches the sync over to that contract and the serving
+    # directory the loader expects, validated against the declared family.
+    sync.add_argument(
+        "--csf",
+        action="store_true",
+        help="stage an NVFP4-CSF container instead of a conventional checkpoint",
+    )
+    sync.add_argument(
+        "--csf-family",
+        help="expected CSF manifest family (required with --csf)",
+    )
     sync.set_defaults(run=model_sync)
 
     probe = commands.add_parser("health")

@@ -1,0 +1,35 @@
+diff --git a/vllm/model_executor/layers/quantization/__init__.py b/vllm/model_executor/layers/quantization/__init__.py
+--- a/vllm/model_executor/layers/quantization/__init__.py
++++ b/vllm/model_executor/layers/quantization/__init__.py
+@@ -41,1 +41,2 @@
+     "mxfp4_csf",
++    "nvfp4_csf",
+@@ -159,1 +160,2 @@
+     from .mxfp4_csf import Mxfp4CsfConfig
++    from .nvfp4_csf import Nvfp4CsfConfig
+@@ -189,1 +191,2 @@
+         "mxfp4_csf": Mxfp4CsfConfig,
++        "nvfp4_csf": Nvfp4CsfConfig,
+diff --git a/vllm/model_executor/model_loader/__init__.py b/vllm/model_executor/model_loader/__init__.py
+--- a/vllm/model_executor/model_loader/__init__.py
++++ b/vllm/model_executor/model_loader/__init__.py
+@@ -1,0 +2,1 @@
++from vllm.model_executor.model_loader.nvfp4_csf_loader import Nvfp4CsfModelLoader
+@@ -40,1 +41,2 @@
+     "mxfp4_csf",
++    "nvfp4_csf",
+@@ -60,1 +62,2 @@
+     "mxfp4_csf": Mxfp4CsfModelLoader,
++    "nvfp4_csf": Nvfp4CsfModelLoader,
+diff --git a/vllm/config/model.py b/vllm/config/model.py
+--- a/vllm/config/model.py
++++ b/vllm/config/model.py
+@@ -1288,1 +1288,2 @@
+                 "mxfp4_csf",
++                "nvfp4_csf",
+diff --git a/vllm/models/qwen4_exp/config.py b/vllm/models/qwen4_exp/config.py
+--- a/vllm/models/qwen4_exp/config.py
++++ b/vllm/models/qwen4_exp/config.py
+@@ -47,1 +47,1 @@
+-    if quant_config.get("quant_method") == "mxfp4_csf" and (
++    if quant_config.get("quant_method") in ("nvfp4_csf", "mxfp4_csf") and (

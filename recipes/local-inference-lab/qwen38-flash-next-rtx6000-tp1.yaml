@@ -1,0 +1,329 @@
+# Qwen3.8 Flash Next NVFP4-CSF on one discrete RTX PRO 6000 (sm_120), TP=1.
+#
+# One file per deployment: `launch`/`docs` are what `vllm-image launch --recipe
+# qwen38-flash-next-rtx6000-tp1` reads; `meta`/`model`/`deployment`/`validation`/
+# `guide` are what the recipe page renders. The stem is `meta.slug` and the
+# selection string.
+#
+# Selection: qwen38-flash-next plus rtx-pro-6000-pcie. Model-sync publishes
+# a pinned local CSF serving directory, so quantization and load-format are
+# explicit. Other values inherit from the profile, hardware and common layer.
+#
+# Source of truth: the GitOps repository, src/rv/k8s/clusters/home/llm-d/
+# rtx6000-qwen38-flash-next.yaml (revision 3209f0cf8). The launcher retires that
+# definition's `bash -lc` + inline CSF-staging shell: the hand-published serving
+# directory is a model-sync fact (`deployment.csf`/`csf_family`, staged by
+# image_tools/vllm_image._stage_csf_serving), and the LMCache tier is the
+# resolver's own qwen engine-driven contract, not a hand-written flag set. The
+# three deliberate deviations from the bench run it replicates -- disk PLE with a
+# factor-4 YaRN 1M context, the LMCache host-RAM spill, and a 0.985 utilization
+# (0.975 rejected the window on the measured boot) -- are argued below.
+meta:
+  title: Qwen3.8 Flash Next NVFP4-CSF, single-node TP=1
+  slug: qwen38-flash-next-rtx6000-tp1
+  description: A fixed single-node Qwen3.8-Flash-Next NVFP4-CSF deployment on one RTX PRO 6000 GPU, with disk PLE tables, a 1,048,576-token context and an LMCache host-RAM KV tier.
+model:
+  model_id: local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD
+  # Pinned independently of the image: the serving directory embeds this snapshot
+  # as checkpoint_root and the disk PLE reads its rows on every forward.
+  revision: 285dfa06cc7c215eeb4892b7d9ba6a80351d0c72
+  # Must equal the LiteLLM modelRef and the anthropic twin backend; distinct from
+  # the DGX LWS name so the gateway cannot cross-route.
+  served_name: qwen38-flash-next-rtx6000
+  serves_native_messages: true
+launch:
+  profile: qwen38-flash-next
+  hardware: rtx-pro-6000-pcie
+  preset: null
+  options:
+    # Model-sync publishes a local serving directory, not a profile checkpoint id.
+    quantization: nvfp4_csf
+    load-format: nvfp4_csf
+    # The CSF serving directory model-sync publishes: the snapshot's metadata/
+    # lifted to a root with config.json's quantization_config rewritten to
+    # nvfp4_csf pointing at checkpoint_root. The snapshot itself has no root
+    # config.json, so the engine loads this, not the repository id.
+    model: /models/qwen38-flash-next-rtx6000
+    # Overrides the profile's csf default revision so the engine's checkpoint
+    # identity names the exact snapshot that was synced and is read from disk.
+    revision: 285dfa06cc7c215eeb4892b7d9ba6a80351d0c72
+    served-model-name: qwen38-flash-next-rtx6000
+    # Also the source for the derived LMCache ports (port+10000/10001/10002).
+    port: 8888
+    # The checkpoint is native at 262,144 positions. Set only the context: the
+    # resolver derives the factor-4 YaRN --hf-overrides from it, mrope_section
+    # included (get_rope() drops M-RoPE and the vision position ids break if it
+    # is lost). VLLM_ALLOW_LONG_MAX_MODEL_LEN stays unset -- it would only
+    # downgrade the check the override satisfies.
+    max-model-len: 1048576
+    # disk maps to the b12x io_uring DiskTable, reading the ~26.8 GiB of n-gram
+    # rows from the snapshot by (path, offset) rather than page-locking them in
+    # host RAM. Requires a file-backed loader (nvfp4_csf is) and the V2 model
+    # runner (common sets it); the profile's VLLM_PLE_CPU_OFFLOAD is inert here
+    # because ple_table_memory takes precedence. Fallback is `ram`.
+    additional-config:
+      ple_table_memory: disk
+    # 0.985: the measured boot allocated 1,095,769 KV tokens; 0.975 rejected the
+    # 1M window. Not a quality evaluation of YaRN at that length.
+    gpu-memory-utilization: 0.985
+    # The host-RAM KV tier is the qwen + engine-driven cache contract, which
+    # forces request-boundary checkpoints, retention 0 and the
+    # LMCacheRecurrentCheckpointConnector; do not set --kv-transfer-config,
+    # --recurrent-checkpoint-policy or --prefix-cache-retention-interval. The
+    # checkpoint_identity is attached at load. Spill is restore-instead-of-
+    # recompute for evicted prefixes; it does not raise the single-sequence
+    # ceiling. MTP-3 comes from the profile's mtp mode, so no speculative-config.
+    cache-mode: lmcache
+    cache-l1-gib: 32
+    # The live instance id carries the rtx6000- prefix; naming it makes the
+    # derived arena --shm-name and the sidecar --instance-id match exactly.
+    cache-instance: rtx6000-qwen38-flash-next-8888
+    # Bind the cache HTTP health port on all interfaces; the engine still reaches
+    # the message port on 127.0.0.1 (the common cache-host).
+    cache-http-host: 0.0.0.0
+  environment:
+    # Every value the common layer, the profile or rtx-pro-6000-pcie already sets
+    # is omitted (this is a delta): the sm_120 architecture trio, the NCCL
+    # platform set, the PCIe all-reduce knobs, VLLM_USE_V2_MODEL_RUNNER, and the
+    # B12X dynamic/MTP/LM-head knob set all come from those layers.
+    # The image declares no USER, so an unresolvable ~ makes flashinfer's JIT
+    # mkdir die; pin it onto the node hostPath. See docs.HOME.
+    HOME: /cache/vllm-home
+    # The snapshot is synced and published before the engine starts, so nothing
+    # may reach the hub. See docs.HF_HUB_OFFLINE.
+    HF_HOME: /models
+    HF_HUB_OFFLINE: "1"
+    TRANSFORMERS_OFFLINE: "1"
+    # The profile leaves FlashInfer on the GB10 figure; it has no 12.0a target and
+    # ran on the 12.0f family build on this device. See docs.FLASHINFER_CUDA_ARCH_LIST.
+    FLASHINFER_CUDA_ARCH_LIST: "12.0f"
+    # Node-local compiler/JIT on persistent NVMe so a restart is a cached boot.
+    # XDG_CACHE_HOME anchors the derived paths; the b12x and inductor dirs are
+    # spelled out because the accepted boot used hyphenated names, not the
+    # derived b12x/* and torchinductor paths.
+    XDG_CACHE_HOME: /cache
+    VLLM_CACHE_ROOT: /cache/vllm
+    TRITON_CACHE_DIR: /cache/triton
+    TORCHINDUCTOR_CACHE_DIR: /cache/inductor
+    FLASHINFER_WORKSPACE_BASE: /cache/flashinfer
+    B12X_COMPILE_CACHE_DIR: /cache/b12x-compile
+    B12X_CUTE_COMPILE_CACHE_DIR: /cache/b12x-cute
+    # Fix the assembler before B12X plans kernels (FlashInfer rewrites it on
+    # import). See docs.TRITON_PTXAS_BLACKWELL_PATH.
+    TRITON_PTXAS_BLACKWELL_PATH: /usr/local/cuda/bin/ptxas
+    # S3-FIFO host row pool the DiskTable reads through. See docs.B12X_ROW_CACHE_*.
+    B12X_ROW_CACHE_BYTES: "1GB"
+    B12X_ROW_CACHE_TIER: host
+    # The Spark runtime does not package vllm-rs. See docs.VLLM_USE_RUST_FRONTEND.
+    VLLM_USE_RUST_FRONTEND: "0"
+    # No plugin autoloading: llm-d sidecar plugins must not attach to a pool-excluded pod.
+    VLLM_PLUGINS: ""
+    # Numerical parity with the accepted container. See docs.TORCH_ALLOW_TF32_CUBLAS_OVERRIDE.
+    TORCH_ALLOW_TF32_CUBLAS_OVERRIDE: "1"
+  topology:
+    kind: single
+    nodes: 1
+    rendezvous_port: null
+    kv_events: null
+    replica_port_base: null
+  probe_port: 8890
+
+# Per-value explanation for the site, read alongside runtime/parameter-docs.yaml.
+# Only the names upstream does not document appear here.
+docs:
+  HOME:
+    group: runtime
+    summary: The home directory components derive cache paths from.
+    why: >-
+      The image declares no USER and a uid with no passwd entry leaves ~
+      unresolved (flashinfer's JIT mkdir then dies); a named account's home lives
+      on the container filesystem, so ~-derived state is lost on restart. Pinning
+      it to /cache, the node-local hostPath, makes that state durable.
+  HF_HUB_OFFLINE:
+    group: model
+    summary: Refuse any hub request; the checkpoint is already on the node.
+    why: >-
+      The launcher's model-sync fetched, verified and published the snapshot
+      before the engine starts, so a hub request at load time would mean the
+      published root was not used. TRANSFORMERS_OFFLINE is the same reason on the
+      tokenizer path.
+  TRANSFORMERS_OFFLINE:
+    group: model
+    summary: Refuse any hub request from the tokenizer and processor loaders.
+    why: >-
+      transformers resolves tokenizer and chat-template assets independently of
+      vLLM's model fetch, so both paths must be pinned to the served directory.
+  FLASHINFER_CUDA_ARCH_LIST:
+    group: kernels
+    summary: The CUDA architecture FlashInfer selects kernels for.
+    why: >-
+      12.0f, not the 12.0a the rest of the runtime uses nor the 12.1a the profile
+      leaves it at: FlashInfer has no 12.0a target and ran on the family build on
+      this sm_120 device.
+  TRITON_PTXAS_BLACKWELL_PATH:
+    group: kernels
+    summary: The ptxas compiler workers use.
+    why: >-
+      FlashInfer rewrites the assembler on import; pinning the CUDA toolchain's
+      ptxas before B12X plans kernels keeps spawned compiler workers on the same
+      assembler.
+  B12X_ROW_CACHE_BYTES:
+    group: memory
+    summary: The host row pool the disk PLE table reads through.
+    why: >-
+      The DiskTable serves n-gram rows from the snapshot; this is the host-side
+      byte budget it caches, far below the ~26.8 GiB the RAM mode would page-lock.
+  B12X_ROW_CACHE_TIER:
+    group: memory
+    summary: Keep the disk-PLE row pool in host RAM.
+    why: >-
+      Paired with B12X_ROW_CACHE_BYTES; the host tier keeps the GPU budget free for
+      the 1,048,576-token KV cache.
+  VLLM_USE_RUST_FRONTEND:
+    group: runtime
+    summary: Keep the Python API frontend rather than the Rust one.
+    why: >-
+      The Spark runtime does not package vllm-rs, so the default fails before
+      model loading rather than serving anything.
+  TORCH_ALLOW_TF32_CUBLAS_OVERRIDE:
+    group: runtime
+    summary: Permit TF32 in cuBLAS GEMMs.
+    why: >-
+      Copied from the accepted container for numerical parity; where a dense shape
+      falls through to cuBLAS this keeps the accepted math.
+deployment:
+  nodes: 1
+  tensor_parallel_size: 1
+  # Plain single-replica Deployment (Recreate: one GPU and node-local model + arena
+  # state cannot admit a surge replica). Node placement is the operator's
+  # node_selector field; there is no arch key and no tolerations on this shape.
+  nodeSelector: {}
+  # One physical RTX PRO 6000 Max-Q; the plugin reports 4 only via timeSlicing.
+  # requests/limits differ; the only shared value is the GPU count.
+  gpu: 1
+  rdma: false
+  resources:
+    requests:
+      cpu: "8"
+      memory: 32Gi
+      ephemeral-storage: 4Gi
+    limits:
+      cpu: "16"
+      memory: 64Gi
+      ephemeral-storage: 8Gi
+  # Root, plus IPC_LOCK: disk PLE registers io_uring buffers and the 8 MiB
+  # runtime memlock limit fails ring init on this box.
+  securityContext:
+    runAsUser: 0
+    runAsGroup: 0
+    capabilities:
+      add: [IPC_LOCK]
+  volumes:
+    hostPathType: DirectoryOrCreate
+  # 90-minute startup budget covers the CSF download + weight load + graph
+  # capture; 6 x 15s readiness tolerance. No livenessProbe (PID 1 is vLLM).
+  probes:
+    startup:
+      periodSeconds: 15
+      timeoutSeconds: 1
+      failureThreshold: 360
+    readiness:
+      periodSeconds: 15
+      timeoutSeconds: 1
+      failureThreshold: 6
+  # model-sync: fetch the snapshot under storage_root/hub (disk PLE reads it for
+  # the process lifetime), verify the CSF container, publish the serving dir at
+  # model_path. required_files/ignore stay empty: the CSF validator enforces the
+  # container set (manifest, build/verification, metadata/*, every tensors shard)
+  # internally; the 130 GiB gate bounds the 95.86 GiB payload.
+  storage_root: /models
+  model_path: /models/qwen38-flash-next-rtx6000
+  storage_min_free_gib: 130
+  download_workers: 8
+  ignore_patterns: []
+  required_files: []
+  csf: true
+  csf_family: qwen38_flash_next_nvfp4
+  # A single-node shape asks the operator for eight fields, all declared in
+  # recipes-site/src/data/site-parameters.js; only these four are the workload's
+  # own (namespace, name, and the two node-local hostPath roots).
+  parameters:
+    namespace:
+      default: openai
+    name:
+      default: rtx6000-qwen38-flash-next
+    model_storage_path:
+      default: /var/lib/vllm-models/rtx6000-qwen38-flash-next
+    jit_storage_path:
+      default: /var/lib/vllm-rtx6000-cache
+benchmark:
+  context:
+    - Single node, one RTX PRO 6000
+    - Availability observation from the accepted live boot
+    - No benchmark harness run
+  tables:
+    - id: availability
+      title: Accepted boot and serving
+      aria_label: Qwen3.8 Flash Next NVFP4-CSF single-node accepted boot
+      columns:
+        - Observation
+        - Result
+      rows:
+        - cells:
+            - text: Pod containers ready
+            - text: 2/2
+              primary: true
+        - cells:
+            - text: Container restarts
+            - text: "0"
+              primary: true
+        - cells:
+            - text: One chat completion
+            - text: 42 tokens
+              primary: true
+  notes:
+    - title: Not measured
+      body: >-
+        No throughput, time-to-first-token or accept-rate figure was collected.
+        These are availability observations from the accepted live boot (GitOps
+        revision 3209f0cf8, internal build digest sha256 fb228e6e...), not a
+        benchmark run. The single chat completion is the one request made to
+        confirm the engine serves; nothing here is a performance claim.
+validation:
+  # The source configuration ran on an internal image. The generated recipe
+  # itself has not yet run on a published release image.
+  kubernetes: unverified
+  docker: unverified
+  evidence: >-
+    Accepted live on the RTX PRO 6000 host at GitOps revision 3209f0cf8, running
+    the digest-pinned internal build (image sha256 fb228e6e001e649cc217c2acd4e120bedd6e4a28816231cac66596eb43758078): the pod reached 2/2 ready (modelserver and
+    the LMCache cache sidecar) with zero container restarts, and a single chat
+    completion returned 42 tokens. That one request is the only generation
+    recorded here -- no throughput was measured and none is claimed. Docker is
+    unverified: the definition is Kubernetes-only and has not been run under
+    docker run.
+guide:
+  hardware: >-
+    One host with a single RTX PRO 6000 Blackwell Max-Q (sm_120). The device
+    plugin reports four nvidia.com/gpu only via timeSlicing.replicas: 4, so
+    request exactly one. The container asks for 8 CPUs / 32Gi (64Gi limit) plus
+    IPC_LOCK for the io_uring disk-PLE buffers. The model hostPath needs the
+    130 GiB gate for the 95.86 GiB CSF payload and must stay readable for the
+    process lifetime; /dev/shm is a 40Gi tmpfs that must exceed the 32 GiB
+    engine-driven LMCache arena.
+  fixed_tuning: >-
+    TP=1, MTP depth 3 (probabilistic draft, standard rejection, B12X experts),
+    0.985 utilization, 1,048,576-token context from the profile's factor-4 YaRN
+    derivation, disk PLE on a file-backed nvfp4_csf loader with the V2 model
+    runner, 16 sequences, 6,019 batched tokens, a 64-token CUDA graph capture cap,
+    FP8 KV cache, mamba cache mode align, vision enabled, B12X gdn/linear/moe, and
+    a 32 GiB LMCache host-RAM tier in engine-driven request-boundary mode. Never
+    set CUDA_LAUNCH_BLOCKING: b12x does not function with synchronous launches.
+  networking: >-
+    No secondary network. One node, one rank: no cross-host collective, no RDMA
+    resource, no leader to rendezvous with; the single container is reached
+    through its own Service, outside the LeaderWorkerSet pool.
+  safety: >-
+    Stop the pod with a 120-second grace. Keep the 90-minute startup budget --
+    a first start downloads the snapshot, loads weights and captures graphs -- and
+    never set CUDA_LAUNCH_BLOCKING.

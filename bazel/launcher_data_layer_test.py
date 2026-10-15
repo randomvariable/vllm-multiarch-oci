@@ -35,8 +35,10 @@ TOP_LEVEL = (
     "options.yaml",
     "schema.json",
     "platform-environment.json",
+    "platform-environment.linux-arm64.json",
     "presets.yaml",
     "parameter-docs.yaml",
+    "checkpoints.yaml",
 )
 PROFILES = (
     "common.yaml",
@@ -44,6 +46,7 @@ PROFILES = (
     "ds4-vision.yaml",
     "ds41-flash.yaml",
     "glm53-flash.yaml",
+    "glm53.yaml",
     "mimo26-flash.yaml",
     "qwen38-flash-next.yaml",
 )
@@ -86,6 +89,7 @@ def expected_paths() -> set[str]:
     installed |= {f"{ROOT}/{RUNTIME}/hardware/{name}" for name in HARDWARE + OUR_HARDWARE}
     installed |= {f"{ROOT}/{RUNTIME}/templates/{name}" for name in TEMPLATES}
     installed |= {f"{ROOT}/recipes/{name}" for _, name in RECIPES}
+    installed.add(f"{ROOT}/{RUNTIME}/{ACTION.IDENTITY_HELPER}")
     return installed
 
 
@@ -95,8 +99,18 @@ def write(path: Path, text: str = "value: 1\n") -> Path:
     return path
 
 
-def make_upstream(base: Path, *, hardware: tuple[str, ...] = HARDWARE) -> Path:
-    """Materialise the extracted pinned source archive below *base*."""
+def make_upstream(
+    base: Path,
+    *,
+    hardware: tuple[str, ...] = HARDWARE,
+    identity: str | None = "fallback",
+) -> Path:
+    """Materialise the extracted pinned source archive below *base*.
+
+    ``identity`` places the checkpoint identity helper as the pin does
+    (``fallback``: only below ``recipes/glm53/``), as a runtime file
+    (``runtime``), at both, or nowhere (``None``).
+    """
     source = base / "source"
     runtime = source / RUNTIME
     for name in TOP_LEVEL:
@@ -109,6 +123,10 @@ def make_upstream(base: Path, *, hardware: tuple[str, ...] = HARDWARE) -> Path:
         write(runtime / "templates" / name)
     for name in EXCLUDED:
         write(runtime / name)
+    if identity in {"fallback", "both"}:
+        write(source / Path(*ACTION.IDENTITY_FALLBACK))
+    if identity in {"runtime", "both"}:
+        write(runtime / ACTION.IDENTITY_HELPER)
     return source
 
 
@@ -220,7 +238,12 @@ class SelectionTests(unittest.TestCase):
 
         for name in EXCLUDED:
             self.assertNotIn(f"{ROOT}/{RUNTIME}/{name}", plan)
-        self.assertEqual([path for path in plan if path.endswith(".py")], [])
+        # The identity helper is the one file of upstream code the layer carries,
+        # installed under its canonical name from wherever the pin keeps it.
+        self.assertEqual(
+            [path for path in plan if path.endswith(".py")],
+            [f"{ROOT}/{RUNTIME}/{ACTION.IDENTITY_HELPER}"],
+        )
         self.assertEqual([path for path in plan if "/tests/" in path], [])
         self.assertEqual([path for path in plan if "/generated/" in path], [])
         self.assertEqual([path for path in plan if "/validation/" in path], [])
@@ -240,18 +263,46 @@ class SelectionTests(unittest.TestCase):
         self.assertIn(str(upstream_copy), message)
 
     def test_missing_required_profile_is_named(self):
-        (self.upstream / RUNTIME / "profiles" / "ds41-flash.yaml").unlink()
-
-        with self.assertRaises(SystemExit) as raised:
-            ACTION.install_plan(self.upstream, self.recipes, self.hardware)
-        self.assertIn(f"{RUNTIME}/profiles/ds41-flash.yaml", str(raised.exception))
+        for name in ("ds41-flash.yaml", "glm53.yaml"):
+            with self.subTest(profile=name):
+                (self.upstream / RUNTIME / "profiles" / name).unlink()
+                with self.assertRaises(SystemExit) as raised:
+                    ACTION.install_plan(self.upstream, self.recipes, self.hardware)
+                self.assertIn(f"{RUNTIME}/profiles/{name}", str(raised.exception))
 
     def test_missing_required_data_file_is_named(self):
-        (self.upstream / RUNTIME / "parameter-docs.yaml").unlink()
+        for name in ("parameter-docs.yaml", "checkpoints.yaml", "platform-environment.linux-arm64.json"):
+            with self.subTest(name=name):
+                upstream = make_upstream(self.base / f"missing-{name}")
+                (upstream / RUNTIME / name).unlink()
+                with self.assertRaises(SystemExit) as raised:
+                    ACTION.install_plan(upstream, self.recipes, self.hardware)
+                self.assertIn(f"{RUNTIME}/{name}", str(raised.exception))
 
+    def test_the_recipe_copy_of_the_identity_helper_is_installed_canonically(self):
+        # The pinned source keeps the helper below recipes/glm53, as upstream's
+        # own packaging does; the image must still find it beside the policy data.
+        plan = ACTION.install_plan(self.upstream, self.recipes, self.hardware)
+        self.assertEqual(
+            plan[f"{ROOT}/{RUNTIME}/{ACTION.IDENTITY_HELPER}"],
+            self.upstream / Path(*ACTION.IDENTITY_FALLBACK),
+        )
+
+    def test_a_runtime_identity_helper_wins_over_the_recipe_copy(self):
+        upstream = make_upstream(self.base / "helper-both", identity="both")
+        plan = ACTION.install_plan(upstream, self.recipes, self.hardware)
+        self.assertEqual(
+            plan[f"{ROOT}/{RUNTIME}/{ACTION.IDENTITY_HELPER}"],
+            upstream / RUNTIME / ACTION.IDENTITY_HELPER,
+        )
+
+    def test_a_source_without_an_identity_helper_fails(self):
+        upstream = make_upstream(self.base / "helper-absent", identity=None)
         with self.assertRaises(SystemExit) as raised:
-            ACTION.install_plan(self.upstream, self.recipes, self.hardware)
-        self.assertIn(f"{RUNTIME}/parameter-docs.yaml", str(raised.exception))
+            ACTION.install_plan(upstream, self.recipes, self.hardware)
+        message = str(raised.exception)
+        self.assertIn(ACTION.IDENTITY_HELPER, message)
+        self.assertIn("/".join(ACTION.IDENTITY_FALLBACK), message)
 
     def test_empty_profiles_directory_fails(self):
         for path in (self.upstream / RUNTIME / "profiles").iterdir():

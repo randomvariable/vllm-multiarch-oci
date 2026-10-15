@@ -159,8 +159,12 @@ class LaneScriptTest(unittest.TestCase):
         )
         image_build = self.only(["build", "//image:vllmb12x"])
         publisher = self.only(["scripts/publish-vllmb12x.py"])
-        contracts = self.positions(["test", "//tests/image:vllmb12x_contract"])
-        self.assertEqual(len(contracts), 2, f"one contract run per architecture: {contracts!r}")
+        contracts = [
+            index
+            for index, command in enumerate(commands)
+            if command[:1] == ["test"] and command[1:2] and command[1].startswith("//tests/image:vllmb12x_contract")
+        ]
+        self.assertEqual(len(contracts), 3, f"one contract run per CUDA pool plus the x86 lane: {contracts!r}")
         lanes = {
             scripts_tests,
             host_python,
@@ -192,10 +196,18 @@ class LaneScriptTest(unittest.TestCase):
         for resolution in (host_python, host_python_query, output_base):
             self.assertLess(resolution, host_lane, "the interpreter is resolved before the lane runs")
         self.assertLess(image_build, contracts[0], "the image contract needs the built image")
-        self.assertLess(contracts[1], publisher, "the contract runs stay last but one")
+        self.assertLess(contracts[-1], publisher, "the contract runs stay last but one")
+        # The two ARM runs share the server21 dependency actions: the plain
+        # contract on remote-sm120a, then the GB10 pass via the dedicated
+        # _sm121a target (which pins gpu=nvidia-gb10 on the test action only),
+        # also under remote-sm120a. The x86 lane keeps its own target and config.
         self.assertEqual(
-            [commands[index][2] for index in contracts],
-            ["--config=remote-aarch64", "--config=remote-x86_64"],
+            [(commands[index][1], commands[index][2]) for index in contracts],
+            [
+                ("//tests/image:vllmb12x_contract", "--config=remote-sm120a"),
+                ("//tests/image:vllmb12x_contract_sm121a", "--config=remote-sm120a"),
+                ("//tests/image:vllmb12x_contract", "--config=remote-x86_64"),
+            ],
         )
         # The fetch of a cargo-vendored source failed in CI because repository
         # rules run with a sanitised PATH, so the lane must declare it.

@@ -1,0 +1,720 @@
+diff --git a/vllm/model_executor/layers/quantization/nvfp4_csf.py b/vllm/model_executor/layers/quantization/nvfp4_csf.py
+index 1002b982e6..57d744c7b5 100644
+--- a/vllm/model_executor/layers/quantization/nvfp4_csf.py
++++ b/vllm/model_executor/layers/quantization/nvfp4_csf.py
+@@ -3,19 +3,23 @@
+ """Lossless NVFP4 expert scale storage with native ModelOpt arithmetic."""
+ 
+ import itertools
+-from dataclasses import dataclass, field, replace
++from dataclasses import replace
+ 
+ import regex as re
+ import torch
+ 
+ import vllm.envs as envs
+-from vllm.config import get_current_vllm_config_or_none
++from vllm.config import get_current_vllm_config
++from vllm.distributed import (
++    get_tensor_model_parallel_rank,
++    get_tensor_model_parallel_world_size,
++)
+ from vllm.logger import init_logger
+ from vllm.model_executor.layers.fused_moe import modular_kernel as mk
+ from vllm.model_executor.layers.fused_moe.activation import MoEActivation
+ from vllm.model_executor.layers.fused_moe.b12x import (
+     B12xExperts,
+     _is_current_stream_capturing,
+ )
+ from vllm.model_executor.layers.fused_moe.config import (
+     nvfp4_moe_quant_config,
+@@ -27,11 +33,12 @@ from vllm.model_executor.layers.fused_moe.fused_moe_method_base import (
+ from vllm.model_executor.layers.fused_moe.prepare_finalize.no_dp_ep import (
+     MoEPrepareAndFinalizeNoDPEPModular,
+ )
+-from vllm.model_executor.weight_transfer import copy_weight, materialize_weight
+ from vllm.utils.b12x import get_b12x_a16_max_tokens, is_b12x_a4_prefill_enabled
+-from vllm.utils.math_utils import round_up
++from vllm.model_executor.layers.fused_moe.routed_experts import RoutedExperts
+ from vllm.utils.torch_utils import set_default_torch_num_threads
+ 
++from .modelopt import ModelOptMixedPrecisionConfig
++
+ logger = init_logger(__name__)
+ 
+ _FORWARD_TOKENS = itertools.count()
+@@ -44,10 +50,10 @@ def _forward_token() -> int | None:
+     if not is_forward_context_available():
+         return None
+     context = get_forward_context()
+-    token = context.additional_kwargs.get("b12x_csf_token")
++    token = getattr(context, "_b12x_csf_token", None)
+     if token is None:
+         token = next(_FORWARD_TOKENS)
+-        context.additional_kwargs["b12x_csf_token"] = token
++        context._b12x_csf_token = token
+     return token
+ 
+ 
+@@ -60,12 +66,83 @@ def _stage_max_tokens() -> int:
+     return W4A16_CSF_STAGE_MAX_TOKENS
+ 
+ 
+-@dataclass
+-class Nvfp4CsfState:
+-    scale_scratch: tuple[torch.Tensor, ...] | None = None
+-    scale_layers: dict[int, "Nvfp4CsfMoEMethod"] = field(default_factory=dict)
+-    scale_stream: torch.cuda.Stream | None = None
+-    scale_prefetch: tuple[int, int, torch.cuda.Event] | None = None
++class Nvfp4CsfConfig(ModelOptMixedPrecisionConfig):
++    """Compressed main experts; retained ModelOpt formats for all other tensors."""
++
++    checkpoint_root: str
++    scale_scratch: tuple[torch.Tensor, ...] | None
++    scale_layers: dict[int, "Nvfp4CsfMoEMethod"]
++    scale_stream: torch.cuda.Stream | None
++    scale_prefetch: tuple[int, int, torch.cuda.Event] | None
++
++    @classmethod
++    def get_name(cls):
++        return "nvfp4_csf"
++
++    @classmethod
++    def get_min_capability(cls):
++        return 120
++
++    @classmethod
++    def override_quantization_method(cls, hf_quant_cfg, user_quant, hf_config=None):
++        if (hf_quant_cfg or {}).get("quant_method") == cls.get_name():
++            return cls.get_name()
++        return None
++
++    @classmethod
++    def from_config(cls, config):
++        if config.get("format_version") != 1 or not config.get("checkpoint_root"):
++            raise ValueError("NVFP4-CSF requires format_version=1 and checkpoint_root")
++        original = config.get("source_quantization_config")
++        if not isinstance(original, dict):
++            raise ValueError("NVFP4-CSF requires source_quantization_config")
++        result = super().from_config(original)
++        assert isinstance(result, cls)
++        result.checkpoint_root = config["checkpoint_root"]
++        result.scale_scratch = None
++        # Layers sharing scale_scratch by index, the side stream that expands
++        # the next layer's scales ahead of its MoE, and the pending expansion.
++        result.scale_layers = {}
++        result.scale_stream = None
++        result.scale_prefetch = None
++        return result
++
++    def get_quant_method(self, layer, prefix):
++        if isinstance(layer, RoutedExperts):
++            match = re.search(r"(?:^|\.)layers\.(\d+)\.", prefix)
++            if match is None:
++                raise ValueError("NVFP4-CSF routed experts require a numbered layer")
++            config = get_current_vllm_config()
++            if (
++                int(match.group(1))
++                < config.model_config.hf_text_config.num_hidden_layers
++            ):
++                if config.model_config.hf_text_config.model_type not in (
++                    "glm5_next_text",
++                    "qwen3_8_flash_next_text",
++                    "qwen4_exp_text",
++                ):
++                    raise ValueError(
++                        "NVFP4-CSF supports GLM-5.3-Flash and Qwen3.8-Flash-Next"
++                    )
++                if (
++                    config.parallel_config.pipeline_parallel_size != 1
++                    or config.parallel_config.use_ubatching
++                ):
++                    raise NotImplementedError(
++                        "NVFP4-CSF shared scratch requires PP1 without ubatching"
++                    )
++                if config.load_config.load_format != "nvfp4_csf":
++                    raise ValueError("NVFP4-CSF requires --load-format nvfp4_csf")
++                algo = self._resolve_quant_algo(prefix)
++                if algo not in ("NVFP4", "W4A16_NVFP4"):
++                    raise ValueError(
++                        "NVFP4-CSF requires NVFP4 source expert calibration"
++                    )
++                return Nvfp4CsfMoEMethod(
++                    layer.moe_config, self, use_a16=algo == "W4A16_NVFP4"
++                )
++        return super().get_quant_method(layer, prefix)
+ 
+ 
+ class Nvfp4CsfMoEMethod(FusedMoEMethodBase):
+@@ -75,14 +152,6 @@ class Nvfp4CsfMoEMethod(FusedMoEMethodBase):
+         super().__init__(moe)
+         self.owner = owner
+         self.use_a16 = use_a16 or bool(envs.VLLM_B12X_MOE_FP4_FORCE_A16)
+-        config = get_current_vllm_config_or_none()
+-        if config is not None and (
+-            config.parallel_config.pipeline_parallel_size != 1
+-            or config.parallel_config.use_ubatching
+-        ):
+-            raise NotImplementedError(
+-                "CSF shared scratch requires PP1 without ubatching"
+-            )
+         parallel = moe.moe_parallel_config
+         if (
+             parallel.use_ep
+@@ -114,169 +183,10 @@ class Nvfp4CsfMoEMethod(FusedMoEMethodBase):
+         self.layer_index = int(match.group(1))
+         self.num_experts, self.hidden_size = num_experts, hidden_size
+         self.local_intermediate = intermediate_size_per_partition
+-        # A TP-padded expert (GLM-5.3 at TP6) keeps its checkpoint width.
+-        vllm_config = get_current_vllm_config_or_none()
+-        model_config = getattr(vllm_config, "model_config", None)
+-        self.checkpoint_width = getattr(
+-            getattr(model_config, "hf_text_config", None),
+-            "original_moe_intermediate_size",
+-            None,
+-        )
+-        self._components = {}
+-        self._scale_parts = {}
+-        self._seen = set()
+-        self._packed: tuple[torch.Tensor, torch.Tensor] | None = None
+-        for prefix in ("w13", "w2"):
+-            for component, dtype in (
+-                ("weight", torch.uint8),
+-                ("weight_scale_2", torch.float32),
+-                ("input_scale", torch.float32),
+-            ):
+-                param = torch.nn.Parameter(
+-                    torch.empty(0, dtype=dtype), requires_grad=False
+-                )
+-                param.weight_loader = self.weight_loader
+-                param.csf_component = component
+-                layer.register_parameter(f"{prefix}_{component}", param)
+-            scales = torch.nn.Module()
+-            for component, dtype in (
+-                ("fixed", torch.uint8),
+-                ("exceptions", torch.uint32),
+-            ):
+-                param = torch.nn.Parameter(
+-                    torch.empty(0, dtype=dtype), requires_grad=False
+-                )
+-                param.weight_loader = self.weight_loader
+-                param.csf_component = component
+-                scales.register_parameter(f"nvfp4_csf_{component}", param)
+-            layer.add_module(f"{prefix}_weight_scale", scales)
+-
+-    def weight_loader(
+-        self,
+-        param,
+-        loaded_weight,
+-        weight_name=None,
+-        shard_id=None,
+-        expert_id=None,
+-        return_success=False,
+-    ):
+-        from .utils.nvfp4_csf_utils import _slice_scale_plane
+-
+-        if (
+-            shard_id not in ("w1", "w2", "w3")
+-            or expert_id is None
+-            or not 0 <= expert_id < self.num_experts
+-        ):
+-            raise ValueError("CSF tensor requires a valid expert and projection")
+-        field_name = param.csf_component
+-        key = (expert_id, shard_id)
+-        identity = (*key, field_name)
+-        if identity in self._seen:
+-            raise ValueError(f"Duplicate CSF tensor: {identity}")
+-        self._seen.add(identity)
+-        width = self.checkpoint_width or self.local_intermediate * self.moe.tp_size
+-        first = self.moe.tp_rank * self.local_intermediate
+-        last = min(first + self.local_intermediate, width)
+-        if first >= last:
+-            raise ValueError("CSF TP rank has no checkpoint channels")
+-        h, n = self.hidden_size, self.local_intermediate
+-        values = self._components.setdefault(key, {})
+-        if field_name == "weight":
+-            expected = (h, width // 2) if shard_id == "w2" else (width, h // 2)
+-            if (
+-                tuple(loaded_weight.shape) != expected
+-                or loaded_weight.dtype != torch.uint8
+-            ):
+-                raise ValueError(f"Invalid NVFP4 weight shape or dtype: {weight_name}")
+-            if self._packed is None:
+-                # Projections land directly in the layer's packed FC1 (up/gate
+-                # rows) and FC2 weights. Per-expert device tensors fragment the
+-                # caching allocator across a large model.
+-                self._packed = (
+-                    torch.zeros(
+-                        (self.num_experts, 2 * n, h // 2),
+-                        dtype=torch.uint8,
+-                        device=param.device,
+-                    ),
+-                    torch.zeros(
+-                        (self.num_experts, h, n // 2),
+-                        dtype=torch.uint8,
+-                        device=param.device,
+-                    ),
+-                )
+-            w13, w2 = self._packed
+-            if shard_id == "w2":
+-                local = w2[expert_id]
+-                copy_weight(
+-                    local[:, : (last - first) // 2],
+-                    loaded_weight[:, first // 2 : last // 2],
+-                )
+-            else:
+-                local = w13[expert_id, :n] if shard_id == "w3" else w13[expert_id, n:]
+-                copy_weight(local[: last - first], loaded_weight[first:last])
+-            values[field_name] = local
+-        elif field_name in ("weight_scale_2", "input_scale"):
+-            if loaded_weight.numel() != 1 or loaded_weight.dtype != torch.float32:
+-                raise ValueError(f"CSF {field_name} must contain one FP32 value")
+-            values[field_name] = materialize_weight(loaded_weight).cpu()
+-        else:
+-            parts = self._scale_parts.setdefault(key, {})
+-            parts[field_name] = materialize_weight(loaded_weight).cpu()
+-            if len(parts) == 2:
+-                if shard_id == "w2":
+-                    rows, columns = h, width // 16
+-                    row_slice, column_slice = (0, h), (first // 16, last // 16)
+-                    out_rows, out_columns = h, n // 16
+-                else:
+-                    rows, columns = width, h // 16
+-                    row_slice, column_slice = (first, last), (0, columns)
+-                    out_rows, out_columns = n, columns
+-                fixed, exceptions = _slice_scale_plane(
+-                    parts["fixed"],
+-                    parts["exceptions"],
+-                    rows,
+-                    columns,
+-                    row_slice,
+-                    column_slice,
+-                    out_rows,
+-                    out_columns,
+-                )
+-                values["fixed"] = torch.from_numpy(fixed)
+-                values["exceptions"] = torch.from_numpy(exceptions)
+-                del self._scale_parts[key]
+-        return True if return_success else None
+-
+-    def _expert_tensors(self):
+-        from vllm.model_executor.model_loader.csf_utils import CsfMatrix
+-
+-        from .utils.nvfp4_csf_utils import TensorView
+-
+-        for expert in range(self.num_experts):
+-            projections = []
+-            for shard in ("w3", "w1", "w2"):
+-                values = self._components.get((expert, shard), {})
+-                required = {"weight", "fixed", "exceptions", "weight_scale_2"}
+-                if not self.use_a16:
+-                    required.add("input_scale")
+-                missing = required - values.keys()
+-                if missing:
+-                    raise ValueError(
+-                        f"Missing CSF tensors for expert {expert}/{shard}: "
+-                        f"{sorted(missing)}"
+-                    )
+-                projections.append(
+-                    CsfMatrix(
+-                        weight=TensorView(values["weight"]),
+-                        fixed=values["fixed"],
+-                        exceptions=values["exceptions"],
+-                        global_scale=values["weight_scale_2"],
+-                        input_scale=values.get(
+-                            "input_scale",
+-                            torch.ones((), dtype=torch.float32, device="cpu"),
+-                        ),
+-                    )
+-                )
+-            yield tuple(projections)
++        for name in ("w13_weight", "w2_weight"):
++            layer.register_buffer(
++                name, torch.empty(0, dtype=torch.uint8), persistent=False
++            )
+ 
+     def get_fused_moe_quant_config(self, layer):
+         return self.moe_quant_config
+@@ -284,16 +194,17 @@ class Nvfp4CsfMoEMethod(FusedMoEMethodBase):
+     def process_weights_after_loading(self, layer):
+         from b12x.moe import fused_moe
+ 
+-        from .utils.nvfp4_csf_utils import prepare_nvfp4_csf_weights
++        from vllm.model_executor.model_loader.nvfp4_csf_loader import (
++            read_nvfp4_csf_layer,
++        )
+ 
++        tp, rank = (
++            get_tensor_model_parallel_world_size(),
++            get_tensor_model_parallel_rank(),
++        )
+         device = layer.w13_weight.device
+         e, h, n = self.num_experts, self.hidden_size, self.local_intermediate
+-        # Native E4M3 scale storage: the F8_128x4 grid (rows in 128s, k-groups
+-        # in 4s), which TP-padded shards (GLM-5.3 TP6: 352 channels) fill.
+-        shapes = (
+-            (e, round_up(2 * n, 128), h // 16),
+-            (e, h, round_up(n // 16, 4)),
+-        )
++        shapes = ((e, 2 * n, h // 16), (e, h, n // 16))
+         if self.owner.scale_scratch is None:
+             self.owner.scale_scratch = tuple(
+                 torch.empty(s, dtype=torch.float8_e4m3fn, device=device) for s in shapes
+@@ -304,23 +215,18 @@ class Nvfp4CsfMoEMethod(FusedMoEMethodBase):
+         ):
+             raise ValueError("NVFP4-CSF shared scratch geometry/device mismatch")
+         with set_default_torch_num_threads(1):
+-            weights = prepare_nvfp4_csf_weights(
+-                self._expert_tensors(),
++            weights = read_nvfp4_csf_layer(
++                self.owner.checkpoint_root,
++                self.layer_index,
+                 num_experts=e,
+                 hidden_size=h,
+-                intermediate_size=n,
+-                tp_rank=0,
+-                tp_size=1,
++                intermediate_size=n * tp,
++                tp_rank=rank,
++                tp_size=tp,
+                 device=device,
+                 w13_scale_scratch=scratch[0],
+                 w2_scale_scratch=scratch[1],
+-                local_size=n,
+-                packed=self._packed,
+             )
+-        self._components.clear()
+-        self._scale_parts.clear()
+-        self._seen.clear()
+-        self._packed = None
+         packed = weights.packed
+         layer_max = envs.VLLM_B12X_MOE_FP4_LAYER_MAX_INPUT_SCALE
+         packed = replace(
+@@ -389,8 +291,8 @@ class Nvfp4CsfMoEMethod(FusedMoEMethodBase):
+             "NVFP4-CSF layer %d rank %d/%d: native NVFP4 %s, "
+             "shared scale scratch %d bytes",
+             self.layer_index,
+-            self.moe.tp_rank,
+-            self.moe.tp_size,
++            rank,
++            tp,
+             "A16" if self.use_a16 else "A4",
+             sum(t.numel() for t in scratch),
+         )
+@@ -405,11 +307,10 @@ class Nvfp4CsfMoEMethod(FusedMoEMethodBase):
+         shared_experts_input,
+         workspace=None,
+     ):
+-        moe_kernel = self.moe_kernel
+-        assert moe_kernel is not None
++        assert self.moe_kernel is not None
+ 
+         def run():
+-            return moe_kernel.apply(
++            return self.moe_kernel.apply(
+                 hidden_states=x,
+                 w1=layer.w13_weight,
+                 w2=layer.w2_weight,
+diff --git a/vllm/model_executor/model_loader/nvfp4_csf_loader.py b/vllm/model_executor/model_loader/nvfp4_csf_loader.py
+new file mode 100644
+index 0000000000..392d159c8c
+--- /dev/null
++++ b/vllm/model_executor/model_loader/nvfp4_csf_loader.py
+@@ -0,0 +1,297 @@
++# SPDX-License-Identifier: Apache-2.0
++# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++"""Load retained tensors while the quantization method owns compressed experts."""
++
++import time
++from collections.abc import Iterable
++from functools import lru_cache
++from pathlib import Path
++
++import numpy as np
++import regex as re
++import torch
++from safetensors import safe_open
++
++from vllm.model_executor.model_loader.csf_utils import (
++    CsfMatrix,
++    CsfTensorReader,
++    read_csf_contract,
++    tp_extent,
++)
++from vllm.model_executor.model_loader.default_loader import DefaultModelLoader
++from vllm.model_executor.model_loader.weight_utils import (
++    file_source_tensor,
++    safetensors_file_sources,
++)
++
++SCHEMA = "lil-nvfp4-csf-checkpoint/1"
++CODEC = "byte-window4-fixed-stream-u24-exceptions/1"
++FAMILIES = {
++    "glm53_nvfp4": (288, 4096, 2048, range(3, 45)),
++    "qwen38_flash_next_nvfp4": (512, 2560, 640, range(48)),
++}
++
++
++@lru_cache(maxsize=4)
++def checkpoint_contract(root: str) -> dict:
++    """Validate the NVFP4-CSF container before loading model tensors."""
++    return read_csf_contract(root, schema=SCHEMA, codec=CODEC, families=FAMILIES)
++
++
++def read_nvfp4_csf_layer(
++    root,
++    layer_index,
++    *,
++    num_experts,
++    hidden_size,
++    intermediate_size,
++    tp_rank,
++    tp_size,
++    device,
++    w13_scale_scratch,
++    w2_scale_scratch,
++):
++    """Read rank-local up/gate/down tensors and unprepared compressed scales."""
++    contract = checkpoint_contract(str(Path(root).resolve()))
++    e, h, n, layers = FAMILIES[contract["family"]]
++    if (num_experts, hidden_size, intermediate_size) != (e, h, n):
++        raise ValueError("NVFP4-CSF expert geometry differs from the checkpoint family")
++    if layer_index not in layers:
++        raise ValueError("NVFP4-CSF layer is outside the compressed expert inventory")
++    with CsfTensorReader(root, contract["source_names"], "nvfp4") as reader:
++
++        def experts():
++            for expert in range(num_experts):
++                prefix = (
++                    f"model.language_model.layers.{layer_index}.mlp.experts.{expert}"
++                )
++                yield tuple(
++                    reader.matrix(
++                        f"{prefix}.{p}.weight",
++                        f"{prefix}.{p}.weight_scale",
++                        global_scale=f"{prefix}.{p}.weight_scale_2",
++                        input_scale=f"{prefix}.{p}.input_scale",
++                    )
++                    for p in ("up_proj", "gate_proj", "down_proj")
++                )
++
++        return _load_nvfp4_csf_weights(
++            experts(),
++            num_experts=num_experts,
++            hidden_size=hidden_size,
++            intermediate_size=intermediate_size,
++            tp_rank=tp_rank,
++            tp_size=tp_size,
++            device=device,
++            w13_scale_scratch=w13_scale_scratch,
++            w2_scale_scratch=w2_scale_scratch,
++        )
++
++
++def _slice_scale_plane(fixed, exceptions, rows, columns, row_slice, column_slice):
++    """Copy aligned compressed extents and rebase exception positions."""
++    r0, r1 = row_slice
++    c0, c1 = column_slice
++    if not (0 <= r0 < r1 <= rows and r0 % 16 == r1 % 16 == 0):
++        raise ValueError("NVFP4-CSF row slices require complete 16-row slabs")
++    if not (0 <= c0 < c1 <= columns and c0 % 2 == c1 % 2 == columns % 2 == 0):
++        raise ValueError("NVFP4-CSF column slices require complete nibble pairs")
++    if fixed.dtype != torch.uint8 or exceptions.dtype != torch.uint32:
++        raise TypeError("NVFP4-CSF requires uint8 fixed and uint32 exception tensors")
++    stream = fixed.numpy().reshape(rows // 16, 16 * (1 + columns // 2))
++    bases = stream[:, :16]
++    if np.any(bases > 240):
++        raise ValueError("NVFP4-CSF row bases must be in 0..240")
++    packed = stream[:, 16:].reshape(rows, columns // 2)
++    selected = packed[r0:r1, c0 // 2 : c1 // 2]
++    result = np.concatenate(
++        (bases[r0 // 16 : r1 // 16], selected.reshape((r1 - r0) // 16, -1)), 1
++    )
++    words = exceptions.numpy().reshape(-1)
++    positions = words & np.uint32(0xFFFFFF)
++    if len(words) and (
++        positions[-1] >= rows * columns or np.any(positions[1:] <= positions[:-1])
++    ):
++        raise ValueError("NVFP4-CSF exception positions must be sorted and unique")
++    rr, cc = positions // columns, positions % columns
++    keep = (rr >= r0) & (rr < r1) & (cc >= c0) & (cc < c1)
++    local_positions = (rr[keep] - r0) * (c1 - c0) + cc[keep] - c0
++    selected_words = (words[keep] & np.uint32(0xFF000000)) | local_positions
++    return result.copy(), selected_words.astype(np.uint32)
++
++
++def _load_nvfp4_csf_weights(
++    experts: Iterable[tuple[CsfMatrix, CsfMatrix, CsfMatrix]],
++    *,
++    num_experts,
++    hidden_size,
++    intermediate_size,
++    tp_rank,
++    tp_size,
++    device,
++    w13_scale_scratch,
++    w2_scale_scratch,
++):
++    """Slice and upload up/gate/down-ordered expert projections.
++
++    The iterable must yield exactly ``num_experts`` projection triples. Tensor
++    stores, manifests and model-specific tensor names belong to the caller.
++    Expanded scale buffers remain caller-owned for serialized layer execution.
++    """
++    from b12x.loader._csf_blocks import export_csf_blocks
++    from b12x.moe.fused_moe import CsfBlockPlanes, Nvfp4CsfWeights, PackedWeights
++
++    if num_experts <= 0 or hidden_size <= 0 or hidden_size % 128:
++        raise ValueError("NVFP4-CSF requires experts and 128-aligned hidden channels")
++    first, last = tp_extent(intermediate_size, tp_rank, tp_size, 64)
++    local = last - first
++    w13 = torch.empty(
++        (num_experts, 2 * local, hidden_size // 2), dtype=torch.uint8, device="cpu"
++    )
++    w2 = torch.empty(
++        (num_experts, hidden_size, local // 2), dtype=torch.uint8, device="cpu"
++    )
++    # Model loaders may set BF16 as the default dtype. Calibration belongs to
++    # the source FP32 contract and must not be rounded with the model weights.
++    g13, g2 = (
++        torch.empty(num_experts, dtype=torch.float32, device="cpu") for _ in range(2)
++    )
++    a13, a2 = (
++        torch.empty(num_experts, dtype=torch.float32, device="cpu") for _ in range(2)
++    )
++    fixed13, fixed2, exceptions13, exceptions2 = [], [], [], []
++
++    def scalar(value, role):
++        if value is None or value.numel() != 1 or value.dtype != torch.float32:
++            raise ValueError(f"NVFP4 {role} must be one FP32 value")
++        if not bool(torch.isfinite(value).all() and (value > 0).all()):
++            raise ValueError(f"NVFP4 {role} must be positive and finite")
++        return value.reshape(())
++
++    for expert, (first_projection, second_projection, down) in zip(
++        range(num_experts), experts, strict=True
++    ):
++        f13, e13, global13, input13 = [], [], [], []
++        for matrix, projection in enumerate(
++            (first_projection, second_projection, down)
++        ):
++            view = projection.weight
++            expected = (
++                [intermediate_size, hidden_size // 2]
++                if matrix < 2
++                else [hidden_size, intermediate_size // 2]
++            )
++            if view.get_shape() != expected or view.get_dtype() != "U8":
++                raise ValueError(
++                    f"NVFP4 nibble geometry/dtype mismatch: "
++                    f"expert={expert}, projection={matrix}"
++                )
++            global_scale, input_scale = (
++                scalar(projection.global_scale, "global_scale"),
++                scalar(projection.input_scale, "input_scale"),
++            )
++            if matrix < 2:
++                w13[expert, matrix * local : (matrix + 1) * local].copy_(
++                    view[first:last, :]
++                )
++                rows, columns = intermediate_size, hidden_size // 16
++                row_slice, column_slice = (first, last), (0, columns)
++                global13.append(global_scale)
++                input13.append(input_scale)
++            else:
++                w2[expert].copy_(view[:, first // 2 : last // 2])
++                rows, columns = hidden_size, intermediate_size // 16
++                row_slice, column_slice = (0, rows), (first // 16, last // 16)
++                g2[expert], a2[expert] = global_scale, input_scale
++            fixed, exceptions = _slice_scale_plane(
++                projection.fixed,
++                projection.exceptions,
++                rows,
++                columns,
++                row_slice,
++                column_slice,
++            )
++            if matrix < 2:
++                f13.append(fixed)
++                if matrix:
++                    exceptions += np.uint32(local * columns)
++                e13.append(exceptions)
++            else:
++                fixed2.append(fixed)
++                exceptions2.append(exceptions)
++        if not torch.equal(global13[0], global13[1]):
++            raise ValueError("NVFP4-CSF requires equal gate/up global weight scales")
++        g13[expert] = global13[0]
++        a13[expert] = torch.stack(input13).amax()
++        fixed13.append(np.concatenate(f13))
++        exceptions13.append(np.concatenate(e13))
++    return Nvfp4CsfWeights(
++        packed=PackedWeights(
++            w13=w13.to(device),
++            w2=w2.to(device),
++            w13_block_scales=w13_scale_scratch,
++            w2_block_scales=w2_scale_scratch,
++            w13_global_scales=g13.to(device),
++            w2_global_scales=g2.to(device),
++            input_scale=a13.to(device).reciprocal(),
++            intermediate_scale=a2.to(device).reciprocal(),
++            immutable_input_scales=True,
++        ),
++        w13_scales=CsfBlockPlanes(tuple(
++            export_csf_blocks(
++                fixed, exceptions, rows=2 * local, columns=hidden_size // 16,
++                quantization="nvfp4",
++            )
++            for fixed, exceptions in zip(fixed13, exceptions13, strict=True)
++        )),
++        w2_scales=CsfBlockPlanes(tuple(
++            export_csf_blocks(
++                fixed, exceptions, rows=hidden_size, columns=local // 16,
++                quantization="nvfp4",
++            )
++            for fixed, exceptions in zip(fixed2, exceptions2, strict=True)
++        )),
++    )
++
++
++class Nvfp4CsfModelLoader(DefaultModelLoader):
++    def _root(self, model_config):
++        quant = getattr(model_config.hf_config, "quantization_config", None)
++        quant = quant or model_config.hf_text_config.quantization_config
++        if quant.get("quant_method") != "nvfp4_csf":
++            raise ValueError("NVFP4-CSF loader requires quant_method=nvfp4_csf")
++        root = Path(quant["checkpoint_root"])
++        if not root.is_absolute():
++            raise ValueError("NVFP4-CSF checkpoint_root must be an absolute local path")
++        return root, checkpoint_contract(str(root.resolve()))
++
++    def download_model(self, model_config):
++        self._root(model_config)
++
++    def get_all_weights(self, model_config, model):
++        root, contract = self._root(model_config)
++        if getattr(model, "secondary_weights", ()):
++            raise NotImplementedError(
++                "NVFP4-CSF does not support secondary weight sources"
++            )
++        prefixes = getattr(model, "checkpoint_weight_name_prefixes", None)
++        file_filter = getattr(model, "checkpoint_file_weight_filter", None)
++        layers = model_config.hf_text_config.num_hidden_layers
++        self.counter_before_loading_weights = time.perf_counter()
++        for filename in sorted(set(contract["source_names"].values())):
++            descriptors = safetensors_file_sources(str(root / "tensors" / filename))
++            with safe_open(
++                root / "tensors" / filename, framework="pt", device="cpu"
++            ) as handle:
++                for name in sorted(handle.keys()):
++                    if prefixes is not None and not name.startswith(prefixes):
++                        continue
++                    match = re.search(
++                        r"^model\.language_model\.layers\.(\d+)\.mlp\.experts\.", name
++                    )
++                    if match and int(match.group(1)) < layers:
++                        continue
++                    if callable(file_filter) and file_filter(name):
++                        yield name, file_source_tensor(descriptors[name])
++                    else:
++                        yield name, handle.get_tensor(name)

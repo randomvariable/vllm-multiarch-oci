@@ -6,10 +6,12 @@ _IMAGE = select({
     "//platforms:linux_aarch64": "//image:vllmb12x_image",
     "//platforms:linux_x86_64": "//image:vllmb12x_image",
 })
+
 _PLATFORM = select({
     "//platforms:linux_aarch64": "linux/arm64",
     "//platforms:linux_x86_64": "linux/amd64",
 })
+
 _CONFIG = select({
     "//platforms:linux_aarch64": [
         "vllmb12x.yaml",
@@ -23,14 +25,30 @@ _CONFIG = select({
 
 container_structure_test(
     name = "vllmb12x_contract",
-    configs = _CONFIG,
-    driver = "docker",
-    image = _IMAGE,
-    platform = _PLATFORM,
     # Bazel's default is 300s for an untimed test. Loading a ~16GB image into
     # the worker's daemon plus 41 assertions, several of which compile C shims
     # in the container, exceeds that — and the load is cold after every worker
     # roll because the daemon keeps its store in the pod. 900s leaves room
     # without hiding a genuinely wedged run.
     timeout = "long",
+    configs = _CONFIG,
+    driver = "docker",
+    image = _IMAGE,
+    platform = _PLATFORM,
+)
+
+# Run the same ARM64 image contract on GB10 without moving its build actions.
+# This checks container dependencies, not CUDA kernel correctness.
+container_structure_test(
+    name = "vllmb12x_contract_sm121a",
+    timeout = "long",
+    configs = _CONFIG,
+    driver = "docker",
+    exec_properties = {"gpu": "nvidia-gb10"},
+    image = _IMAGE,
+    platform = _PLATFORM,
+    target_compatible_with = [
+        "@platforms//cpu:aarch64",
+        "@platforms//os:linux",
+    ],
 )

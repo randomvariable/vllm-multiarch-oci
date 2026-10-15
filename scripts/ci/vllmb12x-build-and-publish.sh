@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # The one build sequence every vllmb12x CI lane runs: check the Python tools,
-# build the multiarch image, run the image contract on both architectures, then
-# publish it. Lanes differ only in the tag the publisher allocates and where the
-# image lands, so that difference is the LANE variable rather than a copy.
+# build the multiarch image, run the image contract on every CUDA pool and the
+# x86 lane, then publish it. Lanes differ only in the tag the publisher
+# allocates and where the image lands, so the difference is the LANE variable.
 #
 # The caller holds the build mutex: two lanes building at once halve the remote
 # workers each sees and evict each other's ccache entries.
@@ -53,7 +53,8 @@ build --remote_cache=${REMOTE_CACHE}
 build --remote_timeout=21600
 build --remote_cache_compression
 build --remote_upload_local_results=true
-build:remote-aarch64 --remote_executor=${REMOTE_EXECUTOR}
+build:remote-sm120a --remote_executor=${REMOTE_EXECUTOR}
+build:remote-sm121a --remote_executor=${REMOTE_EXECUTOR}
 build:remote-x86_64 --remote_executor=${REMOTE_EXECUTOR}
 build:remote-multiarch --remote_executor=${REMOTE_EXECUTOR}
 # Bazel gives repository rules a sanitised environment, so a rule that shells out
@@ -61,6 +62,9 @@ build:remote-multiarch --remote_executor=${REMOTE_EXECUTOR}
 # runs cargo vendor to seal the llguidance sources, and cargo is not on the default
 # PATH: without this the fetch dies as execvp(cargo): No such file or directory.
 build --repo_env=PATH=${PATH}
+# rules_oci retains its bearer token through repository evaluation. Docker Hub
+# expires it after five minutes, so let Bazel refresh credentials per download.
+build --credential_helper=index.docker.io=%workspace%/scripts/ci/dockerhub-credential-helper.py
 EOF
 
 # Local strategy: this is a host Python test, and the remote ARM64 worker
@@ -105,9 +109,16 @@ test -x "$BAZEL_PY" || {
 # /var/run/docker/docker.sock, not at the docker default. A remote
 # action's environment is built by Bazel, not inherited from the
 # worker's container, so the path has to be passed explicitly.
-for platform in aarch64 x86_64; do
-    "$BAZEL" test //tests/image:vllmb12x_contract \
-        --config="remote-${platform}" \
+# The GB10 contract overrides only its test action's GPU property, reusing the
+# ARM64 image build. Each profile disables test-result caching.
+for spec in \
+    "vllmb12x_contract:remote-sm120a" \
+    "vllmb12x_contract_sm121a:remote-sm120a" \
+    "vllmb12x_contract:remote-x86_64"; do
+    target="${spec%%:*}"
+    config="${spec##*:}"
+    "$BAZEL" test "//tests/image:${target}" \
+        --config="${config}" \
         --disk_cache= \
         --//platforms:vllmb12x_cache_root="$VLLMB12X_CACHE_ROOT" \
         --test_output=errors \

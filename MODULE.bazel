@@ -63,6 +63,9 @@ apt.sources_list(
     # mirror is consulted only after the snapshot origin fails.
     uris = [
         "https://snapshot.ubuntu.com/ubuntu/20260901T000000Z",
+        # Preserve the original index and hashes when its blob endpoint fails.
+        "mirror+https://snapshot.ubuntu.com/ubuntu/20260902T000000Z",
+        "mirror+https://snapshot.ubuntu.com/ubuntu/20260907T000000Z",
         "mirror+https://archive.ubuntu.com/ubuntu",
         "mirror+https://ports.ubuntu.com/ubuntu-ports",
     ],
@@ -235,13 +238,11 @@ sources.profile(
     # part of source.identity.json.
     vllm_patches = [
         "//third_party:vllm_flash_attn_cute_namespace.patch",
+        "//third_party:vllm_nvfp4_csf_registration.patch",
+        "//third_party:vllm_nvfp4_csf_loader.patch",
     ],
-    # No flashinfer patches: the b12x loader include-order repair
-    # (flashinfer_b12x_loader_unity_order.patch) became obsolete when
-    # local-inference-lab/flashinfer a22eecc1 fixed _storage.c to include
-    # _direct.c before _batch.c upstream. The pinned flashinfer tip must
-    # contain that fix; if the pin ever predates it, re-add the patch.
-    flashinfer_patches = [],
+    # flashinfer-ai/flashinfer#6358, pinned at 34ba22efd2ec.
+    flashinfer_patches = ["//third_party:flashinfer_b12x_row_cache.patch"],
 )
 use_repo(
     sources,

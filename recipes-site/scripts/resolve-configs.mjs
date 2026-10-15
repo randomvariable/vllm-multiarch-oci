@@ -28,7 +28,7 @@ const RECIPE_ROOT = join(REPOSITORY_ROOT, "recipes");
 
 // The recipes the deployment flow offers as validated. A missing one is a build
 // failure, not a skip: the flow cannot show a card for a recipe that vanished.
-const REQUIRED_RECIPES = ["qwen38-flash-next-gb10-tp2", "deepseek-v4-flash-vision-gb10-tp2", "qwen38-27b"];
+const REQUIRED_RECIPES = ["qwen38-flash-next-gb10-tp2", "deepseek-v4-flash-vision-gb10-tp2", "qwen38-27b", "qwen38-flash-next-rtx6000-tp1"];
 
 // The policy files the browser-side resolver needs. Everything else in the
 // upstream tree is Python the image does not ship.
@@ -66,6 +66,11 @@ const DOCKER_PASSTHROUGH = new Set([
   "LWS_GROUP_SIZE",
   "LWS_LEADER_ADDRESS",
   "POD_IP",
+  // Multi-node presets run one TP group across machines; their placement is
+  // resolve-time input (see resolveOne), and both lanes must agree so the
+  // container and the host print the same rank-zero command.
+  "NODE_RANK",
+  "MASTER_ADDR",
 ]);
 
 function assert(condition, message) {
@@ -454,6 +459,25 @@ function resolveOne(runtimeRoot, entry, imageReference = null) {
     groupSize = recipe.topology?.kind === "lws" ? recipe.topology.nodes : 1;
   }
   const environment = launchEnvironment(runtimeRoot, recipe?.topology?.kind ?? "single", groupSize);
+  // A multi-node preset declares `nnodes > 1` as an option, so unlike our LWS
+  // recipes (whose placement comes from launch.topology_args at run time) its
+  // master-addr is a resolve-time input the operator supplies per pod. The site
+  // publishes the rank-zero view -- the only rank that serves the API -- so the
+  // generator injects exactly that pair. 127.0.0.1 is the leader-self address
+  // launch.topology_args gives rank 0, not a guessed host; DOCKER_PASSTHROUGH
+  // carries both so the image lane resolves the identical command. Detection is
+  // from the resolved preset's own `options.nnodes`, never by name, so a preset
+  // that stops declaring nnodes stops getting the injection.
+  const presetIndex = entry.argv.indexOf("--preset");
+  if (presetIndex >= 0) {
+    const presetName = entry.argv[presetIndex + 1];
+    const presets = readYaml(join(runtimeRoot, "presets.yaml"), "presets.yaml").presets ?? {};
+    const nnodes = presets[presetName]?.options?.nnodes;
+    if (Number.isSafeInteger(nnodes) && nnodes > 1) {
+      environment.NODE_RANK = "0";
+      environment.MASTER_ADDR = "127.0.0.1";
+    }
+  }
   let stdout;
   if (imageReference) {
     // Ask the published image what it would run rather than asking a checkout's

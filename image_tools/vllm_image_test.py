@@ -2,6 +2,7 @@
 """Focused behavioral tests for the installed vllm-image command."""
 
 import contextlib
+import hashlib
 import http.server
 import json
 import os
@@ -224,6 +225,160 @@ class CommandTests(unittest.TestCase):
             self.assertEqual(fake.call_args.kwargs["ignore_patterns"], ["examples/*"])
             self.assertEqual(list(root.glob(".published.tmp-*")), [])
 
+    def csf_snapshot(self, root: Path, revision: str, family="qwen38_flash_next_nvfp4", complete=True) -> Path:
+        """Lay out one NVFP4-CSF container: manifest + metadata/ + tensors/."""
+        snapshot = root / "csf-cache-layout" / revision
+        metadata = snapshot / "metadata"
+        tensors = snapshot / "tensors"
+        metadata.mkdir(parents=True)
+        tensors.mkdir(parents=True)
+        (snapshot / "manifest.json").write_text(json.dumps(
+            {"schema": vllm_image._CSF_SCHEMA, "family": family,
+             "codec": "byte-window4-fixed-stream-u24-exceptions/1"}
+        ))
+        (snapshot / "build-contract.json").write_text("{}")
+        (snapshot / "verification.json").write_text("{}")
+        original_qc = {"quant_method": "modelopt", "quant_algo": "NVFP4"}
+        (metadata / "config.json").write_text(json.dumps(
+            {"architectures": ["Qwen4ExpForCausalLM"], "quantization_config": original_qc}
+        ))
+        (metadata / "tokenizer_config.json").write_text("{}")
+        (metadata / "chat_template.jinja").write_text("template")
+        (metadata / "model.safetensors.index.json").write_text(json.dumps(
+            {"weight_map": {"a": "model-00001.safetensors", "b": "model-00002.safetensors"}}
+        ))
+        (tensors / "model-00001.safetensors").write_bytes(b"weights")
+        if complete:
+            (tensors / "model-00002.safetensors").write_bytes(b"weights")
+        return snapshot
+
+    def test_model_sync_csf_publishes_nvfp4_csf_serving_dir(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            revision = "a" * 40
+            snapshot = self.csf_snapshot(root, revision)
+            serve = root / "serve"
+            args = vllm_image.parser().parse_args([
+                "model-sync", "--repo", "org/model", "--revision", revision,
+                "--storage-root", str(root), "--publish", str(serve),
+                "--csf", "--csf-family", "qwen38_flash_next_nvfp4",
+            ])
+            fake = mock.Mock(return_value=str(snapshot))
+            with mock.patch.dict(sys.modules, {"huggingface_hub": mock.Mock(snapshot_download=fake)}):
+                # Drive the CLI wrapper the recipe's --model-sync path runs; it
+                # is the consumer-visible surface. sync_model's shard count is an
+                # internal return, so assert the observable publishing instead.
+                vllm_image.model_sync(args)
+            self.assertTrue((snapshot / "tensors/model-00002.safetensors").is_file())
+            # The published path is a symlink to an immutable generated dir
+            # under the state root, never the snapshot and never rebuilt in place.
+            generated = (root / ".vllm-image/model-sync"
+                         / f"{vllm_image._marker_key('org/model', revision)}.csf-serve")
+            self.assertTrue(serve.is_symlink())
+            self.assertEqual(serve.resolve(), generated.resolve())
+            self.assertTrue(generated.is_dir() and not generated.is_symlink())
+            # metadata/ is lifted to the serving root; tensors stay in the snapshot.
+            self.assertTrue((serve / "model.safetensors.index.json").is_file())
+            self.assertTrue((serve / "chat_template.jinja").is_file())
+            self.assertFalse((generated / "tensors").exists())
+            self.assertFalse((generated / "manifest.json").exists())
+            qc = json.loads((serve / "config.json").read_text())["quantization_config"]
+            self.assertEqual(qc["quant_method"], "nvfp4_csf")
+            self.assertEqual(qc["format_version"], 1)
+            self.assertEqual(qc["checkpoint_root"], str(snapshot.resolve()))
+            self.assertEqual(qc["source_quantization_config"],
+                             {"quant_method": "modelopt", "quant_algo": "NVFP4"})
+            # A repeat sync of the same revision must not touch the generated
+            # directory: a disk-PLE reader may hold these files open.
+            sentinel = generated / ".sentinel"
+            sentinel.write_text("do-not-rebuild")
+            self.assertEqual(list(generated.parent.glob("*.csf-serve.tmp-*")), [])
+            with mock.patch.dict(sys.modules, {"huggingface_hub": mock.Mock(snapshot_download=fake)}):
+                vllm_image.model_sync(args)
+            self.assertEqual(sentinel.read_text(), "do-not-rebuild")
+
+    def test_model_sync_csf_identity_digests_manifest_not_serving_dir(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            revision = "a" * 40
+            snapshot = self.csf_snapshot(root, revision)
+            args = vllm_image.parser().parse_args([
+                "model-sync", "--repo", "org/model", "--revision", revision,
+                "--storage-root", str(root), "--publish", str(root / "serve"),
+                "--csf", "--csf-family", "qwen38_flash_next_nvfp4",
+            ])
+            fake = mock.Mock(return_value=str(snapshot))
+            with mock.patch.dict(sys.modules, {"huggingface_hub": mock.Mock(snapshot_download=fake)}):
+                vllm_image.model_sync(args)
+            expected = hashlib.sha256(
+                vllm_image._CSF_IDENTITY_SALT + (snapshot / "manifest.json").read_bytes()
+            ).hexdigest()
+            self.assertEqual(
+                vllm_image.csf_serving_identity(root, "org/model", revision),
+                {"identity": expected, "revision": ""},
+            )
+            # The identity describes the validated container, not the generated
+            # serving directory: mutating the staged tree must not move it.
+            generated = (root / ".vllm-image/model-sync"
+                         / f"{vllm_image._marker_key('org/model', revision)}.csf-serve")
+            (generated / "stray-added-by-a-later-run").write_text("x")
+            (generated / "config.json").write_text("{}")
+            self.assertEqual(
+                vllm_image.csf_serving_identity(root, "org/model", revision),
+                {"identity": expected, "revision": ""},
+            )
+
+    def test_conventional_sync_has_no_csf_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            revision = "a" * 40
+            snapshot = self.snapshot(root, revision)
+            args = vllm_image.parser().parse_args([
+                "model-sync", "--repo", "org/model", "--revision", revision,
+                "--storage-root", str(root), "--publish", str(root / "published"),
+            ])
+            fake = mock.Mock(return_value=str(snapshot))
+            with mock.patch.dict(sys.modules, {"huggingface_hub": mock.Mock(snapshot_download=fake)}):
+                vllm_image.model_sync(args)
+            self.assertIsNone(vllm_image.csf_serving_identity(root, "org/model", revision))
+
+    def test_model_sync_csf_fails_closed_on_wrong_contract(self):
+        for family, reason in (("glm53_nvfp4", "unexpected CSF contract"),
+                               (None, "unexpected CSF contract")):
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                revision = "a" * 40
+                snapshot = self.csf_snapshot(
+                    root, revision, family=family or "some_other_family",
+                )
+                args = vllm_image.parser().parse_args([
+                    "model-sync", "--repo", "org/model", "--revision", revision,
+                    "--storage-root", str(root), "--publish", str(root / "serve"),
+                    "--csf", "--csf-family", "qwen38_flash_next_nvfp4",
+                ])
+                fake = mock.Mock(return_value=str(snapshot))
+                with mock.patch.dict(sys.modules, {"huggingface_hub": mock.Mock(snapshot_download=fake)}):
+                    with self.assertRaisesRegex(vllm_image.ConfigError, reason):
+                        vllm_image.model_sync(args)
+                self.assertFalse((root / "serve").exists())
+                self.assertEqual(list((root / ".vllm-image/model-sync").glob("*.json")), [])
+
+    def test_model_sync_csf_rejects_missing_tensor_shard(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            revision = "a" * 40
+            snapshot = self.csf_snapshot(root, revision, complete=False)
+            args = vllm_image.parser().parse_args([
+                "model-sync", "--repo", "org/model", "--revision", revision,
+                "--storage-root", str(root), "--publish", str(root / "serve"),
+                "--csf", "--csf-family", "qwen38_flash_next_nvfp4",
+            ])
+            fake = mock.Mock(return_value=str(snapshot))
+            with mock.patch.dict(sys.modules, {"huggingface_hub": mock.Mock(snapshot_download=fake)}):
+                with self.assertRaisesRegex(vllm_image.ConfigError, "incomplete CSF snapshot"):
+                    vllm_image.model_sync(args)
+            self.assertFalse((root / "serve").exists())
+
     def test_model_sync_accepts_only_hub_full_commit_oid(self):
         for revision in ("main", "v1", "abcdef0", "A" * 40, "a" * 39, "a" * 41):
             result = self.invoke(
@@ -231,6 +386,14 @@ class CommandTests(unittest.TestCase):
                 "--storage-root", "/tmp", "--publish", "/tmp/model",
             )
             self.assertEqual(result.returncode, vllm_image.EXIT_CONFIG, revision)
+
+    def test_model_sync_csf_requires_a_family(self):
+        result = self.invoke(
+            "model-sync", "--repo", "org/model", "--revision", "a" * 40,
+            "--storage-root", "/tmp", "--publish", "/tmp/model", "--csf",
+        )
+        self.assertEqual(result.returncode, vllm_image.EXIT_CONFIG)
+        self.assertIn("CSF", result.stderr)
 
 
 if __name__ == "__main__":

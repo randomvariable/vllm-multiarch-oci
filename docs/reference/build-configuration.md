@@ -75,6 +75,18 @@ the staged files. The shared ccache and remote action cache remain separate.
 The checkout occupies `checkout/` and staging occupies its sibling
 `.build-home/`. Bazel rejects its repository contents cache inside the checkout.
 
+The shared lane configures `scripts/ci/dockerhub-credential-helper.py` for Bazel
+downloads from `index.docker.io`. It uses the bootstrapped host `crane` and the
+lane's existing `DOCKER_CONFIG`. The helper returns an explicit expiry before
+Docker Hub's five-minute bearer-token lifetime. Bazel can then refresh the token
+during long repository evaluations instead of reusing `rules_oci`'s expired
+token. The helper does not change the credentials used to publish the image.
+
+APT keeps the 2026-09-01 snapshot as the package-index and checksum authority.
+The 2026-09-02 snapshot is a blob-only mirror before the current Ubuntu mirrors.
+It supplies the same checksum-verified package versions when the original
+snapshot returns server errors and current mirrors have removed those versions.
+
 ## Pull-Request Builds
 
 [`.tekton/vllmb12x-pull-request.yaml`](../../.tekton/vllmb12x-pull-request.yaml) builds and contract-tests the same image for a pull request against `main`, then pushes it to the internal registry only. It skips the same documentation-only paths as the nightly, and a new commit on the pull request cancels the run building the previous one.
@@ -155,7 +167,7 @@ A calendar component would make two builds of identical inputs disagree, so the 
 
 ## Optional CI Configuration
 
-NativeLink is our optional CI backend. The public `remote-aarch64` configuration selects remote execution with no local fallback, minimal downloads, compression, and a 21600-second remote timeout. Endpoints, authentication, and execution properties must be supplied separately by CI. No private infrastructure is configured in the repository. Local Justfile recipes do not use this configuration.
+NativeLink is our optional CI backend. Both ARM CUDA pools are exercised by every vllmb12x lane, routed by the NativeLink `gpu` exec property (exact match), not by any Kubernetes label. The server21 pass runs the plain image contract under `remote-sm120a` (`gpu=nvidia-rtx-pro-6000-blackwell`); the server24 GB10 pass runs a dedicated `//tests/image:vllmb12x_contract_sm121a` target that pins `gpu=nvidia-gb10` on its own test action only, so the ARM64 image dependency actions keep their server21 action key and are reused rather than rebuilt, and the published index stays exactly one `linux/arm64` + one `linux/amd64` entry. This contract is a device/library-resolution check (torch/cuDNN import, b12x C-shim compile) executed on real GB10 hardware — not a CUDA kernel forward-pass, which is covered separately by the CUDA smoke evidence. `remote-sm121a` additionally offers a general opt-in profile that runs the whole ARM build on GB10. `remote-multiarch` assembles the two-entry index and `remote-x86_64` compiles the `sm_120` host lane; each keeps the family object at `cuda_arch=120f` (ARM) / `120` (x86). Every remote config selects execution with no local fallback, minimal downloads, compression, and a 21600-second timeout. CI supplies endpoints as plaintext `grpc://` (no TLS secret); TLS applies only to external workstation use. No private infrastructure is configured in the repository. Local Justfile recipes do not use these configurations.
 
 ## Runtime
 

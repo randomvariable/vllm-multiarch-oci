@@ -120,6 +120,20 @@ fileExistenceTests:
   - name: "Policy data"
     path: "/opt/vllm-image/runtime/options.yaml"
     shouldExist: true
+  # The FP4-CSF readers name the checkpoints they accept through the pinned
+  # manifest digests, and an external cache refuses to start without the
+  # helper that ties its namespace to the weights that filled it.
+  - name: "FP4-CSF pinned checkpoint data"
+    path: "/opt/vllm-image/runtime/checkpoints.yaml"
+    shouldExist: true
+  - name: "Checkpoint identity helper"
+    path: "/opt/vllm-image/runtime/checkpoint_identity.py"
+    shouldExist: true
+  # The resolver picks this beside the amd64 default on an aarch64 machine, so
+  # the arm64 container must not fall back to the other foundation policy.
+  - name: "Arm64 foundation policy"
+    path: "/opt/vllm-image/runtime/platform-environment.linux-arm64.json"
+    shouldExist: true
   - name: "GB10 hardware profile"
     path: "/opt/vllm-image/runtime/hardware/gb10-roce.yaml"
     shouldExist: true
