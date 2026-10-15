@@ -3,13 +3,19 @@
 
 ccache lives in Ubuntu universe, which this workspace deliberately does not
 index: the universe and updates suites made `rules_distroless` resolution fail
-on transient snapshot outages. The three debs are pinned directly against the
-immutable snapshot instead, so the launcher is content-addressed and enters the
-CAS exactly once. `libxxhash0`, `libzstd1`, and `libstdc++6` already ship in
+on transient snapshot outages. The three debs are pinned by SHA-256 and fetched
+from snapshot and archive alternatives, so an origin outage cannot change the
+package contents. `libxxhash0`, `libzstd1`, and `libstdc++6` already ship in
 the worker image.
 """
 
-_SNAPSHOT = "https://snapshot.ubuntu.com/ubuntu/20260901T000000Z/pool"
+_PACKAGE_ORIGINS = [
+    "https://snapshot.ubuntu.com/ubuntu/20260901T000000Z/pool",
+    "https://snapshot.ubuntu.com/ubuntu/20260902T000000Z/pool",
+    "https://snapshot.ubuntu.com/ubuntu/20260907T000000Z/pool",
+    "https://archive.ubuntu.com/ubuntu/pool",
+    "https://ports.ubuntu.com/ubuntu-ports/pool",
+]
 
 _DEBS = {
     "arm64": [
@@ -46,7 +52,7 @@ def _ccache_repository_impl(ctx):
     for index, deb in enumerate(_DEBS[ctx.attr.cpu]):
         deb_path = "debs/%d.deb" % index
         ctx.download(
-            url = "%s/%s" % (_SNAPSHOT, deb["path"]),
+            url = ["%s/%s" % (origin, deb["path"]) for origin in _PACKAGE_ORIGINS],
             output = deb_path,
             sha256 = deb["sha256"],
         )

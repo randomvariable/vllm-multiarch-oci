@@ -49,6 +49,8 @@ cd "$(git rev-parse --show-toplevel)"
 
 cat >.bazelrc.user <<EOF
 startup --output_user_root=${HOME:?HOME must be the per-run staging directory}/bazel
+# CI consumes the committed dependency graph and must not rewrite it before release.
+common --lockfile_mode=error
 build --remote_cache=${REMOTE_CACHE}
 build --remote_timeout=21600
 build --remote_cache_compression
