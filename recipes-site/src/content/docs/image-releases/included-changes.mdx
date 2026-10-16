@@ -12,11 +12,11 @@ A change reaches the build in one of two ways. It is either already merged into 
 {/* included-changes:start */}
 ## vLLM
 
-Pinned at [`c28e1b08e1b6`](https://github.com/randomvariable/vllm/commit/c28e1b08e1b651cf86ce09852f4fb5098266fa47), branched from [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm) `integration/karmic-kraken-beta`.
+Pinned at [`6cf7d3eb3f65`](https://github.com/randomvariable/vllm/commit/6cf7d3eb3f6588efd0311be4e1e242b154867e98), branched from [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm) `integration/karmic-kraken-beta`.
 
 - **[local-inference-lab/vllm#800](https://github.com/local-inference-lab/vllm/pull/800)** — Bounded shared-memory broadcast waits
   - Merged into the pinned revision (1 commits).
-  - The only change this branch carries beyond the base: cherry-picked from randomvariable/vllm arm-spinloop-karmic-gated (29ebd2dfb82c) onto the integration/karmic-kraken-beta tip a07bfe440393 (result e3e20cd879; branch head c28e1b08e1b6 including the retired skinny-GEMM pair that nets to zero).
+  - Cherry-picked from randomvariable/vllm arm-spinloop-karmic-gated (29ebd2dfb82c) onto the integration/karmic-kraken-beta tip 6d66eed35b0a (result 7f240a99c7d6; branch head 6cf7d3eb3f65, which also carries the retired skinny-GEMM pair that nets to zero and the revert of upstream #1023 restoring the CSF block loader now that FlashInfer ships its b12x modules).
 - **Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute** — no upstream pull request
   - Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch`.
   - Packaging repair for this builder's symlink install path, which skips the import rewrite the upstream CMake copy performs. It carries no upstream change.
