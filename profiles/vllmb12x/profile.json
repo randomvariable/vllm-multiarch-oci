@@ -2,7 +2,7 @@
   "flashinfer_ref": "refs/heads/main",
   "lil_runtime_ref": "refs/heads/main",
   "name": "vllmb12x",
-  "source_ref": "refs/heads/shm-futex-release",
+  "source_ref": "refs/heads/cycle/karmic-kraken",
   "sources": {
     "cutlass": {
       "commit": "e6233cbac5d7c7a865c19c91cd684ceece19513c",
@@ -68,7 +68,7 @@
     },
     "vllm": {
       "cargo_vendor": true,
-      "commit": "23d838ec0c2a3516b2ba8be51666cd9075306037",
+      "commit": "6cf7d3eb3f6588efd0311be4e1e242b154867e98",
       "recursive_init_submodules": true,
       "remote": "https://github.com/randomvariable/vllm"
     },
