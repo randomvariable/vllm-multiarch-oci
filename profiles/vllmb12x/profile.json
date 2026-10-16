@@ -20,7 +20,7 @@
       "remote": "https://github.com/brandonmmusic-max/exllamav3.git"
     },
     "flashinfer": {
-      "commit": "6d7f238d40da62075f355fa5b000b0b25bfeb700",
+      "commit": "b1f081e6e381c333718054cc2cd1c3d82c855a79",
       "recursive_init_submodules": true,
       "remote": "https://github.com/local-inference-lab/flashinfer.git"
     },
@@ -30,7 +30,7 @@
       "remote": "https://github.com/voipmonitor/InstantTensor.git"
     },
     "lil_runtime": {
-      "commit": "f5bc69c221dc7933a153cf5340c53f3f795aad85",
+      "commit": "3d1ccd84c34ff2de6ad79004464d11474df80cb1",
       "recursive_init_submodules": false,
       "remote": "https://github.com/local-inference-lab/blackwell-llm-docker.git"
     },
@@ -68,7 +68,7 @@
     },
     "vllm": {
       "cargo_vendor": true,
-      "commit": "c28e1b08e1b651cf86ce09852f4fb5098266fa47",
+      "commit": "6cf7d3eb3f6588efd0311be4e1e242b154867e98",
       "recursive_init_submodules": true,
       "remote": "https://github.com/randomvariable/vllm.git"
     },
