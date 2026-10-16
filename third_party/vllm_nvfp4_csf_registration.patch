@@ -6,7 +6,7 @@ diff --git a/vllm/model_executor/layers/quantization/__init__.py b/vllm/model_ex
 +    "nvfp4_csf",
 @@ -159,1 +160,2 @@
      from .mxfp4_csf import Mxfp4CsfConfig
-+    from .nvfp4_csf import Nvfp4CsfConfig
++    from .nvfp4_csf_legacy import Nvfp4CsfConfig
 @@ -189,1 +191,2 @@
          "mxfp4_csf": Mxfp4CsfConfig,
 +        "nvfp4_csf": Nvfp4CsfConfig,

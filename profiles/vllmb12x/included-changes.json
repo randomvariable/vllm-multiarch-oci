@@ -8,11 +8,11 @@
       "upstream_base": "refs/heads/integration/karmic-kraken-beta",
       "changes": [
         {
-          "pull_request": "local-inference-lab/vllm#800",
-          "title": "Bounded shared-memory broadcast waits",
+          "pull_request": null,
+          "title": "Replace bounded SHM waits with futex parking, fan-in and advisory pre-wake",
           "inclusion": "branch",
-          "commits": 1,
-          "note": "The only change this branch carries beyond the base: cherry-picked from randomvariable/vllm arm-spinloop-karmic-gated (29ebd2dfb82c) onto the integration/karmic-kraken-beta tip a07bfe440393 (result e3e20cd879; branch head c28e1b08e1b6 including the retired skinny-GEMM pair that nets to zero)."
+          "commits": 14,
+          "note": "Use cycle/karmic-kraken at 6cf7d3eb3f6588efd0311be4e1e242b154867e98, including the bounded shared-memory broadcast waits and the restored native CSF block loader required by the pinned FlashInfer revision."
         },
         {
           "pull_request": null,
@@ -33,7 +33,7 @@
           "title": "Retain working Qwen NVFP4-CSF loader",
           "inclusion": "patch",
           "patch": "third_party/vllm_nvfp4_csf_loader.patch",
-          "note": "Carry the loader and quantizer from the previously deployed d07312cb9c5e source so the pinned branch can load the existing checkpoint."
+          "note": "Carry the legacy loader and quantizer from d07312cb9c5e in a separate module for existing checkpoints. Preserve the pinned native NVIDIA nvfp4_csf module and its Nvfp4CsfState API for ModelOpt mixed-precision checkpoints."
         }
       ]
     }

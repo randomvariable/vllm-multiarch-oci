@@ -68,9 +68,9 @@
     },
     "vllm": {
       "cargo_vendor": true,
-      "commit": "c28e1b08e1b651cf86ce09852f4fb5098266fa47",
+      "commit": "6cf7d3eb3f6588efd0311be4e1e242b154867e98",
       "recursive_init_submodules": true,
-      "remote": "https://github.com/randomvariable/vllm.git"
+      "remote": "https://github.com/randomvariable/vllm"
     },
     "vllm_cmake_cutlass": {
       "commit": "cb4247394dd82148787aed73e5dc7cef33cbf862",

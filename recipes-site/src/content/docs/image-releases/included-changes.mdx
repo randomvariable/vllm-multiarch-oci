@@ -12,11 +12,11 @@ A change reaches the build in one of two ways. It is either already merged into 
 {/* included-changes:start */}
 ## vLLM
 
-Pinned at [`c28e1b08e1b6`](https://github.com/randomvariable/vllm/commit/c28e1b08e1b651cf86ce09852f4fb5098266fa47), branched from [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm) `integration/karmic-kraken-beta`.
+Pinned at [`6cf7d3eb3f65`](https://github.com/randomvariable/vllm/commit/6cf7d3eb3f6588efd0311be4e1e242b154867e98), branched from [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm) `integration/karmic-kraken-beta`.
 
-- **[local-inference-lab/vllm#800](https://github.com/local-inference-lab/vllm/pull/800)** — Bounded shared-memory broadcast waits
-  - Merged into the pinned revision (1 commits).
-  - The only change this branch carries beyond the base: cherry-picked from randomvariable/vllm arm-spinloop-karmic-gated (29ebd2dfb82c) onto the integration/karmic-kraken-beta tip a07bfe440393 (result e3e20cd879; branch head c28e1b08e1b6 including the retired skinny-GEMM pair that nets to zero).
+- **Replace bounded SHM waits with futex parking, fan-in and advisory pre-wake** — no upstream pull request
+  - Merged into the pinned revision (14 commits).
+  - Use cycle/karmic-kraken at 6cf7d3eb3f6588efd0311be4e1e242b154867e98, including the bounded shared-memory broadcast waits and the restored native CSF block loader required by the pinned FlashInfer revision.
 - **Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute** — no upstream pull request
   - Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch`.
   - Packaging repair for this builder's symlink install path, which skips the import rewrite the upstream CMake copy performs. It carries no upstream change.
@@ -25,7 +25,7 @@ Pinned at [`c28e1b08e1b6`](https://github.com/randomvariable/vllm/commit/c28e1b0
   - Restore the public registrations required to load the Qwen Flash Next NVFP4-CSF checkpoint. The pinned source already contains both implementations.
 - **Retain working Qwen NVFP4-CSF loader** — no upstream pull request
   - Applied at build time by `third_party/vllm_nvfp4_csf_loader.patch`.
-  - Carry the loader and quantizer from the previously deployed d07312cb9c5e source so the pinned branch can load the existing checkpoint.
+  - Carry the legacy loader and quantizer from d07312cb9c5e in a separate module for existing checkpoints. Preserve the pinned native NVIDIA nvfp4_csf module and its Nvfp4CsfState API for ModelOpt mixed-precision checkpoints.
 {/* included-changes:end */}
 
 ## Keeping this list honest
