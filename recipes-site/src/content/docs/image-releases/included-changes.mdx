@@ -12,11 +12,11 @@ A change reaches the build in one of two ways. It is either already merged into 
 {/* included-changes:start */}
 ## vLLM
 
-Pinned at [`23d838ec0c2a`](https://github.com/randomvariable/vllm/commit/23d838ec0c2a3516b2ba8be51666cd9075306037), branched from [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm) `integration/karmic-kraken-beta`.
+Pinned at [`6cf7d3eb3f65`](https://github.com/randomvariable/vllm/commit/6cf7d3eb3f6588efd0311be4e1e242b154867e98), branched from [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm) `integration/karmic-kraken-beta`.
 
 - **Replace bounded SHM waits with futex parking, fan-in and advisory pre-wake** — no upstream pull request
   - Merged into the pinned revision (14 commits).
-  - Preserve release c28e1b08e1b6, revert e3e20cd879, then apply the SHM-only series through autoresearch/reducing-the-latency-through-algorithmic-changes-20261015 tip fb704e1124. Source head 23d838ec0c2a3516b2ba8be51666cd9075306037 excludes unrelated model-loader changes and the research harness.
+  - Use cycle/karmic-kraken at 6cf7d3eb3f6588efd0311be4e1e242b154867e98, including the bounded shared-memory broadcast waits and the restored native CSF block loader required by the pinned FlashInfer revision.
 - **Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute** — no upstream pull request
   - Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch`.
   - Packaging repair for this builder's symlink install path, which skips the import rewrite the upstream CMake copy performs. It carries no upstream change.

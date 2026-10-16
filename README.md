@@ -17,10 +17,10 @@ The image is built from pinned fork revisions rather than from upstream branches
 
 | Component | Change | Included as |
 | --- | --- | --- |
-| vLLM `23d838ec0c2a` | Replace bounded SHM waits with futex parking, fan-in and advisory pre-wake (no upstream pull request) | Merged into the pinned revision (14 commits) |
-| vLLM `23d838ec0c2a` | Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute (no upstream pull request) | Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch` |
-| vLLM `23d838ec0c2a` | Register existing NVFP4-CSF quantizer and loader (no upstream pull request) | Applied at build time by `third_party/vllm_nvfp4_csf_registration.patch` |
-| vLLM `23d838ec0c2a` | Retain working Qwen NVFP4-CSF loader (no upstream pull request) | Applied at build time by `third_party/vllm_nvfp4_csf_loader.patch` |
+| vLLM `6cf7d3eb3f65` | Replace bounded SHM waits with futex parking, fan-in and advisory pre-wake (no upstream pull request) | Merged into the pinned revision (14 commits) |
+| vLLM `6cf7d3eb3f65` | Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute (no upstream pull request) | Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch` |
+| vLLM `6cf7d3eb3f65` | Register existing NVFP4-CSF quantizer and loader (no upstream pull request) | Applied at build time by `third_party/vllm_nvfp4_csf_registration.patch` |
+| vLLM `6cf7d3eb3f65` | Retain working Qwen NVFP4-CSF loader (no upstream pull request) | Applied at build time by `third_party/vllm_nvfp4_csf_loader.patch` |
 <!-- included-changes:end -->
 
 The retained NVFP4-CSF loader converts checkpoint scale streams to FlashInfer's

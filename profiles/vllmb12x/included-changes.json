@@ -3,7 +3,7 @@
     {
       "name": "vllm",
       "title": "vLLM",
-      "branch": "refs/heads/shm-futex-release",
+      "branch": "refs/heads/cycle/karmic-kraken",
       "upstream": "local-inference-lab/vllm",
       "upstream_base": "refs/heads/integration/karmic-kraken-beta",
       "changes": [
@@ -12,7 +12,7 @@
           "title": "Replace bounded SHM waits with futex parking, fan-in and advisory pre-wake",
           "inclusion": "branch",
           "commits": 14,
-          "note": "Preserve release c28e1b08e1b6, revert e3e20cd879, then apply the SHM-only series through autoresearch/reducing-the-latency-through-algorithmic-changes-20261015 tip fb704e1124. Source head 23d838ec0c2a3516b2ba8be51666cd9075306037 excludes unrelated model-loader changes and the research harness."
+          "note": "Use cycle/karmic-kraken at 6cf7d3eb3f6588efd0311be4e1e242b154867e98, including the bounded shared-memory broadcast waits and the restored native CSF block loader required by the pinned FlashInfer revision."
         },
         {
           "pull_request": null,
