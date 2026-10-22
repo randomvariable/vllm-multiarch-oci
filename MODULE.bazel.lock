@@ -295,7 +295,7 @@
         "bzlTransitiveDigest": "PlQrasKK7uhGwT44KdQxo55ORbetuJwFgpKcWztYtY4=",
         "usagesDigest": "v1NM76jtmypurvYHosovhuK3DGVcyGHS0tbuJe7fAOw=",
         "recordedInputs": [
-          "FILE:@@//profiles/vllmb12x/profile.json b0efa6c58cbacffaae409fb7477d0da39535bb07e8ebbce18dec763e0b7993e8"
+          "FILE:@@//profiles/vllmb12x/profile.json 8b6471f1234d3074a3a750bf8cb9f810d77f0bd999f9dc96136d509da2aec5f8"
         ],
         "generatedRepoSpecs": {
           "vllmb12x_cutlass": {
@@ -335,7 +335,7 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/local-inference-lab/flashinfer.git",
-              "commit": "6d7f238d40da62075f355fa5b000b0b25bfeb700",
+              "commit": "3563f331b43565f7c04419b027ac5e34fb9a6bfa",
               "recursive_init_submodules": true,
               "patches": [
                 "@@//third_party:flashinfer_b12x_row_cache.patch"
@@ -359,7 +359,7 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/local-inference-lab/blackwell-llm-docker.git",
-              "commit": "f5bc69c221dc7933a153cf5340c53f3f795aad85",
+              "commit": "8bb0967ca1170f6e77c5bfdefcbeb85ec0c9a868",
               "recursive_init_submodules": false,
               "patches": [],
               "cargo_vendor": false,
@@ -436,7 +436,7 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/randomvariable/vllm.git",
-              "commit": "c28e1b08e1b651cf86ce09852f4fb5098266fa47",
+              "commit": "6cf7d3eb3f6588efd0311be4e1e242b154867e98",
               "recursive_init_submodules": true,
               "patches": [
                 "@@//third_party:vllm_flash_attn_cute_namespace.patch",
