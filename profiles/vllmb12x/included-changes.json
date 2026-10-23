@@ -16,17 +16,10 @@
         },
         {
           "pull_request": null,
-          "title": "Load legacy NVFP4-CSF checkpoint containers",
+          "title": "Resolve FlashInfer scale-swizzle intrinsics",
           "inclusion": "patch",
-          "patch": "third_party/vllm_nvfp4_csf_loader.patch",
-          "note": "Port the deployed checkpoint-container loader to lunar. Upstream ModelOpt CSF does not load this container format."
-        },
-        {
-          "pull_request": null,
-          "title": "Register the NVFP4-CSF checkpoint format",
-          "inclusion": "patch",
-          "patch": "third_party/vllm_nvfp4_csf_registration.patch",
-          "note": "Register nvfp4_csf quantization and load format for the deployed QFN checkpoint."
+          "patch": "third_party/vllm_b12x_intrinsics_reference.patch",
+          "note": "Use intrinsics.reference for NVFP4 and MXFP4 linear weight preparation with the pinned FlashInfer."
         },
         {
           "pull_request": null,

@@ -1,0 +1,7 @@
+diff --git a/vllm/utils/b12x.py b/vllm/utils/b12x.py
+--- a/vllm/utils/b12x.py
++++ b/vllm/utils/b12x.py
+@@ -447,2 +447,2 @@
+ def get_b12x_intrinsics() -> ModuleType | None:
+-    return _get_submodule("b12x._lib.intrinsics")
++    return _get_submodule("b12x._lib.intrinsics.reference")

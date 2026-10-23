@@ -2,7 +2,6 @@ exports_files([
     "rules_python_raw_wheel.patch",
     "vllm_flash_attn_cute_namespace.patch",
     "vllm_pin_memory_import_order.patch",
-    "vllm_nvfp4_csf_loader.patch",
-    "vllm_nvfp4_csf_registration.patch",
+    "vllm_b12x_intrinsics_reference.patch",
     "flashinfer_b12x_loader_unity_order.patch",
 ])
