@@ -238,6 +238,7 @@ sources.profile(
     # part of source.identity.json.
     vllm_patches = [
         "//third_party:vllm_flash_attn_cute_namespace.patch",
+        "//third_party:vllm_pin_memory_import_order.patch",
     ],
 )
 use_repo(

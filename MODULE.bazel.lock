@@ -293,7 +293,7 @@
     "//bazel:sources.bzl%profile_sources": {
       "general": {
         "bzlTransitiveDigest": "PlQrasKK7uhGwT44KdQxo55ORbetuJwFgpKcWztYtY4=",
-        "usagesDigest": "27S2nJnWs7icY1Yi+UWrPv4nfudZ01z3cIqvW9izwLY=",
+        "usagesDigest": "jbqXU+Efx5ofzkQD7i00JWejRt1liUpPbe8zBRhgLS8=",
         "recordedInputs": [
           "FILE:@@//profiles/vllmb12x/profile.json dfcd678e9c80675f3d4a64b0fc3bec702f61504535b9f1f66423a31c1234f076"
         ],
@@ -437,7 +437,8 @@
               "commit": "58664b3076744219489837611db54af3a5193922",
               "recursive_init_submodules": true,
               "patches": [
-                "@@//third_party:vllm_flash_attn_cute_namespace.patch"
+                "@@//third_party:vllm_flash_attn_cute_namespace.patch",
+                "@@//third_party:vllm_pin_memory_import_order.patch"
               ],
               "cargo_vendor": true,
               "cargo_manifest": "rust/Cargo.toml"
