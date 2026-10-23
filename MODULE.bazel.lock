@@ -293,9 +293,9 @@
     "//bazel:sources.bzl%profile_sources": {
       "general": {
         "bzlTransitiveDigest": "PlQrasKK7uhGwT44KdQxo55ORbetuJwFgpKcWztYtY4=",
-        "usagesDigest": "v1NM76jtmypurvYHosovhuK3DGVcyGHS0tbuJe7fAOw=",
+        "usagesDigest": "27S2nJnWs7icY1Yi+UWrPv4nfudZ01z3cIqvW9izwLY=",
         "recordedInputs": [
-          "FILE:@@//profiles/vllmb12x/profile.json b0efa6c58cbacffaae409fb7477d0da39535bb07e8ebbce18dec763e0b7993e8"
+          "FILE:@@//profiles/vllmb12x/profile.json dfcd678e9c80675f3d4a64b0fc3bec702f61504535b9f1f66423a31c1234f076"
         ],
         "generatedRepoSpecs": {
           "vllmb12x_cutlass": {
@@ -334,12 +334,10 @@
           "vllmb12x_flashinfer": {
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
-              "remote": "https://github.com/local-inference-lab/flashinfer.git",
-              "commit": "6d7f238d40da62075f355fa5b000b0b25bfeb700",
+              "remote": "https://github.com/randomvariable/flashinfer.git",
+              "commit": "0a2c4387aa8c3aed84f8e8de2a4494eeb3f5d44b",
               "recursive_init_submodules": true,
-              "patches": [
-                "@@//third_party:flashinfer_b12x_row_cache.patch"
-              ],
+              "patches": [],
               "cargo_vendor": false,
               "cargo_manifest": "rust/Cargo.toml"
             }
@@ -359,7 +357,7 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/local-inference-lab/blackwell-llm-docker.git",
-              "commit": "f5bc69c221dc7933a153cf5340c53f3f795aad85",
+              "commit": "8bb0967ca1170f6e77c5bfdefcbeb85ec0c9a868",
               "recursive_init_submodules": false,
               "patches": [],
               "cargo_vendor": false,
@@ -436,12 +434,10 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/randomvariable/vllm.git",
-              "commit": "c28e1b08e1b651cf86ce09852f4fb5098266fa47",
+              "commit": "58664b3076744219489837611db54af3a5193922",
               "recursive_init_submodules": true,
               "patches": [
-                "@@//third_party:vllm_flash_attn_cute_namespace.patch",
-                "@@//third_party:vllm_nvfp4_csf_registration.patch",
-                "@@//third_party:vllm_nvfp4_csf_loader.patch"
+                "@@//third_party:vllm_flash_attn_cute_namespace.patch"
               ],
               "cargo_vendor": true,
               "cargo_manifest": "rust/Cargo.toml"
@@ -462,7 +458,7 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/deepseek-ai/DeepGEMM.git",
-              "commit": "ad1f1726aa540a76c1d26d6a120effb8de21eaa4",
+              "commit": "1e1842a833699298f7afc02eefb2ed168fff6938",
               "recursive_init_submodules": true,
               "patches": [],
               "cargo_vendor": false,
@@ -484,7 +480,7 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/vllm-project/flash-attention.git",
-              "commit": "506341a143fcabd4bb79052a7605ada727d6b3f5",
+              "commit": "9cd61de38763d712bb6ce56e2a02cc2bf718c89f",
               "recursive_init_submodules": true,
               "patches": [],
               "cargo_vendor": false,
@@ -495,7 +491,7 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/vllm-project/FlashKDA.git",
-              "commit": "b59532f1f464fbd536272780e30df5bf6a2ccc02",
+              "commit": "17a037d98da546deb4591e967cf961a43c034d8b",
               "recursive_init_submodules": true,
               "patches": [],
               "cargo_vendor": false,
@@ -517,7 +513,7 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/vllm-project/MSA.git",
-              "commit": "f355c37eb4e1413f21ee2ad8bbad25079e6bef9d",
+              "commit": "be4a52aea420b6bef73be9af1a649859964790cb",
               "recursive_init_submodules": true,
               "patches": [],
               "cargo_vendor": false,
@@ -550,7 +546,7 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/triton-lang/triton.git",
-              "commit": "0f380657dbf3ee86eb57558ff71df24f03b5d4e7",
+              "commit": "669b31acc1dd1b3fd93286afd5db67f65d9f7557",
               "recursive_init_submodules": false,
               "patches": [],
               "cargo_vendor": false,

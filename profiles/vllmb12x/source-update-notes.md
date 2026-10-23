@@ -1,17 +1,17 @@
 # VLLMB12X Source Update Notes
 
-This file records upstream pull requests selected for the next Qwen source-lock update. It is not part of the current `profile.json` lock and does not claim that an image includes these changes. The build embeds the resolved lock and source identities in `/opt/vllmb12x/sources.lock.json` after the update.
+This file records the pull requests selected for the lunar cycle source lock. The build embeds the resolved lock and source identities in `/opt/vllmb12x/sources.lock.json`. Source selection does not establish that an image has been built or deployed.
 
 ## Integration Branches
 
-- vLLM target: [`randomvariable/vllm:cycle/karmic-kraken`](https://github.com/randomvariable/vllm/tree/cycle/karmic-kraken) — the `local-inference-lab/vllm:integration/karmic-kraken-beta` tip plus exactly one commit, the bounded shared-memory broadcast waits of [#800](https://github.com/local-inference-lab/vllm/pull/800).
-- B12X: the lock pins [`local-inference-lab/b12x:integration/karmic-kraken-beta`](https://github.com/local-inference-lab/b12x/tree/integration/karmic-kraken-beta) directly and carries no fork change. `randomvariable/b12x:cycle/karmic-kraken` is reset to that same tip, so it exists only to be forked from again.
-- The vLLM branch is named for the upstream cycle because `scripts/refresh-vllmb12x.py` composes the published version from `source_ref`; that ref puts the local version segment at `karmic.kraken`.
+- vLLM target: `randomvariable/vllm:cycle/lunar-leviathan` — `local-inference-lab/vllm:dev/lunar-leviathan` at `64fc1eec5933` plus PR #800, rebased as `58664b3076`.
+- FlashInfer target: `randomvariable/flashinfer:cycle/lunar-leviathan` — `local-inference-lab/flashinfer:main` at `9c9e94ef9aff` plus all five commits from PR #44, rebased to `0a2c4387a`. B12X now lives under FlashInfer's experimental package.
+- The refresh script derives the local version segment `lunar.leviathan` from `source_ref`.
 - Do not push to `local-inference-lab` repositories. The source lock stores immutable commits, not these moving branch names.
 
-## Already supplied by the beta base
+## Historical beta-base selections
 
-The fork branches carried each of these as local commits. The pinned base now supplies them, so the fork branches no longer replay them and a new selection must not re-add them.
+The previous cycle recorded these changes as supplied by its base. This historical list is not a fresh audit of the lunar base and does not request additional cherry-picks.
 
 | Component | Reaching the base | Change |
 | --- | --- | --- |
@@ -24,12 +24,13 @@ The fork branches carried each of these as local commits. The pinned base now su
 
 | Component | Change | Inclusion |
 | --- | --- | --- |
-| vLLM | [#800](https://github.com/local-inference-lab/vllm/pull/800) bounded shared-memory broadcast waits, the profile port of [vllm-project/vLLM #52917](https://github.com/vllm-project/vllm/pull/52917) | One commit on `cycle/karmic-kraken`, cherry-picked from `arm-spinloop-karmic-gated` (`29ebd2dfb82c`) onto `58d05bc7626d`. Open against `dev/karmic-kraken`; regenerate from the final integration tree before it lands. |
+| vLLM | [#800](https://github.com/local-inference-lab/vllm/pull/800) bounded shared-memory broadcast waits | One commit rebased onto `dev/lunar-leviathan`, published on `cycle/lunar-leviathan`. |
+| FlashInfer | [#44](https://github.com/local-inference-lab/flashinfer/pull/44) C S3-FIFO host row cache for disk PLE/Engram tables | Five commits rebased onto `main`, published on `cycle/lunar-leviathan`. |
 | vLLM | `third_party/vllm_flash_attn_cute_namespace.patch` | Applied at build time. Packaging repair for this builder's symlink install path, which skips the import rewrite the upstream CMake copy performs; carries no upstream change. |
 
 ## Retired selections, available for re-selection
 
-None of these is merged upstream. Re-select by building the fork branch from the current `integration/karmic-kraken-beta` tip and cherry-picking in the order listed, resolving against that tip and recording only the resulting full SHA in `profile.json`.
+These historical selections are not part of the lunar cycle request. Re-evaluate their upstream status and dependencies before selecting them again.
 
 | Component | Change | Where it survives |
 | --- | --- | --- |
