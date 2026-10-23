@@ -3,16 +3,30 @@
     {
       "name": "vllm",
       "title": "vLLM",
-      "branch": "refs/heads/cycle/karmic-kraken",
+      "branch": "refs/heads/cycle/karmic-kraken-canonical",
       "upstream": "local-inference-lab/vllm",
-      "upstream_base": "refs/heads/integration/karmic-kraken-beta",
+      "upstream_base": "refs/heads/dev/karmic-kraken",
       "changes": [
         {
           "pull_request": "local-inference-lab/vllm#800",
           "title": "Bounded shared-memory broadcast waits",
           "inclusion": "branch",
           "commits": 1,
-          "note": "The only change this branch carries beyond the base: cherry-picked from randomvariable/vllm arm-spinloop-karmic-gated (29ebd2dfb82c) onto the integration/karmic-kraken-beta tip a07bfe440393 (result e3e20cd879; branch head c28e1b08e1b6 including the retired skinny-GEMM pair that nets to zero)."
+          "note": "PR 800 adaptive spin commit rebased onto canonical dev/karmic-kraken 8244d1c44348 as 37f4cc4cd3. This base uses FlashInfer's CSF source/block APIs rather than the removed CsfScalePlanes API."
+        },
+        {
+          "pull_request": null,
+          "title": "Resolve FlashInfer scale-swizzle intrinsics",
+          "inclusion": "patch",
+          "patch": "third_party/vllm_b12x_intrinsics_reference.patch",
+          "note": "Use intrinsics.reference for NVFP4 and MXFP4 linear weight preparation with the pinned FlashInfer."
+        },
+        {
+          "pull_request": null,
+          "title": "Initialize pin-memory support after torch helpers",
+          "inclusion": "patch",
+          "patch": "third_party/vllm_pin_memory_import_order.patch",
+          "note": "Fix the lunar CPU-platform circular import exposed by the image CLI smoke."
         },
         {
           "pull_request": null,
@@ -20,20 +34,22 @@
           "inclusion": "patch",
           "patch": "third_party/vllm_flash_attn_cute_namespace.patch",
           "note": "Packaging repair for this builder's symlink install path, which skips the import rewrite the upstream CMake copy performs. It carries no upstream change."
-        },
+        }
+      ]
+    },
+    {
+      "name": "flashinfer",
+      "title": "FlashInfer",
+      "branch": "refs/heads/cycle/lunar-leviathan",
+      "upstream": "local-inference-lab/flashinfer",
+      "upstream_base": "refs/heads/main",
+      "changes": [
         {
-          "pull_request": null,
-          "title": "Register existing NVFP4-CSF quantizer and loader",
-          "inclusion": "patch",
-          "patch": "third_party/vllm_nvfp4_csf_registration.patch",
-          "note": "Restore the public registrations required to load the Qwen Flash Next NVFP4-CSF checkpoint. The pinned source already contains both implementations."
-        },
-        {
-          "pull_request": null,
-          "title": "Retain working Qwen NVFP4-CSF loader",
-          "inclusion": "patch",
-          "patch": "third_party/vllm_nvfp4_csf_loader.patch",
-          "note": "Carry the loader and quantizer from the previously deployed d07312cb9c5e source so the pinned branch can load the existing checkpoint."
+          "pull_request": "local-inference-lab/flashinfer#44",
+          "title": "C S3-FIFO host row cache for disk PLE/Engram tables",
+          "inclusion": "branch",
+          "commits": 5,
+          "note": "Five PR commits rebased onto main 9c9e94ef9aff, producing cycle tip 0a2c4387a."
         }
       ]
     }

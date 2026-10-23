@@ -42,8 +42,8 @@ _COMMIT = re.compile(r"^[0-9a-f]{40}$")
 # NVFP4-CSF checkpoints ship as a container the loader reads through an
 # explicit ``manifest.json`` and a ``metadata/`` directory; the conventional
 # root-``config.json``-plus-root-index layout does not apply. ``_CSF_SCHEMA``
-# is the one manifest schema this helper will stage, matching the pinned
-# loader's ``read_csf_contract`` (third_party/vllm_nvfp4_csf_loader.patch).
+# is the legacy manifest schema this helper stages. The lunar source uses
+# upstream ModelOpt CSF loading rather than the retired compatibility loader.
 _CSF_SCHEMA = "lil-nvfp4-csf-checkpoint/1"
 _CSF_METADATA_DIR = "metadata"
 _CSF_TENSORS_DIR = "tensors"
