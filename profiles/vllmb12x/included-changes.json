@@ -3,16 +3,16 @@
     {
       "name": "vllm",
       "title": "vLLM",
-      "branch": "refs/heads/cycle/lunar-leviathan",
+      "branch": "refs/heads/cycle/karmic-kraken-canonical",
       "upstream": "local-inference-lab/vllm",
-      "upstream_base": "refs/heads/dev/lunar-leviathan",
+      "upstream_base": "refs/heads/dev/karmic-kraken",
       "changes": [
         {
           "pull_request": "local-inference-lab/vllm#800",
           "title": "Bounded shared-memory broadcast waits",
           "inclusion": "branch",
           "commits": 1,
-          "note": "PR 800 commit 29ebd2dfb82c rebased onto dev/lunar-leviathan 64fc1eec5933 as 58664b3076."
+          "note": "PR 800 adaptive spin commit rebased onto canonical dev/karmic-kraken 8244d1c44348 as 37f4cc4cd3. This base uses FlashInfer's CSF source/block APIs rather than the removed CsfScalePlanes API."
         },
         {
           "pull_request": null,

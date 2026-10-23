@@ -1,12 +1,12 @@
 # VLLMB12X Source Update Notes
 
-This file records the pull requests selected for the lunar cycle source lock. The build embeds the resolved lock and source identities in `/opt/vllmb12x/sources.lock.json`. Source selection does not establish that an image has been built or deployed.
+This file records the selected source lock. Source selection does not establish that an image has been built or deployed.
 
 ## Integration Branches
 
-- vLLM target: `randomvariable/vllm:cycle/lunar-leviathan` — `local-inference-lab/vllm:dev/lunar-leviathan` at `64fc1eec5933` plus PR #800, rebased as `58664b3076`.
+- vLLM target: `randomvariable/vllm:cycle/karmic-kraken-canonical` — canonical `local-inference-lab/vllm:dev/karmic-kraken` at `8244d1c44348` plus PR #800, rebased as `37f4cc4cd309`. Canonical karmic uses the CSF source/block API shipped by the selected FlashInfer; lunar and karmic-beta still call the removed `CsfScalePlanes` API.
 - FlashInfer target: `randomvariable/flashinfer:cycle/lunar-leviathan` — `local-inference-lab/flashinfer:main` at `9c9e94ef9aff` plus all five commits from PR #44, rebased to `0a2c4387a`. B12X now lives under FlashInfer's experimental package.
-- The refresh script derives the local version segment `lunar.leviathan` from `source_ref`.
+- The scale-swizzle compatibility patch updates both the intrinsics module cache and getter to `b12x._lib.intrinsics.reference`.
 - Do not push to `local-inference-lab` repositories. The source lock stores immutable commits, not these moving branch names.
 
 ## Historical beta-base selections
@@ -24,7 +24,7 @@ The previous cycle recorded these changes as supplied by its base. This historic
 
 | Component | Change | Inclusion |
 | --- | --- | --- |
-| vLLM | [#800](https://github.com/local-inference-lab/vllm/pull/800) bounded shared-memory broadcast waits | One commit rebased onto `dev/lunar-leviathan`, published on `cycle/lunar-leviathan`. |
+| vLLM | [#800](https://github.com/local-inference-lab/vllm/pull/800) bounded shared-memory broadcast waits | One commit rebased onto canonical `dev/karmic-kraken`, published on `cycle/karmic-kraken-canonical`. |
 | FlashInfer | [#44](https://github.com/local-inference-lab/flashinfer/pull/44) C S3-FIFO host row cache for disk PLE/Engram tables | Five commits rebased onto `main`, published on `cycle/lunar-leviathan`. |
 | vLLM | `third_party/vllm_flash_attn_cute_namespace.patch` | Applied at build time. Packaging repair for this builder's symlink install path, which skips the import rewrite the upstream CMake copy performs; carries no upstream change. |
 

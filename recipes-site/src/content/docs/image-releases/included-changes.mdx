@@ -12,11 +12,11 @@ A change reaches the build in one of two ways. It is either already merged into 
 {/* included-changes:start */}
 ## vLLM
 
-Pinned at [`58664b307674`](https://github.com/randomvariable/vllm/commit/58664b3076744219489837611db54af3a5193922), branched from [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm) `dev/lunar-leviathan`.
+Pinned at [`37f4cc4cd309`](https://github.com/randomvariable/vllm/commit/37f4cc4cd309ca280cb69f4eeaf7152f36fa51ff), branched from [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm) `dev/karmic-kraken`.
 
 - **[local-inference-lab/vllm#800](https://github.com/local-inference-lab/vllm/pull/800)** — Bounded shared-memory broadcast waits
   - Merged into the pinned revision (1 commits).
-  - PR 800 commit 29ebd2dfb82c rebased onto dev/lunar-leviathan 64fc1eec5933 as 58664b3076.
+  - PR 800 adaptive spin commit rebased onto canonical dev/karmic-kraken 8244d1c44348 as 37f4cc4cd3. This base uses FlashInfer's CSF source/block APIs rather than the removed CsfScalePlanes API.
 - **Resolve FlashInfer scale-swizzle intrinsics** — no upstream pull request
   - Applied at build time by `third_party/vllm_b12x_intrinsics_reference.patch`.
   - Use intrinsics.reference for NVFP4 and MXFP4 linear weight preparation with the pinned FlashInfer.

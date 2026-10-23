@@ -17,10 +17,10 @@ The image is built from pinned fork revisions rather than from upstream branches
 
 | Component | Change | Included as |
 | --- | --- | --- |
-| vLLM `58664b307674` | [local-inference-lab/vllm#800](https://github.com/local-inference-lab/vllm/pull/800) Bounded shared-memory broadcast waits | Merged into the pinned revision (1 commits) |
-| vLLM `58664b307674` | Resolve FlashInfer scale-swizzle intrinsics (no upstream pull request) | Applied at build time by `third_party/vllm_b12x_intrinsics_reference.patch` |
-| vLLM `58664b307674` | Initialize pin-memory support after torch helpers (no upstream pull request) | Applied at build time by `third_party/vllm_pin_memory_import_order.patch` |
-| vLLM `58664b307674` | Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute (no upstream pull request) | Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch` |
+| vLLM `37f4cc4cd309` | [local-inference-lab/vllm#800](https://github.com/local-inference-lab/vllm/pull/800) Bounded shared-memory broadcast waits | Merged into the pinned revision (1 commits) |
+| vLLM `37f4cc4cd309` | Resolve FlashInfer scale-swizzle intrinsics (no upstream pull request) | Applied at build time by `third_party/vllm_b12x_intrinsics_reference.patch` |
+| vLLM `37f4cc4cd309` | Initialize pin-memory support after torch helpers (no upstream pull request) | Applied at build time by `third_party/vllm_pin_memory_import_order.patch` |
+| vLLM `37f4cc4cd309` | Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute (no upstream pull request) | Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch` |
 | FlashInfer `0a2c4387aa8c` | [local-inference-lab/flashinfer#44](https://github.com/local-inference-lab/flashinfer/pull/44) C S3-FIFO host row cache for disk PLE/Engram tables | Merged into the pinned revision (5 commits) |
 <!-- included-changes:end -->
 
