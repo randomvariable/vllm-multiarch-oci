@@ -227,6 +227,15 @@ commandTests:
         value: "cpu"
     args: ["--help"]
     expectedOutput: ["vLLM CLI"]
+  - name: "NVFP4-CSF checkpoint quantizer and loader resolve"
+    command: "/opt/venv/bin/python"
+    envVars:
+      - key: "VLLM_TARGET_DEVICE"
+        value: "cpu"
+    args:
+      - "-c"
+      - "from vllm.model_executor.layers.quantization import get_quantization_config; from vllm.model_executor.model_loader import get_model_loader; from vllm.config import LoadConfig; assert get_quantization_config('nvfp4_csf').get_name() == 'nvfp4_csf'; loader = get_model_loader(LoadConfig(load_format='nvfp4_csf')); assert type(loader).__name__ == 'Nvfp4CsfModelLoader'; print('NVFP4-CSF loader resolved')"
+    expectedOutput: ["NVFP4-CSF loader resolved"]
   - name: "Mooncake Python modules and CLI entry points are installed"
     command: "/opt/venv/bin/python"
     args:

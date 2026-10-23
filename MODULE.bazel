@@ -239,6 +239,8 @@ sources.profile(
     vllm_patches = [
         "//third_party:vllm_flash_attn_cute_namespace.patch",
         "//third_party:vllm_pin_memory_import_order.patch",
+        "//third_party:vllm_nvfp4_csf_loader.patch",
+        "//third_party:vllm_nvfp4_csf_registration.patch",
     ],
 )
 use_repo(
