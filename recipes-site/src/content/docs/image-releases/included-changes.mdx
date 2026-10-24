@@ -12,20 +12,28 @@ A change reaches the build in one of two ways. It is either already merged into 
 {/* included-changes:start */}
 ## vLLM
 
-Pinned at [`c28e1b08e1b6`](https://github.com/randomvariable/vllm/commit/c28e1b08e1b651cf86ce09852f4fb5098266fa47), branched from [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm) `integration/karmic-kraken-beta`.
+Pinned at [`37f4cc4cd309`](https://github.com/randomvariable/vllm/commit/37f4cc4cd309ca280cb69f4eeaf7152f36fa51ff), branched from [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm) `dev/karmic-kraken`.
 
 - **[local-inference-lab/vllm#800](https://github.com/local-inference-lab/vllm/pull/800)** — Bounded shared-memory broadcast waits
   - Merged into the pinned revision (1 commits).
-  - The only change this branch carries beyond the base: cherry-picked from randomvariable/vllm arm-spinloop-karmic-gated (29ebd2dfb82c) onto the integration/karmic-kraken-beta tip a07bfe440393 (result e3e20cd879; branch head c28e1b08e1b6 including the retired skinny-GEMM pair that nets to zero).
+  - PR 800 adaptive spin commit rebased onto canonical dev/karmic-kraken 8244d1c44348 as 37f4cc4cd3. This base uses FlashInfer's CSF source/block APIs rather than the removed CsfScalePlanes API.
+- **Resolve FlashInfer scale-swizzle intrinsics** — no upstream pull request
+  - Applied at build time by `third_party/vllm_b12x_intrinsics_reference.patch`.
+  - Use intrinsics.reference for NVFP4 and MXFP4 linear weight preparation with the pinned FlashInfer.
+- **Initialize pin-memory support after torch helpers** — no upstream pull request
+  - Applied at build time by `third_party/vllm_pin_memory_import_order.patch`.
+  - Fix the lunar CPU-platform circular import exposed by the image CLI smoke.
 - **Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute** — no upstream pull request
   - Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch`.
   - Packaging repair for this builder's symlink install path, which skips the import rewrite the upstream CMake copy performs. It carries no upstream change.
-- **Register existing NVFP4-CSF quantizer and loader** — no upstream pull request
-  - Applied at build time by `third_party/vllm_nvfp4_csf_registration.patch`.
-  - Restore the public registrations required to load the Qwen Flash Next NVFP4-CSF checkpoint. The pinned source already contains both implementations.
-- **Retain working Qwen NVFP4-CSF loader** — no upstream pull request
-  - Applied at build time by `third_party/vllm_nvfp4_csf_loader.patch`.
-  - Carry the loader and quantizer from the previously deployed d07312cb9c5e source so the pinned branch can load the existing checkpoint.
+
+## FlashInfer
+
+Pinned at [`0a2c4387aa8c`](https://github.com/randomvariable/flashinfer/commit/0a2c4387aa8c3aed84f8e8de2a4494eeb3f5d44b), branched from [`local-inference-lab/flashinfer`](https://github.com/local-inference-lab/flashinfer) `main`.
+
+- **[local-inference-lab/flashinfer#44](https://github.com/local-inference-lab/flashinfer/pull/44)** — C S3-FIFO host row cache for disk PLE/Engram tables
+  - Merged into the pinned revision (5 commits).
+  - Five PR commits rebased onto main 9c9e94ef9aff, producing cycle tip 0a2c4387a.
 {/* included-changes:end */}
 
 ## Keeping this list honest

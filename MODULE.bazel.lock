@@ -293,9 +293,9 @@
     "//bazel:sources.bzl%profile_sources": {
       "general": {
         "bzlTransitiveDigest": "PlQrasKK7uhGwT44KdQxo55ORbetuJwFgpKcWztYtY4=",
-        "usagesDigest": "v1NM76jtmypurvYHosovhuK3DGVcyGHS0tbuJe7fAOw=",
+        "usagesDigest": "vdXVi/hsX+sKiyZH2raZEpAzPcwJjpeVEW7sC7MuJ64=",
         "recordedInputs": [
-          "FILE:@@//profiles/vllmb12x/profile.json b0efa6c58cbacffaae409fb7477d0da39535bb07e8ebbce18dec763e0b7993e8"
+          "FILE:@@//profiles/vllmb12x/profile.json 8912c7887f325748ee433b206298af0b4698ca3fd4096381e64cddab4e01b041"
         ],
         "generatedRepoSpecs": {
           "vllmb12x_cutlass": {
@@ -334,12 +334,10 @@
           "vllmb12x_flashinfer": {
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
-              "remote": "https://github.com/local-inference-lab/flashinfer.git",
-              "commit": "6d7f238d40da62075f355fa5b000b0b25bfeb700",
+              "remote": "https://github.com/randomvariable/flashinfer.git",
+              "commit": "0a2c4387aa8c3aed84f8e8de2a4494eeb3f5d44b",
               "recursive_init_submodules": true,
-              "patches": [
-                "@@//third_party:flashinfer_b12x_row_cache.patch"
-              ],
+              "patches": [],
               "cargo_vendor": false,
               "cargo_manifest": "rust/Cargo.toml"
             }
@@ -359,7 +357,7 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/local-inference-lab/blackwell-llm-docker.git",
-              "commit": "f5bc69c221dc7933a153cf5340c53f3f795aad85",
+              "commit": "8bb0967ca1170f6e77c5bfdefcbeb85ec0c9a868",
               "recursive_init_submodules": false,
               "patches": [],
               "cargo_vendor": false,
@@ -436,12 +434,12 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/randomvariable/vllm.git",
-              "commit": "c28e1b08e1b651cf86ce09852f4fb5098266fa47",
+              "commit": "37f4cc4cd309ca280cb69f4eeaf7152f36fa51ff",
               "recursive_init_submodules": true,
               "patches": [
                 "@@//third_party:vllm_flash_attn_cute_namespace.patch",
-                "@@//third_party:vllm_nvfp4_csf_registration.patch",
-                "@@//third_party:vllm_nvfp4_csf_loader.patch"
+                "@@//third_party:vllm_pin_memory_import_order.patch",
+                "@@//third_party:vllm_b12x_intrinsics_reference.patch"
               ],
               "cargo_vendor": true,
               "cargo_manifest": "rust/Cargo.toml"
