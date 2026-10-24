@@ -12,11 +12,14 @@ A change reaches the build in one of two ways. It is either already merged into 
 {/* included-changes:start */}
 ## vLLM
 
-Pinned at [`37f4cc4cd309`](https://github.com/randomvariable/vllm/commit/37f4cc4cd309ca280cb69f4eeaf7152f36fa51ff), branched from [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm) `dev/karmic-kraken`.
+Pinned at [`ce5f4148d44a`](https://github.com/randomvariable/vllm/commit/ce5f4148d44abfb953fbe52b949c9bcc5f535792), branched from [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm) `dev/karmic-kraken`.
 
 - **[local-inference-lab/vllm#800](https://github.com/local-inference-lab/vllm/pull/800)** — Bounded shared-memory broadcast waits
   - Merged into the pinned revision (1 commits).
-  - PR 800 adaptive spin commit rebased onto canonical dev/karmic-kraken 8244d1c44348 as 37f4cc4cd3. This base uses FlashInfer's CSF source/block APIs rather than the removed CsfScalePlanes API.
+  - PR 800 adaptive spin commit replayed on top of the prefetch commit; recorded as ce5f4148d4. This base uses FlashInfer's CSF source/block APIs rather than the removed CsfScalePlanes API.
+- **Advisory disk row-cache prefetch for Qwen4Exp PLE and DeepSeek V4.1 Engram** — no upstream pull request
+  - Merged into the pinned revision (1 commits).
+  - One switch, VLLM_PLE_PREFETCH=1, warms the host row cache ahead of the lookup through the pinned FlashInfer's DiskTable.prefetch and the ple_hash.host and engram.host row-id helpers.
 - **Resolve FlashInfer scale-swizzle intrinsics** — no upstream pull request
   - Applied at build time by `third_party/vllm_b12x_intrinsics_reference.patch`.
   - Use intrinsics.reference for NVFP4 and MXFP4 linear weight preparation with the pinned FlashInfer.
@@ -29,11 +32,11 @@ Pinned at [`37f4cc4cd309`](https://github.com/randomvariable/vllm/commit/37f4cc4
 
 ## FlashInfer
 
-Pinned at [`0a2c4387aa8c`](https://github.com/randomvariable/flashinfer/commit/0a2c4387aa8c3aed84f8e8de2a4494eeb3f5d44b), branched from [`local-inference-lab/flashinfer`](https://github.com/local-inference-lab/flashinfer) `main`.
+Pinned at [`5f071af3723d`](https://github.com/randomvariable/flashinfer/commit/5f071af3723de59a4d9ffff36f05c80bad1feb4a), branched from [`local-inference-lab/flashinfer`](https://github.com/local-inference-lab/flashinfer) `main`.
 
 - **[local-inference-lab/flashinfer#44](https://github.com/local-inference-lab/flashinfer/pull/44)** — C S3-FIFO host row cache for disk PLE/Engram tables
-  - Merged into the pinned revision (5 commits).
-  - Five PR commits rebased onto main 9c9e94ef9aff, producing cycle tip 0a2c4387a.
+  - Merged into the pinned revision (7 commits).
+  - Five PR commits plus the caller-gated DiskTable.prefetch and host row-id commits, all rebased onto main 9c9e94ef9aff as 0a2c4387a, then carried onto that base as 5f071af37. vLLM's prefetch hook needs the row-cache commit 0b6e5ee8b or later.
 {/* included-changes:end */}
 
 ## Keeping this list honest

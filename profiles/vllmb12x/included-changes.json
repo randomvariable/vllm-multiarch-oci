@@ -3,7 +3,7 @@
     {
       "name": "vllm",
       "title": "vLLM",
-      "branch": "refs/heads/cycle/karmic-kraken-canonical",
+      "branch": "refs/heads/ple-prefetch",
       "upstream": "local-inference-lab/vllm",
       "upstream_base": "refs/heads/dev/karmic-kraken",
       "changes": [
@@ -12,7 +12,14 @@
           "title": "Bounded shared-memory broadcast waits",
           "inclusion": "branch",
           "commits": 1,
-          "note": "PR 800 adaptive spin commit rebased onto canonical dev/karmic-kraken 8244d1c44348 as 37f4cc4cd3. This base uses FlashInfer's CSF source/block APIs rather than the removed CsfScalePlanes API."
+          "note": "PR 800 adaptive spin commit replayed on top of the prefetch commit; recorded as ce5f4148d4. This base uses FlashInfer's CSF source/block APIs rather than the removed CsfScalePlanes API."
+        },
+        {
+          "pull_request": null,
+          "title": "Advisory disk row-cache prefetch for Qwen4Exp PLE and DeepSeek V4.1 Engram",
+          "inclusion": "branch",
+          "commits": 1,
+          "note": "One switch, VLLM_PLE_PREFETCH=1, warms the host row cache ahead of the lookup through the pinned FlashInfer's DiskTable.prefetch and the ple_hash.host and engram.host row-id helpers."
         },
         {
           "pull_request": null,
@@ -40,7 +47,7 @@
     {
       "name": "flashinfer",
       "title": "FlashInfer",
-      "branch": "refs/heads/cycle/lunar-leviathan",
+      "branch": "refs/heads/feat/b12x-row-cache-lil",
       "upstream": "local-inference-lab/flashinfer",
       "upstream_base": "refs/heads/main",
       "changes": [
@@ -48,8 +55,8 @@
           "pull_request": "local-inference-lab/flashinfer#44",
           "title": "C S3-FIFO host row cache for disk PLE/Engram tables",
           "inclusion": "branch",
-          "commits": 5,
-          "note": "Five PR commits rebased onto main 9c9e94ef9aff, producing cycle tip 0a2c4387a."
+          "commits": 7,
+          "note": "Five PR commits plus the caller-gated DiskTable.prefetch and host row-id commits, all rebased onto main 9c9e94ef9aff as 0a2c4387a, then carried onto that base as 5f071af37. vLLM's prefetch hook needs the row-cache commit 0b6e5ee8b or later."
         }
       ]
     }

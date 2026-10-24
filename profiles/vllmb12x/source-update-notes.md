@@ -4,8 +4,8 @@ This file records the selected source lock. Source selection does not establish 
 
 ## Integration Branches
 
-- vLLM target: `randomvariable/vllm:cycle/karmic-kraken-canonical` — canonical `local-inference-lab/vllm:dev/karmic-kraken` at `8244d1c44348` plus PR #800, rebased as `37f4cc4cd309`. Canonical karmic uses the CSF source/block API shipped by the selected FlashInfer; lunar and karmic-beta still call the removed `CsfScalePlanes` API.
-- FlashInfer target: `randomvariable/flashinfer:cycle/lunar-leviathan` — `local-inference-lab/flashinfer:main` at `9c9e94ef9aff` plus all five commits from PR #44, rebased to `0a2c4387a`. B12X now lives under FlashInfer's experimental package.
+- vLLM target: `randomvariable/vllm:ple-prefetch` — canonical `local-inference-lab/vllm:dev/karmic-kraken` at `8244d1c44348`, the advisory disk row-cache prefetch commit `c237f8373701`, and PR #800's adaptive-spin commit replayed on top as `ce5f4148d44a`. Canonical karmic uses the CSF source/block API shipped by the selected FlashInfer; lunar and karmic-beta still call the removed `CsfScalePlanes` API.
+- FlashInfer target: `randomvariable/flashinfer:feat/b12x-row-cache-lil` — `local-inference-lab/flashinfer:main` at `9c9e94ef9aff` plus all seven commits from PR #44, published as `5f071af37`. B12X now lives under FlashInfer's experimental package. The five row-cache commits carry the `cycle/lunar-leviathan` rebase (`0a2c4387a`), so the lock keeps the three upstream commits that the branch's earlier base `3563f331b` lacked; the two later commits add the caller-gated `DiskTable.prefetch` and the `ple_hash.host` / `engram.host` row-id predictors that the vLLM prefetch hook calls.
 - The scale-swizzle compatibility patch updates both the intrinsics module cache and getter to `b12x._lib.intrinsics.reference`.
 - Do not push to `local-inference-lab` repositories. The source lock stores immutable commits, not these moving branch names.
 
@@ -24,13 +24,16 @@ The previous cycle recorded these changes as supplied by its base. This historic
 
 | Component | Change | Inclusion |
 | --- | --- | --- |
-| vLLM | [#800](https://github.com/local-inference-lab/vllm/pull/800) bounded shared-memory broadcast waits | One commit rebased onto canonical `dev/karmic-kraken`, published on `cycle/karmic-kraken-canonical`. |
-| FlashInfer | [#44](https://github.com/local-inference-lab/flashinfer/pull/44) C S3-FIFO host row cache for disk PLE/Engram tables | Five commits rebased onto `main`, published on `cycle/lunar-leviathan`. |
+| vLLM | [#800](https://github.com/local-inference-lab/vllm/pull/800) bounded shared-memory broadcast waits | One commit replayed on top of the prefetch commit, published on `ple-prefetch`. |
+| vLLM | Advisory disk row-cache prefetch for Qwen4Exp PLE and DeepSeek V4.1 Engram. No upstream pull request. | One commit `c237f8373701` on `ple-prefetch`, behind `VLLM_PLE_PREFETCH`. |
+| FlashInfer | [#44](https://github.com/local-inference-lab/flashinfer/pull/44) C S3-FIFO host row cache for disk PLE/Engram tables | Seven commits rebased onto `main`, published on `feat/b12x-row-cache-lil`: the five row-cache commits, then the caller-gated `DiskTable.prefetch` and the `ple_hash.host` / `engram.host` row-id predictors. |
 | vLLM | `third_party/vllm_flash_attn_cute_namespace.patch` | Applied at build time. Packaging repair for this builder's symlink install path, which skips the import rewrite the upstream CMake copy performs; carries no upstream change. |
+
+Risk: `VLLM_PLE_PREFETCH` defaults off, and the hook only warns once per process when the pinned b12x lacks `prefetch(ids)` or when the row cache carries no `B12X_ROW_CACHE_ROWS`/`B12X_ROW_CACHE_BYTES` size; no shipped recipe sets the switch yet.
 
 ## Retired selections, available for re-selection
 
-These historical selections are not part of the lunar cycle request. Re-evaluate their upstream status and dependencies before selecting them again.
+These historical selections are not part of this source request. Re-evaluate their upstream status and dependencies before selecting them again.
 
 | Component | Change | Where it survives |
 | --- | --- | --- |

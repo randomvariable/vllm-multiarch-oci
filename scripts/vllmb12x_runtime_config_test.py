@@ -43,6 +43,39 @@ class RuntimeConfigInventoryTest(unittest.TestCase):
             "ple_table_memory",
         )
 
+    def test_registered_reads_never_inherit_a_neighbouring_default(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "vllm").mkdir()
+            (root / "vllm/envs.py").write_text(
+                "environment_variables = {\n"
+                "    # Read with no default of its own, in the source style that\n"
+                "    # pushed the old window into the entry below it.\n"
+                '    "VLLM_NO_DEFAULT": lambda: os.getenv(\n'
+                '        "VLLM_NO_DEFAULT"\n'
+                "    ),\n"
+                '    "VLLM_WITH_DEFAULT": lambda: bool(\n'
+                '        int(os.getenv("VLLM_WITH_DEFAULT", "1"))\n'
+                "    ),\n"
+                '    "VLLM_CHOICE": env_with_choices(\n'
+                '        "VLLM_CHOICE", "auto", ["auto", "a16"]\n'
+                "    ),\n"
+                '    "VLLM_OPTIONAL_CHOICE": env_with_choices(\n'
+                '        "VLLM_OPTIONAL_CHOICE", None, ["auto", "a16"]\n'
+                "    ),\n"
+                "}\n"
+            )
+
+            controls = INVENTORY.distinct(INVENTORY.registered_environment(root))
+
+        self.assertEqual(controls["VLLM_NO_DEFAULT"].default, "unset")
+        self.assertEqual(controls["VLLM_NO_DEFAULT"].accepted, "environment string")
+        self.assertEqual(controls["VLLM_WITH_DEFAULT"].default, '"1"')
+        self.assertEqual(controls["VLLM_CHOICE"].default, '"auto"')
+        self.assertEqual(controls["VLLM_CHOICE"].accepted, '["auto", "a16"]')
+        self.assertEqual(controls["VLLM_OPTIONAL_CHOICE"].default, "unset")
+        self.assertEqual(controls["VLLM_OPTIONAL_CHOICE"].accepted, '["auto", "a16"]')
+
     def test_skips_nested_virtual_environments(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
