@@ -35,11 +35,11 @@ Pinned at [`e306090442cf`](https://github.com/randomvariable/vllm/commit/e306090
 
 ## FlashInfer
 
-Pinned at [`35123822028d`](https://github.com/randomvariable/flashinfer/commit/35123822028d5dbc125a9400e14cb0e38f9ed4fa), branched from [`local-inference-lab/flashinfer`](https://github.com/local-inference-lab/flashinfer) `main`.
+Pinned at [`ca90015c2fc0`](https://github.com/randomvariable/flashinfer/commit/ca90015c2fc060f2df20d66e13815a1cb8b5c539), branched from [`local-inference-lab/flashinfer`](https://github.com/local-inference-lab/flashinfer) `main`.
 
 - **[local-inference-lab/flashinfer#44](https://github.com/local-inference-lab/flashinfer/pull/44)** — C S3-FIFO host row cache for disk PLE/Engram tables
-  - Merged into the pinned revision (11 commits).
-  - Seven PR commits replayed onto main 9c9e94ef9aff as 0a2c4387a, then the caller-gated DiskTable.prefetch and host row-id commits, and four more that add prefetch telemetry to DiskRowCache.stats(): requests, rows queued and dropped, jobs, errors, and rows loaded or cancelled only as the worker really published or released them. vLLM's prefetch hook and its metrics both need the row-cache commit 0b6e5ee8b or later.
+  - Merged into the pinned revision (12 commits).
+  - Seven PR commits replayed onto main 9c9e94ef9aff as 0a2c4387a, then the caller-gated DiskTable.prefetch and host row-id commits, then five more that add prefetch telemetry to DiskRowCache.stats() — requests, rows queued and dropped, jobs, errors, and rows loaded or cancelled only as the worker really published or released them — and close two shutdown races where a close winning mid-call queued rows behind a stopped worker or made the worker release reservations through a dropped capsule. vLLM's prefetch hook and its metrics both need the row-cache commit 0b6e5ee8b or later.
 {/* included-changes:end */}
 
 ## Keeping this list honest

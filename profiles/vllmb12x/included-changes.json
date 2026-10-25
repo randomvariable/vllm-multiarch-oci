@@ -62,8 +62,8 @@
           "pull_request": "local-inference-lab/flashinfer#44",
           "title": "C S3-FIFO host row cache for disk PLE/Engram tables",
           "inclusion": "branch",
-          "commits": 11,
-          "note": "Seven PR commits replayed onto main 9c9e94ef9aff as 0a2c4387a, then the caller-gated DiskTable.prefetch and host row-id commits, and four more that add prefetch telemetry to DiskRowCache.stats(): requests, rows queued and dropped, jobs, errors, and rows loaded or cancelled only as the worker really published or released them. vLLM's prefetch hook and its metrics both need the row-cache commit 0b6e5ee8b or later."
+          "commits": 12,
+          "note": "Seven PR commits replayed onto main 9c9e94ef9aff as 0a2c4387a, then the caller-gated DiskTable.prefetch and host row-id commits, then five more that add prefetch telemetry to DiskRowCache.stats() — requests, rows queued and dropped, jobs, errors, and rows loaded or cancelled only as the worker really published or released them — and close two shutdown races where a close winning mid-call queued rows behind a stopped worker or made the worker release reservations through a dropped capsule. vLLM's prefetch hook and its metrics both need the row-cache commit 0b6e5ee8b or later."
         }
       ]
     }
