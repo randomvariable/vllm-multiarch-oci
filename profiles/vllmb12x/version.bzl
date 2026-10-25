@@ -10,6 +10,6 @@ manifest, so identical inputs rebuild the same version; recompute it with
 `scripts/refresh-vllmb12x.py --dry-run`.
 """
 
-VLLM_BUILD_VERSION = "0.29.0+ple.prefetch.ce5f4148d44a.5f071af3723d.b5bb3cc5f08f"
+VLLM_BUILD_VERSION = "0.29.0+ple.prefetch.e306090442cf.35123822028d.f646295db1df"
 VLLM_SOURCE_REF = "refs/heads/ple-prefetch"
-VLLM_SOURCE_REVISION = "ce5f4148d44abfb953fbe52b949c9bcc5f535792"
+VLLM_SOURCE_REVISION = "e306090442cf3ba56866943feedc59b4125d4e1f"

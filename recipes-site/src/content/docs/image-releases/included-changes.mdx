@@ -12,7 +12,7 @@ A change reaches the build in one of two ways. It is either already merged into 
 {/* included-changes:start */}
 ## vLLM
 
-Pinned at [`ce5f4148d44a`](https://github.com/randomvariable/vllm/commit/ce5f4148d44abfb953fbe52b949c9bcc5f535792), branched from [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm) `dev/karmic-kraken`.
+Pinned at [`e306090442cf`](https://github.com/randomvariable/vllm/commit/e306090442cf3ba56866943feedc59b4125d4e1f), branched from [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm) `dev/karmic-kraken`.
 
 - **[local-inference-lab/vllm#800](https://github.com/local-inference-lab/vllm/pull/800)** — Bounded shared-memory broadcast waits
   - Merged into the pinned revision (1 commits).
@@ -20,6 +20,9 @@ Pinned at [`ce5f4148d44a`](https://github.com/randomvariable/vllm/commit/ce5f414
 - **Advisory disk row-cache prefetch for Qwen4Exp PLE and DeepSeek V4.1 Engram** — no upstream pull request
   - Merged into the pinned revision (1 commits).
   - One switch, VLLM_PLE_PREFETCH=1, warms the host row cache ahead of the lookup through the pinned FlashInfer's DiskTable.prefetch and the ple_hash.host and engram.host row-id helpers.
+- **Prometheus metrics for the b12x row cache and prefetch** — no upstream pull request
+  - Merged into the pinned revision (7 commits).
+  - Counters for hits, misses, residency, pool bytes and the prefetch queue, served on /metrics by vllm/v1/metrics/b12x_row_cache.py. The b12x caches are sampled on a daemon thread, never on the step path: reading them inline cost a 14 us median and a 3.6 ms worst case against the prefetch worker's lock, where the published snapshot costs 0.6 us. Totals are reported whether or not VLLM_PLE_PREFETCH is set, because the cache serves synchronous lookups either way.
 - **Resolve FlashInfer scale-swizzle intrinsics** — no upstream pull request
   - Applied at build time by `third_party/vllm_b12x_intrinsics_reference.patch`.
   - Use intrinsics.reference for NVFP4 and MXFP4 linear weight preparation with the pinned FlashInfer.
@@ -32,11 +35,11 @@ Pinned at [`ce5f4148d44a`](https://github.com/randomvariable/vllm/commit/ce5f414
 
 ## FlashInfer
 
-Pinned at [`5f071af3723d`](https://github.com/randomvariable/flashinfer/commit/5f071af3723de59a4d9ffff36f05c80bad1feb4a), branched from [`local-inference-lab/flashinfer`](https://github.com/local-inference-lab/flashinfer) `main`.
+Pinned at [`35123822028d`](https://github.com/randomvariable/flashinfer/commit/35123822028d5dbc125a9400e14cb0e38f9ed4fa), branched from [`local-inference-lab/flashinfer`](https://github.com/local-inference-lab/flashinfer) `main`.
 
 - **[local-inference-lab/flashinfer#44](https://github.com/local-inference-lab/flashinfer/pull/44)** — C S3-FIFO host row cache for disk PLE/Engram tables
-  - Merged into the pinned revision (7 commits).
-  - Five PR commits plus the caller-gated DiskTable.prefetch and host row-id commits, all rebased onto main 9c9e94ef9aff as 0a2c4387a, then carried onto that base as 5f071af37. vLLM's prefetch hook needs the row-cache commit 0b6e5ee8b or later.
+  - Merged into the pinned revision (11 commits).
+  - Seven PR commits replayed onto main 9c9e94ef9aff as 0a2c4387a, then the caller-gated DiskTable.prefetch and host row-id commits, and four more that add prefetch telemetry to DiskRowCache.stats(): requests, rows queued and dropped, jobs, errors, and rows loaded or cancelled only as the worker really published or released them. vLLM's prefetch hook and its metrics both need the row-cache commit 0b6e5ee8b or later.
 {/* included-changes:end */}
 
 ## Keeping this list honest
