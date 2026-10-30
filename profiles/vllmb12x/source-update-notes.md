@@ -4,8 +4,8 @@ This file records the selected source lock. Source selection does not establish 
 
 ## Integration Branches
 
-- vLLM target: `randomvariable/vllm:cycle/karmic-kraken-canonical` — canonical `local-inference-lab/vllm:dev/karmic-kraken` at `8244d1c44348` plus PR #800, rebased as `37f4cc4cd309`. Canonical karmic uses the CSF source/block API shipped by the selected FlashInfer; lunar and karmic-beta still call the removed `CsfScalePlanes` API.
-- FlashInfer target: `randomvariable/flashinfer:cycle/lunar-leviathan` — `local-inference-lab/flashinfer:main` at `9c9e94ef9aff` plus all five commits from PR #44, rebased to `0a2c4387a`. B12X now lives under FlashInfer's experimental package.
+- vLLM target: `randomvariable/vllm:ple-prefetch` at `e306090442cf` — canonical `local-inference-lab/vllm:dev/karmic-kraken` at `8244d1c44348`, the advisory disk row-cache prefetch commit `c237f8373701`, PR #800's adaptive-spin commit replayed as `ce5f4148d44a`, then seven commits adding the b12x row-cache and prefetch Prometheus metrics. The metrics were developed on `ple-prefetch-metrics` and merged back by fast-forward. Canonical karmic uses the CSF source/block API shipped by the selected FlashInfer; lunar and karmic-beta still call the removed `CsfScalePlanes` API.
+- FlashInfer target: `randomvariable/flashinfer:feat/b12x-row-cache-lil` at `ca90015c2` — `local-inference-lab/flashinfer:main` at `9c9e94ef9aff` plus all twelve commits from PR #44. B12X now lives under FlashInfer's experimental package. The five row-cache commits carry the `cycle/lunar-leviathan` rebase (`0a2c4387a`), so the lock keeps the three upstream commits that the branch's earlier base `3563f331b` lacked; the two after those add the caller-gated `DiskTable.prefetch` and the `ple_hash.host` / `engram.host` row-id predictors the vLLM prefetch hook calls, and the last five put prefetch telemetry into `DiskRowCache.stats()` and close two shutdown races in it. The telemetry was developed on `feat/b12x-row-cache-metrics` and merged back by fast-forward, which grew PR #44 from seven commits to twelve.
 - The scale-swizzle compatibility patch updates both the intrinsics module cache and getter to `b12x._lib.intrinsics.reference`.
 - Do not push to `local-inference-lab` repositories. The source lock stores immutable commits, not these moving branch names.
 
@@ -24,13 +24,17 @@ The previous cycle recorded these changes as supplied by its base. This historic
 
 | Component | Change | Inclusion |
 | --- | --- | --- |
-| vLLM | [#800](https://github.com/local-inference-lab/vllm/pull/800) bounded shared-memory broadcast waits | One commit rebased onto canonical `dev/karmic-kraken`, published on `cycle/karmic-kraken-canonical`. |
-| FlashInfer | [#44](https://github.com/local-inference-lab/flashinfer/pull/44) C S3-FIFO host row cache for disk PLE/Engram tables | Five commits rebased onto `main`, published on `cycle/lunar-leviathan`. |
+| vLLM | [#800](https://github.com/local-inference-lab/vllm/pull/800) bounded shared-memory broadcast waits | One commit replayed on top of the prefetch commit, published on `ple-prefetch`. |
+| vLLM | Advisory disk row-cache prefetch for Qwen4Exp PLE and DeepSeek V4.1 Engram. No upstream pull request. | One commit `c237f8373701` on `ple-prefetch`, behind `VLLM_PLE_PREFETCH`. |
+| vLLM | b12x row-cache and prefetch Prometheus metrics, served by the API process on `/metrics`. No upstream pull request. | Seven commits on `ple-prefetch`; the caches are sampled on a daemon thread, never on the step path. |
+| FlashInfer | [#44](https://github.com/local-inference-lab/flashinfer/pull/44) C S3-FIFO host row cache for disk PLE/Engram tables | Twelve commits rebased onto `main`, published on `feat/b12x-row-cache-lil`: the five row-cache commits, the caller-gated `DiskTable.prefetch` and the `ple_hash.host` / `engram.host` row-id predictors, then five commits of prefetch telemetry that count requests, rows queued and dropped, jobs, errors, and rows loaded or cancelled only as the worker really published or released them, and reject a prefetch whose cache closed mid-call instead of queueing it behind a stopped worker. |
 | vLLM | `third_party/vllm_flash_attn_cute_namespace.patch` | Applied at build time. Packaging repair for this builder's symlink install path, which skips the import rewrite the upstream CMake copy performs; carries no upstream change. |
+
+Risk: `VLLM_PLE_PREFETCH` defaults off, and the hook only warns once per process when the pinned b12x lacks `prefetch(ids)` or when the row cache carries no `B12X_ROW_CACHE_ROWS`/`B12X_ROW_CACHE_BYTES` size; no shipped recipe sets the switch yet. The row-cache and prefetch metrics are published whether or not prefetch is enabled, because the cache serves synchronous lookups either way, and the only extra cost on a step is a published-snapshot read measured at 0.6 us median.
 
 ## Retired selections, available for re-selection
 
-These historical selections are not part of the lunar cycle request. Re-evaluate their upstream status and dependencies before selecting them again.
+These historical selections are not part of this source request. Re-evaluate their upstream status and dependencies before selecting them again.
 
 | Component | Change | Where it survives |
 | --- | --- | --- |

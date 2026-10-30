@@ -21,6 +21,7 @@ from typing import Iterable
 
 
 ENVIRONMENT_NAME = re.compile(r"(?:VLLM|B12X)_[A-Z0-9_]+$")
+REGISTERED_ENTRY = re.compile(r'\s*"((?:VLLM|B12X)_[A-Z0-9_]+)"\s*:\s*(.*)')
 SOURCE_SUFFIXES = {".py", ".pyi"}
 SKIP_DIRECTORIES = {
     ".agents",
@@ -290,27 +291,48 @@ class Scanner(ast.NodeVisitor):
         self.generic_visit(node)
 
 
+def registered_default(block: str) -> tuple[str, str]:
+    """Return the source default and accepted values of one registered read.
+
+    A read is only ever searched inside the entry that declares it. The
+    eight-line window this function replaces crossed into the neighbouring
+    entry, so an indirect read published the next entry's default.
+    """
+    getenv = re.search(r'os\.(?:getenv|environ\.get)\([^,]+,\s*([^\)]+)\)', block)
+    if getenv:
+        return getenv.group(1).strip(), "environment string"
+    choices = re.search(
+        r'env_with_choices\(\s*"[A-Z0-9_]+"\s*,\s*(None|"[^"]*"|\'[^\']*\')\s*,\s*(\[.*?\])',
+        block,
+    )
+    if choices:
+        default = "unset" if choices.group(1) == "None" else choices.group(1)
+        return default, choices.group(2)
+    if re.search(r'os\.(?:getenv|environ\.get)\(|env_with_choices\(', block):
+        return "unset", "environment string"
+    return "source expression", "environment string"
+
+
 def registered_environment(root: Path) -> list[Control]:
     path = root / "vllm/envs.py"
     if not path.is_file():
         return []
     lines = path.read_text().splitlines()
+    starts = [index for index, line in enumerate(lines) if REGISTERED_ENTRY.match(line)]
     controls: list[Control] = []
-    for index, line in enumerate(lines, start=1):
-        match = re.match(r'\s*"((?:VLLM|B12X)_[A-Z0-9_]+)"\s*:\s*(.*)', line)
-        if not match:
-            continue
-        name, value = match.groups()
-        block = " ".join(lines[index - 1:min(len(lines), index + 8)])
-        default_match = re.search(r'os\.(?:getenv|environ\.get)\([^,]+,\s*([^\)]+)\)', block)
-        default = default_match.group(1).strip() if default_match else "source expression"
+    for position, index in enumerate(starts):
+        end = starts[position + 1] if position + 1 < len(starts) else len(lines)
+        block = " ".join(
+            line for line in lines[index:end] if not line.lstrip().startswith("#")
+        )
+        default, accepted = registered_default(block)
         controls.append(Control(
-            name,
+            REGISTERED_ENTRY.match(lines[index]).group(1),
             "vllm/envs.py",
-            index,
+            index + 1,
             default,
-            "environment string",
-            comment_description(lines, index),
+            accepted,
+            comment_description(lines, index + 1),
         ))
     return controls
 

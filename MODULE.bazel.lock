@@ -295,7 +295,7 @@
         "bzlTransitiveDigest": "PlQrasKK7uhGwT44KdQxo55ORbetuJwFgpKcWztYtY4=",
         "usagesDigest": "vdXVi/hsX+sKiyZH2raZEpAzPcwJjpeVEW7sC7MuJ64=",
         "recordedInputs": [
-          "FILE:@@//profiles/vllmb12x/profile.json 8912c7887f325748ee433b206298af0b4698ca3fd4096381e64cddab4e01b041"
+          "FILE:@@//profiles/vllmb12x/profile.json e29d858fed6b9c9c3ff8dac0f70843279bd43149ed3ce7d9de306d97d35a89dd"
         ],
         "generatedRepoSpecs": {
           "vllmb12x_cutlass": {
@@ -335,7 +335,7 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/randomvariable/flashinfer.git",
-              "commit": "0a2c4387aa8c3aed84f8e8de2a4494eeb3f5d44b",
+              "commit": "ca90015c2fc060f2df20d66e13815a1cb8b5c539",
               "recursive_init_submodules": true,
               "patches": [],
               "cargo_vendor": false,
@@ -434,7 +434,7 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/randomvariable/vllm.git",
-              "commit": "37f4cc4cd309ca280cb69f4eeaf7152f36fa51ff",
+              "commit": "e306090442cf3ba56866943feedc59b4125d4e1f",
               "recursive_init_submodules": true,
               "patches": [
                 "@@//third_party:vllm_flash_attn_cute_namespace.patch",

@@ -1,8 +1,8 @@
 {
-  "flashinfer_ref": "refs/heads/cycle/lunar-leviathan",
+  "flashinfer_ref": "refs/heads/feat/b12x-row-cache-lil",
   "lil_runtime_ref": "refs/heads/main",
   "name": "vllmb12x",
-  "source_ref": "refs/heads/cycle/karmic-kraken-canonical",
+  "source_ref": "refs/heads/ple-prefetch",
   "sources": {
     "cutlass": {
       "commit": "e6233cbac5d7c7a865c19c91cd684ceece19513c",
@@ -20,7 +20,7 @@
       "remote": "https://github.com/brandonmmusic-max/exllamav3.git"
     },
     "flashinfer": {
-      "commit": "0a2c4387aa8c3aed84f8e8de2a4494eeb3f5d44b",
+      "commit": "ca90015c2fc060f2df20d66e13815a1cb8b5c539",
       "recursive_init_submodules": true,
       "remote": "https://github.com/randomvariable/flashinfer.git"
     },
@@ -68,7 +68,7 @@
     },
     "vllm": {
       "cargo_vendor": true,
-      "commit": "37f4cc4cd309ca280cb69f4eeaf7152f36fa51ff",
+      "commit": "e306090442cf3ba56866943feedc59b4125d4e1f",
       "recursive_init_submodules": true,
       "remote": "https://github.com/randomvariable/vllm.git"
     },
