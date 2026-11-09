@@ -12,11 +12,14 @@ A change reaches the build in one of two ways. It is either already merged into 
 {/* included-changes:start */}
 ## vLLM
 
-Pinned at [`e306090442cf`](https://github.com/randomvariable/vllm/commit/e306090442cf3ba56866943feedc59b4125d4e1f), branched from [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm) `dev/karmic-kraken`.
+Pinned at [`3ab11fdec715`](https://github.com/randomvariable/vllm/commit/3ab11fdec7151d043bdbd994fc8f1b2810797fb8), branched from [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm) `dev/karmic-kraken`.
 
-- **[local-inference-lab/vllm#800](https://github.com/local-inference-lab/vllm/pull/800)** — Bounded shared-memory broadcast waits
+- **Bounded shared-memory broadcast waits** — no upstream pull request
   - Merged into the pinned revision (1 commits).
-  - PR 800 adaptive spin commit replayed on top of the prefetch commit; recorded as ce5f4148d4. This base uses FlashInfer's CSF source/block APIs rather than the removed CsfScalePlanes API.
+  - One commit, the adaptive-spin commit ce5f4148d4 of local-inference-lab/vllm#800, replayed on top of the prefetch commit. #800 now carries four commits and the other three are not part of this lock, so the entry names the pull request rather than claiming it in full. This base uses FlashInfer's CSF source/block APIs rather than the removed CsfScalePlanes API.
+- **Run the fused MXFP4 DSA indexer path** — no upstream pull request
+  - Merged into the pinned revision (1 commits).
+  - FlashInfer main replaced the standalone MXFP4 score/select API with one fused plan/run call, so the DeepSeek V4.1 indexer takes it in both the forward path and the preparation callback. Scoring, top-512 selection and logical ordering now happen in one prepared run, which is also what the upstream fused implementation measured at a 37.26% median reduction against the staged route on SM120.
 - **Advisory disk row-cache prefetch for Qwen4Exp PLE and DeepSeek V4.1 Engram** — no upstream pull request
   - Merged into the pinned revision (1 commits).
   - One switch, VLLM_PLE_PREFETCH=1, warms the host row cache ahead of the lookup through the pinned FlashInfer's DiskTable.prefetch and the ple_hash.host and engram.host row-id helpers.
@@ -35,11 +38,11 @@ Pinned at [`e306090442cf`](https://github.com/randomvariable/vllm/commit/e306090
 
 ## FlashInfer
 
-Pinned at [`ca90015c2fc0`](https://github.com/randomvariable/flashinfer/commit/ca90015c2fc060f2df20d66e13815a1cb8b5c539), branched from [`local-inference-lab/flashinfer`](https://github.com/local-inference-lab/flashinfer) `main`.
+Pinned at [`accdb1a229c7`](https://github.com/randomvariable/flashinfer/commit/accdb1a229c7ad0187f5cfbd9a5e2b6071b412be), branched from [`local-inference-lab/flashinfer`](https://github.com/local-inference-lab/flashinfer) `main`.
 
 - **[local-inference-lab/flashinfer#44](https://github.com/local-inference-lab/flashinfer/pull/44)** — C S3-FIFO host row cache for disk PLE/Engram tables
   - Merged into the pinned revision (12 commits).
-  - Seven PR commits replayed onto main 9c9e94ef9aff as 0a2c4387a, then the caller-gated DiskTable.prefetch and host row-id commits, then five more that add prefetch telemetry to DiskRowCache.stats() — requests, rows queued and dropped, jobs, errors, and rows loaded or cancelled only as the worker really published or released them — and close two shutdown races where a close winning mid-call queued rows behind a stopped worker or made the worker release reservations through a dropped capsule. vLLM's prefetch hook and its metrics both need the row-cache commit 0b6e5ee8b or later.
+  - Seven PR commits replayed onto main ea74ea610ce8 as cd736c5e3, then the caller-gated DiskTable.prefetch and host row-id commits, then five more that add prefetch telemetry to DiskRowCache.stats() — requests, rows queued and dropped, jobs, errors, and rows loaded or cancelled only as the worker really published or released them — and close two shutdown races where a close winning mid-call queued rows behind a stopped worker or made the worker release reservations through a dropped capsule. vLLM's prefetch hook and its metrics both need the row-cache commit 0b2e36842 or later. The range-diff against the previous lock is all-equal: the twelve commits replayed onto the new main without a single change.
 {/* included-changes:end */}
 
 ## Keeping this list honest

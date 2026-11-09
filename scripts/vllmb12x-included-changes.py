@@ -75,6 +75,19 @@ def validate(manifest: dict[str, Any], lock: dict[str, Any]) -> None:
                 f"but the lock selects {lock[key]!r}"
             )
         for change in component["changes"]:
+            for reference in [change["pull_request"], *change.get("description_refs", [])]:
+                if reference is not None and not re.fullmatch(r"[\w.-]+/[\w.-]+#\d+", reference):
+                    raise RuntimeError(
+                        f"{MANIFEST} records reference {reference!r} on {change['title']!r}; "
+                        "it must look like owner/repo#123"
+                    )
+            if change.get("verify_base") is not None and (
+                change["inclusion"] != "branch" or not change["pull_request"]
+            ):
+                raise RuntimeError(
+                    f"{MANIFEST} records verify_base on a {change['inclusion']!r} entry "
+                    f"{change['title']!r}, which names no pull request"
+                )
             if change["inclusion"] != "patch":
                 continue
             patch = change["patch"]
@@ -166,10 +179,14 @@ def description_body(manifest: dict[str, Any], lock: dict[str, Any]) -> str:
     grouped: dict[str, list[str]] = {}
     for component in manifest["components"]:
         for change in component["changes"]:
-            if not change["pull_request"]:
-                continue
-            repository, number = change["pull_request"].split("#", 1)
-            grouped.setdefault(repository, []).append(f"#{number}")
+            # An entry that names its pull request in description_refs contributes
+            # to this line even when it does not claim the pull request in full.
+            references = change.get("description_refs") or (
+                [change["pull_request"]] if change["pull_request"] else []
+            )
+            for reference in references:
+                repository, number = reference.split("#", 1)
+                grouped.setdefault(repository, []).append(f"#{number}")
     numbers = ", ".join(
         f"{repository}{' '.join(references)}" for repository, references in grouped.items()
     )
@@ -248,6 +265,40 @@ def git(repository: Path, *arguments: str) -> str:
     return result.stdout
 
 
+def pull_commits(repository: Path, reference: str, base: str | None = None) -> list[str]:
+    """Return the subjects of the commits a pull request itself contributes.
+
+    The commit list GitHub serves is the head's history, so a head branch that
+    was cut from an older base reports its base's own commits as part of the
+    pull request. Counting the head against its merge-base with the base names
+    only the pull request's changes, which is what the fork replays. When the
+    upstream base has since moved or been rewritten, the ledger records the
+    commit the head was cut from in ``verify_base`` and the delta is measured
+    against that.
+    """
+    owner, number = reference.split("#", 1)
+    api = f"repos/{owner}/pulls/{number}"
+    remote = f"https://github.com/{owner}.git"
+
+    def field(name: str) -> str:
+        result = subprocess.run(
+            ["gh", "api", api, "--jq", f".{name}"], text=True, capture_output=True, check=True
+        )
+        return result.stdout.strip()
+
+    head = field("head.sha")
+    git(repository, "fetch", "--quiet", remote, head)
+    if base is None:
+        base = field("base.sha")
+        git(repository, "fetch", "--quiet", remote, base)
+    elif not re.fullmatch(r"[0-9a-f]{40}", base):
+        raise RuntimeError(f"verify_base must be a full commit: {base!r}")
+    else:
+        git(repository, "fetch", "--quiet", remote, base)
+    merge_base = git(repository, "merge-base", base, head).strip()
+    return git(repository, "log", "--format=%s", f"{merge_base}..{head}").splitlines()
+
+
 def verify(manifest: dict[str, Any], lock: dict[str, Any], clone_root: Path | None) -> int:
     """Check that each branch entry's commits are present in the pinned revision.
 
@@ -272,14 +323,7 @@ def verify(manifest: dict[str, Any], lock: dict[str, Any], clone_root: Path | No
             reference = change["pull_request"]
             if change["inclusion"] != "branch" or not reference:
                 continue
-            owner, number = reference.split("#", 1)
-            listed = json.loads(
-                subprocess.run(
-                    ["gh", "api", f"repos/{owner}/pulls/{number}/commits", "--jq",
-                     "[.[] | .commit.message | split(\"\\n\")[0]]"],
-                    text=True, capture_output=True, check=True,
-                ).stdout
-            )
+            listed = pull_commits(repository, reference, change.get("verify_base"))
             missing = [subject for subject in listed if subject not in carried]
             if missing or len(listed) != change["commits"]:
                 failures += 1
