@@ -156,6 +156,26 @@ class VersionCompositionTest(unittest.TestCase):
             r"^[0-9]+\.[0-9]+\.[0-9]+\+[a-z0-9.]+(\.[0-9a-f]{12}){3}$",
         )
 
+    def test_namespaced_branch_leaves_no_slash_in_the_version(self):
+        # A daily-rebase branch keeps its namespace in the ref, so the cycle
+        # reaches the version separated by dots: a local segment may not
+        # contain "/" and every consumer matches the dot spelling.
+        version = REFRESH.build_version(
+            "0.29.0",
+            REFRESH.cycle_name("refs/heads/auto/karmic-kraken-20261109"),
+            "b" * 40,
+            "c" * 40,
+            "a" * 64,
+        )
+        self.assertEqual(
+            version,
+            "0.29.0+auto.karmic.kraken.20261109." + "b" * 12 + "." + "c" * 12 + "." + "a" * 12,
+        )
+        self.assertRegex(
+            version,
+            r"^[0-9]+\.[0-9]+\.[0-9]+\+[a-z0-9.]+(\.[0-9a-f]{12}){3}$",
+        )
+
     def test_sources_digest_tracks_every_pin_and_ignores_order(self):
         sources = {
             "vllm": {"commit": "a" * 40, "remote": "https://example.invalid/vllm.git"},

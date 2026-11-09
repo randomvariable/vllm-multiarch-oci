@@ -3,16 +3,24 @@
     {
       "name": "vllm",
       "title": "vLLM",
-      "branch": "refs/heads/ple-prefetch",
+      "branch": "refs/heads/auto/karmic-kraken-20261109",
       "upstream": "local-inference-lab/vllm",
       "upstream_base": "refs/heads/dev/karmic-kraken",
       "changes": [
         {
-          "pull_request": "local-inference-lab/vllm#800",
+          "pull_request": null,
           "title": "Bounded shared-memory broadcast waits",
           "inclusion": "branch",
           "commits": 1,
-          "note": "PR 800 adaptive spin commit replayed on top of the prefetch commit; recorded as ce5f4148d4. This base uses FlashInfer's CSF source/block APIs rather than the removed CsfScalePlanes API."
+          "description_refs": ["local-inference-lab/vllm#800"],
+          "note": "One commit, the adaptive-spin commit ce5f4148d4 of local-inference-lab/vllm#800, replayed on top of the prefetch commit. #800 now carries four commits and the other three are not part of this lock, so the entry names the pull request rather than claiming it in full. This base uses FlashInfer's CSF source/block APIs rather than the removed CsfScalePlanes API."
+        },
+        {
+          "pull_request": null,
+          "title": "Run the fused MXFP4 DSA indexer path",
+          "inclusion": "branch",
+          "commits": 1,
+          "note": "FlashInfer main replaced the standalone MXFP4 score/select API with one fused plan/run call, so the DeepSeek V4.1 indexer takes it in both the forward path and the preparation callback. Scoring, top-512 selection and logical ordering now happen in one prepared run, which is also what the upstream fused implementation measured at a 37.26% median reduction against the staged route on SM120."
         },
         {
           "pull_request": null,
@@ -54,7 +62,7 @@
     {
       "name": "flashinfer",
       "title": "FlashInfer",
-      "branch": "refs/heads/feat/b12x-row-cache-lil",
+      "branch": "refs/heads/auto/karmic-kraken-20261109",
       "upstream": "local-inference-lab/flashinfer",
       "upstream_base": "refs/heads/main",
       "changes": [
@@ -63,7 +71,8 @@
           "title": "C S3-FIFO host row cache for disk PLE/Engram tables",
           "inclusion": "branch",
           "commits": 12,
-          "note": "Seven PR commits replayed onto main 9c9e94ef9aff as 0a2c4387a, then the caller-gated DiskTable.prefetch and host row-id commits, then five more that add prefetch telemetry to DiskRowCache.stats() — requests, rows queued and dropped, jobs, errors, and rows loaded or cancelled only as the worker really published or released them — and close two shutdown races where a close winning mid-call queued rows behind a stopped worker or made the worker release reservations through a dropped capsule. vLLM's prefetch hook and its metrics both need the row-cache commit 0b6e5ee8b or later."
+          "verify_base": "9c9e94ef9aff73ef60949d41d4323652617d7f0f",
+          "note": "Seven PR commits replayed onto main ea74ea610ce8 as cd736c5e3, then the caller-gated DiskTable.prefetch and host row-id commits, then five more that add prefetch telemetry to DiskRowCache.stats() — requests, rows queued and dropped, jobs, errors, and rows loaded or cancelled only as the worker really published or released them — and close two shutdown races where a close winning mid-call queued rows behind a stopped worker or made the worker release reservations through a dropped capsule. vLLM's prefetch hook and its metrics both need the row-cache commit 0b2e36842 or later. The range-diff against the previous lock is all-equal: the twelve commits replayed onto the new main without a single change."
         }
       ]
     }
