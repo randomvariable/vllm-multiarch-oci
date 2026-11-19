@@ -155,14 +155,14 @@ def build_version(
     torch, NCCL or a CMake download moves the version even though neither
     named pin did.
 
-    Packaging normalises "-" and "_" to "." inside a local version segment, so
-    a version built from the branch spelling would reach the wheel filename and
-    the distribution metadata differently from the image label. Building from
-    the normalised spelling keeps one string everywhere; the branch itself is
-    still named by VLLM_SOURCE_REF.
+    Packaging normalises "-", "_" and "/" inside a local version segment
+    ("/" is rejected outright), so a version built from the branch spelling
+    would reach the wheel filename and the distribution metadata differently
+    from the image label. Building from the normalised spelling keeps one
+    string everywhere; the branch itself is still named by VLLM_SOURCE_REF.
     """
     return (
-        f"{base}+{re.sub(r'[-_]+', '.', cycle).lower()}"
+        f"{base}+{re.sub(r'[-_]+', '.', cycle).replace('/', '.').lower()}"
         f".{vllm_commit[:12]}.{flashinfer_commit[:12]}.{digest[:12]}"
     )
 

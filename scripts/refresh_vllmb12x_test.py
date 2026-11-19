@@ -151,6 +151,14 @@ class VersionCompositionTest(unittest.TestCase):
             REFRESH.build_version("0.29.0", "Cycle_Name", "b" * 40, "c" * 40, "a" * 64),
             "0.29.0+cycle.name." + "b" * 12 + "." + "c" * 12 + "." + "a" * 12,
         )
+        # Namespaced branches ("auto/...", "feat/...") carry a slash that a
+        # PEP 440 local segment rejects outright, not normalises.
+        self.assertEqual(
+            REFRESH.build_version(
+                "0.29.0", "auto/karmic-kraken", "b" * 40, "c" * 40, "a" * 64
+            ),
+            "0.29.0+auto.karmic.kraken." + "b" * 12 + "." + "c" * 12 + "." + "a" * 12,
+        )
         self.assertRegex(
             version,
             r"^[0-9]+\.[0-9]+\.[0-9]+\+[a-z0-9.]+(\.[0-9a-f]{12}){3}$",
