@@ -166,7 +166,6 @@ def overlay_base_preset(presets):
             and "kv-cache-memory-bytes" in options
             and "max-num-seqs" in options
             and not item.get("kv_bytes_by_dcp")
-            and not item.get("vllm_fallback")
             and len(item.get("environment", {})) >= 2
         ):
             return name
@@ -192,10 +191,14 @@ def synthetic_overlay():
     requires = (gated or sorted(base["environment"]))[:2]
     base["description"] = (
         "Parity fixture: a preset with an installed-vLLM fallback path and an "
-        "external-cache KV reserve, so the gate measures behaviours the current "
-        "pin ships no preset that uses."
+        "external-cache KV reserve, so the gate measures those behaviours on a "
+        "preset shape fixed by this test rather than by pin drift."
     )
     base["kv_bytes_for_external_cache"] = OVERLAY_EXTERNAL_CACHE_BYTES
+    # The pin's own presets carry real fallback lists; the fixture replaces
+    # them with a single-entry, environment-only fallback so the missing-name
+    # cases below stay deterministic.
+    base.pop("vllm_fallback", None)
     base["vllm_fallback"] = {
         "requires_environment": requires,
         "options": {"gpu-memory-utilization": 0.9},
