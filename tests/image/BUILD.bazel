@@ -31,7 +31,30 @@ container_structure_test(
     # roll because the daemon keeps its store in the pod. 900s leaves room
     # without hiding a genuinely wedged run.
     timeout = "long",
-    configs = _CONFIG,
+    # Two --config files in one container-structure-test process share one
+    # docker driver lifecycle: RunCommandTests defers driver.Destroy() inside
+    # its per-test loop, so every chain image committed by SetEnv is removed
+    # only when the FIRST file's command tests return — after the second file
+    # has started creating containers. containerd's layer GC then cascades
+    # onto content-addressed layers the loaded image still needs, and the
+    # whole second file fails with "Error creating container: no such image".
+    # One config per invocation keeps each file's destroys inside its own run.
+    configs = select({
+        "//platforms:linux_aarch64": ["vllmb12x.yaml"],
+        "//platforms:linux_x86_64": ["vllmb12x.yaml"],
+    }),
+    driver = "docker",
+    image = _IMAGE,
+    platform = _PLATFORM,
+)
+
+container_structure_test(
+    name = "vllmb12x_contract_arch",
+    timeout = "long",
+    configs = select({
+        "//platforms:linux_aarch64": ["vllmb12x-arm64.yaml"],
+        "//platforms:linux_x86_64": ["vllmb12x-x86_64.yaml"],
+    }),
     driver = "docker",
     image = _IMAGE,
     platform = _PLATFORM,
@@ -42,7 +65,24 @@ container_structure_test(
 container_structure_test(
     name = "vllmb12x_contract_sm121a",
     timeout = "long",
-    configs = _CONFIG,
+    configs = select({
+        "//platforms:linux_aarch64": ["vllmb12x.yaml"],
+        "//platforms:linux_x86_64": ["vllmb12x.yaml"],
+    }),
+    driver = "docker",
+    exec_properties = {"gpu": "nvidia-gb10"},
+    image = _IMAGE,
+    platform = _PLATFORM,
+    target_compatible_with = [
+        "@platforms//cpu:aarch64",
+        "@platforms//os:linux",
+    ],
+)
+
+container_structure_test(
+    name = "vllmb12x_contract_sm121a_arch",
+    timeout = "long",
+    configs = ["vllmb12x-arm64.yaml"],
     driver = "docker",
     exec_properties = {"gpu": "nvidia-gb10"},
     image = _IMAGE,

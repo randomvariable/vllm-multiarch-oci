@@ -115,8 +115,11 @@ test -x "$BAZEL_PY" || {
 # ARM64 image build. Each profile disables test-result caching.
 for spec in \
     "vllmb12x_contract:remote-sm120a" \
+    "vllmb12x_contract_arch:remote-sm120a" \
     "vllmb12x_contract_sm121a:remote-sm120a" \
-    "vllmb12x_contract:remote-x86_64"; do
+    "vllmb12x_contract_sm121a_arch:remote-sm120a" \
+    "vllmb12x_contract:remote-x86_64" \
+    "vllmb12x_contract_arch:remote-x86_64"; do
     target="${spec%%:*}"
     config="${spec##*:}"
     "$BAZEL" test "//tests/image:${target}" \

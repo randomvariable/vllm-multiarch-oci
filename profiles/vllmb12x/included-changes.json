@@ -54,10 +54,17 @@
     {
       "name": "flashinfer",
       "title": "FlashInfer",
-      "branch": "refs/heads/auto/lil-main-20261119",
+      "branch": "refs/heads/auto/gb10-dsv41-20261120",
       "upstream": "local-inference-lab/flashinfer",
       "upstream_base": "refs/heads/main",
       "changes": [
+        {
+          "pull_request": null,
+          "title": "GB10 DSV4.1 decode split policy and NVFP4 CSF scale defaults",
+          "inclusion": "branch",
+          "commits": 2,
+          "note": "The two GB10-specific tips of local-inference-lab/flashinfer's karmic-kraken GB10 line, replayed clean onto auto/lil-main-20261119: 1c0f4c69f selects three DSV4.1 decode splits on the 48-SM GB10 (mla/kernel.py plus test_gb10_dsv41_split_policy.py) and 6d60ad155 enables CSF scale defaults on GB10 for the measured NVFP4 contract (fused_moe/_tuning.py plus test_gb10_nvfp4_csf_defaults.py). The rest of the four b12x-gb10-* branches is superseded: integrate/ds41-reviewed-kernels is contained in b12x-dsv41-gb10-mla-splits, and the compact-csf-inline racing commits patch the pre-October fused_moe tree this pin already moved past."
+        },
         {
           "pull_request": null,
           "title": "C S3-FIFO host row cache for disk PLE/Engram tables",

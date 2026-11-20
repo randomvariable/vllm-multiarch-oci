@@ -1,5 +1,5 @@
 {
-  "flashinfer_ref": "refs/heads/auto/lil-main-20261119",
+  "flashinfer_ref": "refs/heads/auto/gb10-dsv41-20261120",
   "lil_runtime_ref": "refs/heads/main",
   "name": "vllmb12x",
   "source_ref": "refs/heads/auto/karmic-kraken-20261109",
@@ -20,7 +20,7 @@
       "remote": "https://github.com/brandonmmusic-max/exllamav3.git"
     },
     "flashinfer": {
-      "commit": "f4989c22bfcf9c70b868a8b9208edc1114951704",
+      "commit": "b4eef740639e7774eab4cd126242995c15d3ee6a",
       "recursive_init_submodules": true,
       "remote": "https://github.com/randomvariable/flashinfer.git"
     },
