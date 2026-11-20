@@ -200,7 +200,11 @@ cuda_wheel(
     python = "@python_3_12//:python3",
     build = "//bazel:build_torch_wheel.py",
     env = _TORCH_ENV,
-    host_wheels = _TORCH_BUILD_WHEELS,
+    # torch 2.14 builds through scikit-build-core (PEP 517), not setup.py.
+    host_wheels = _TORCH_BUILD_WHEELS + select({
+        "//platforms:linux_aarch64": ["@host_deps//scikit_build_core:whl", "@host_deps//pathspec:whl"],
+        "//platforms:linux_x86_64": ["@host_deps_x86_64//scikit_build_core:whl", "@host_deps_x86_64//pathspec:whl"],
+    }),
     nccl = "//components/nccl:sdk",
     output = select({
         "//platforms:linux_aarch64": "torch-2.14.0-cp312-cp312-linux_aarch64.whl",
