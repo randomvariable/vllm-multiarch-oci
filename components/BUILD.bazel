@@ -17,6 +17,13 @@ _HOST_WHEELS = select({
     ],
 })
 
+# Wheels that import torch.utils.cpp_extension need filelock since torch 2.14
+# (torch/utils/_filelock.py). The torch build itself does not.
+_TORCH_IMPORT_WHEELS = select({
+    "//platforms:linux_aarch64": ["@runtime_deps//filelock:whl"],
+    "//platforms:linux_x86_64": ["@runtime_deps_x86_64//filelock:whl"],
+})
+
 _TORCH_BUILD_WHEELS = _HOST_WHEELS + select({
     "//platforms:linux_aarch64": ["@host_deps//cmake:whl", "@host_deps//ninja:whl", "@host_deps//jinja2:whl", "@host_deps//markupsafe:whl", "@host_deps//requests:whl", "@host_deps//six:whl"],
     "//platforms:linux_x86_64": ["@host_deps_x86_64//cmake:whl", "@host_deps_x86_64//ninja:whl", "@host_deps_x86_64//jinja2:whl", "@host_deps_x86_64//markupsafe:whl", "@host_deps_x86_64//requests:whl", "@host_deps_x86_64//six:whl"],
@@ -228,7 +235,7 @@ vllm_wheel(
         ":xgrammar",
     ],
     env = _VLLM_ENV,
-    host_wheels = _VLLM_BUILD_WHEELS,
+    host_wheels = _VLLM_BUILD_WHEELS + _TORCH_IMPORT_WHEELS,
     nccl = "//components/nccl:sdk",
     cuda_architecture = _CUDA_ARCH,
     cargo_vendor = _VLLM_CARGO_VENDOR,
@@ -266,7 +273,7 @@ vllm_preflight(
         ":xgrammar",
     ],
     env = _VLLM_ENV,
-    host_wheels = _VLLM_BUILD_WHEELS,
+    host_wheels = _VLLM_BUILD_WHEELS + _TORCH_IMPORT_WHEELS,
     nccl = "//components/nccl:sdk",
     cuda_architecture = _CUDA_ARCH,
     cargo_vendor = _VLLM_CARGO_VENDOR,
@@ -283,7 +290,7 @@ cuda_wheel(
     build = "//bazel:build_source_wheel.py",
     deps = [":torch"],
     env = _TORCHVISION_ENV,
-    host_wheels = _TORCH_BUILD_WHEELS,
+    host_wheels = _TORCH_BUILD_WHEELS + _TORCH_IMPORT_WHEELS,
     nccl = "//components/nccl:sdk",
     output = select({
         "//platforms:linux_aarch64": "torchvision-0.29.2-cp312-cp312-linux_aarch64.whl",
@@ -302,7 +309,7 @@ cuda_wheel(
     build = "//bazel:build_source_wheel.py",
     deps = [":torch"],
     env = _TORCHAUDIO_ENV,
-    host_wheels = _TORCH_BUILD_WHEELS,
+    host_wheels = _TORCH_BUILD_WHEELS + _TORCH_IMPORT_WHEELS,
     nccl = "//components/nccl:sdk",
     output = select({
         "//platforms:linux_aarch64": "torchaudio-2.11.1-cp312-cp312-linux_aarch64.whl",
@@ -321,7 +328,7 @@ cuda_wheel(
     build = "//bazel:build_source_wheel.py",
     env = _DEEPGEMM_ENV,
     deps = [":torch"],
-    host_wheels = _HOST_WHEELS,
+    host_wheels = _HOST_WHEELS + _TORCH_IMPORT_WHEELS,
     nccl = "//components/nccl:sdk",
     output = select({
         "//platforms:linux_aarch64": "deep_gemm-2.5.0-cp312-cp312-linux_aarch64.whl",
@@ -356,7 +363,7 @@ cuda_wheel(
     build = "//bazel:build_exllamav3_wheel.py",
     deps = [":torch"],
     env = _TORCH_ARCH_ENV,
-    host_wheels = _TORCH_BUILD_WHEELS,
+    host_wheels = _TORCH_BUILD_WHEELS + _TORCH_IMPORT_WHEELS,
     nccl = "//components/nccl:sdk",
     output = select({
         "//platforms:linux_aarch64": "exllamav3-0.0.43-cp312-cp312-linux_aarch64.whl",
@@ -375,7 +382,7 @@ cuda_wheel(
     build = "//bazel:build_source_wheel.py",
     deps = [":torch"],
     env = _LMCACHE_ENV,
-    host_wheels = _LMCACHE_BUILD_WHEELS,
+    host_wheels = _LMCACHE_BUILD_WHEELS + _TORCH_IMPORT_WHEELS,
     nccl = "//components/nccl:sdk",
     output = select({
         "//platforms:linux_aarch64": "lmcache-0.5.3.dev3-cp312-cp312-linux_aarch64.whl",
@@ -393,7 +400,7 @@ cuda_wheel(
     python = "@python_3_12//:python3",
     build = "//bazel:build_source_wheel.py",
     deps = [":torch"],
-    host_wheels = _HOST_WHEELS,
+    host_wheels = _HOST_WHEELS + _TORCH_IMPORT_WHEELS,
     output = select({
         "//platforms:linux_aarch64": "instanttensor-0.1.9-cp312-cp312-linux_aarch64.whl",
         "//platforms:linux_x86_64": "instanttensor-0.1.9-cp312-cp312-linux_x86_64.whl",
