@@ -19,7 +19,7 @@
           "title": "b12x GB10 integration ported from local-inference-lab karmic-kraken",
           "inclusion": "branch",
           "commits": 1,
-          "note": "One commit carries the fork's b12x path onto main: V2 runner, worker and engine-core preparation hooks; b12x paged attention, noncausal and GDN backends; Qwen4Exp b12x QSA, PLE, hyperconnection and MTP; PCIe/RoCE all-reduce; row-cache prefetch bridge and Prometheus relay; and upstream #65233, #65240 (MXFP4 CSF experts) and #67236 (NVFP4 draft lm_head on SM121) folded in. Dropped: recurrent boundary checkpoints, DCP-replicated hooks, adaptive-verification cost profiling, the b12x load format and the fork's ParallelLMHead quantization API."
+          "note": "One commit carries the fork's b12x path onto main: V2 runner, worker and engine-core preparation hooks; b12x paged attention, noncausal and GDN backends; Qwen4Exp b12x QSA, PLE, hyperconnection and MTP; PCIe/RoCE all-reduce; row-cache prefetch bridge and Prometheus relay; and upstream #65233, #65240 (MXFP4 CSF experts) and #67236 (NVFP4 draft lm_head on SM121) folded in; the follow-up entry below replaces #65240's host-side scale encoder. Dropped: recurrent boundary checkpoints, DCP-replicated hooks, adaptive-verification cost profiling, the b12x load format and the fork's ParallelLMHead quantization API."
         },
         {
           "pull_request": null,
@@ -27,6 +27,13 @@
           "inclusion": "branch",
           "commits": 1,
           "note": "Extends main's Qwen4Exp engram-config disk_offload to DeepSeek V4.1: rows are read with preadv before graph replay, so the ~196 GiB of FP8 Engram rows take no device or pinned host memory on GB10."
+        },
+        {
+          "pull_request": null,
+          "title": "b12x call sites moved to local-inference-lab FlashInfer APIs",
+          "inclusion": "branch",
+          "commits": 1,
+          "note": "MoE compressed scales use b12x online CSF compression (WeightPlanConstraints(scale_compression=\"csf\")) instead of the CsfScalePlanes encoder local-inference-lab removed, and the scale swizzle is read from b12x._lib.intrinsics.reference."
         },
         {
           "pull_request": null,
@@ -41,29 +48,22 @@
       "name": "flashinfer",
       "title": "FlashInfer",
       "branch": "refs/heads/cycle/monstrous-moonshine",
-      "upstream": "flashinfer-ai/flashinfer",
-      "upstream_base": "refs/tags/v0.7.4",
+      "upstream": "local-inference-lab/flashinfer",
+      "upstream_base": "refs/heads/main",
       "changes": [
         {
           "pull_request": null,
-          "title": "GB10 DSV4.1 decode split policy",
+          "title": "GB10 DSV4.1 decode split policy and NVFP4 CSF scale defaults",
           "inclusion": "branch",
-          "commits": 1,
-          "note": "Selects three DSV4.1 decode splits on the 48-SM GB10 (mla/kernel.py). The NVFP4 CSF scale-default commit is not carried: it edits a CSF policy function that exists only on local-inference-lab main, not on v0.7.4."
-        },
-        {
-          "pull_request": null,
-          "title": "CSF block and source readers from local-inference-lab main",
-          "inclusion": "branch",
-          "commits": 1,
-          "note": "Adds b12x/loader/_csf_blocks.py and _csf_source.py verbatim; they depend only on stdlib, numpy and torch. vLLM's mxfp4_csf loader reads FP4-CSF containers through them."
+          "commits": 2,
+          "note": "The two GB10-specific tips of local-inference-lab/flashinfer's karmic-kraken GB10 line, replayed clean onto main 1d76585b1: three DSV4.1 decode splits on the 48-SM GB10 (mla/kernel.py) and CSF scale defaults on GB10 for the measured NVFP4 contract (fused_moe/_tuning.py)."
         },
         {
           "pull_request": null,
           "title": "C S3-FIFO host row cache for disk PLE/Engram tables",
           "inclusion": "branch",
           "commits": 12,
-          "note": "The twelve row-cache commits developed under local-inference-lab/flashinfer#44, replayed onto flashinfer-ai v0.7.4: the row-cache core, the caller-gated DiskTable.prefetch and host row-id helpers, and the prefetch telemetry commits. The upstream pull request later grew beyond these twelve; the lock carries exactly the audited set."
+          "note": "The twelve row-cache commits developed under local-inference-lab/flashinfer#44, replayed clean onto main 1d76585b1: the row-cache core, the caller-gated DiskTable.prefetch and host row-id helpers, and the prefetch telemetry commits. The upstream pull request later grew beyond these twelve; the lock carries exactly the audited set."
         }
       ]
     }

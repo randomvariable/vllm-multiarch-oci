@@ -12,34 +12,34 @@ A change reaches the build in one of two ways. It is either already merged into 
 {/* included-changes:start */}
 ## vLLM
 
-Pinned at [`0e8f5041a1a9`](https://github.com/randomvariable/vllm/commit/0e8f5041a1a9d7d1943bfb86fe68f150918cd2d5), branched from [`vllm-project/vllm`](https://github.com/vllm-project/vllm) `main`.
+Pinned at [`ccf4a4ef07d4`](https://github.com/randomvariable/vllm/commit/ccf4a4ef07d451a553a8186622dc1f43be428289), branched from [`vllm-project/vllm`](https://github.com/vllm-project/vllm) `main`.
 
 - **[vllm-project/vllm#68445](https://github.com/vllm-project/vllm/pull/68445)** — Bounded shared-memory broadcast waits
   - Merged into the pinned revision (3 commits).
   - The stacked #68441, #68444 and #68445 replayed onto main d1ad1088bc: lost wake-up fix, bounded WFET/WAITPKG spin waits, and opt-in adaptive spin time. #68445 lists all three commits.
 - **b12x GB10 integration ported from local-inference-lab karmic-kraken** — no upstream pull request
   - Merged into the pinned revision (1 commits).
-  - One commit carries the fork's b12x path onto main: V2 runner, worker and engine-core preparation hooks; b12x paged attention, noncausal and GDN backends; Qwen4Exp b12x QSA, PLE, hyperconnection and MTP; PCIe/RoCE all-reduce; row-cache prefetch bridge and Prometheus relay; and upstream #65233, #65240 (MXFP4 CSF experts) and #67236 (NVFP4 draft lm_head on SM121) folded in. Dropped: recurrent boundary checkpoints, DCP-replicated hooks, adaptive-verification cost profiling, the b12x load format and the fork's ParallelLMHead quantization API.
+  - One commit carries the fork's b12x path onto main: V2 runner, worker and engine-core preparation hooks; b12x paged attention, noncausal and GDN backends; Qwen4Exp b12x QSA, PLE, hyperconnection and MTP; PCIe/RoCE all-reduce; row-cache prefetch bridge and Prometheus relay; and upstream #65233, #65240 (MXFP4 CSF experts) and #67236 (NVFP4 draft lm_head on SM121) folded in; the follow-up entry below replaces #65240's host-side scale encoder. Dropped: recurrent boundary checkpoints, DCP-replicated hooks, adaptive-verification cost profiling, the b12x load format and the fork's ParallelLMHead quantization API.
 - **DeepSeek V4.1 Engram tables served from checkpoint files** — no upstream pull request
   - Merged into the pinned revision (1 commits).
   - Extends main's Qwen4Exp engram-config disk_offload to DeepSeek V4.1: rows are read with preadv before graph replay, so the ~196 GiB of FP8 Engram rows take no device or pinned host memory on GB10.
+- **b12x call sites moved to local-inference-lab FlashInfer APIs** — no upstream pull request
+  - Merged into the pinned revision (1 commits).
+  - MoE compressed scales use b12x online CSF compression (WeightPlanConstraints(scale_compression="csf")) instead of the CsfScalePlanes encoder local-inference-lab removed, and the scale swizzle is read from b12x._lib.intrinsics.reference.
 - **Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute** — no upstream pull request
   - Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch`.
   - Packaging repair for this builder's symlink install path, which skips the import rewrite the upstream CMake copy performs. It carries no upstream change.
 
 ## FlashInfer
 
-Pinned at [`f65a207fed4b`](https://github.com/randomvariable/flashinfer/commit/f65a207fed4b312969013fbbfb1cbf8e576122d2), branched from [`flashinfer-ai/flashinfer`](https://github.com/flashinfer-ai/flashinfer) `refs/tags/v0.7.4`.
+Pinned at [`aaf6e76176a9`](https://github.com/randomvariable/flashinfer/commit/aaf6e76176a96f2dac70ee0862e3cc83d3c357f8), branched from [`local-inference-lab/flashinfer`](https://github.com/local-inference-lab/flashinfer) `main`.
 
-- **GB10 DSV4.1 decode split policy** — no upstream pull request
-  - Merged into the pinned revision (1 commits).
-  - Selects three DSV4.1 decode splits on the 48-SM GB10 (mla/kernel.py). The NVFP4 CSF scale-default commit is not carried: it edits a CSF policy function that exists only on local-inference-lab main, not on v0.7.4.
-- **CSF block and source readers from local-inference-lab main** — no upstream pull request
-  - Merged into the pinned revision (1 commits).
-  - Adds b12x/loader/_csf_blocks.py and _csf_source.py verbatim; they depend only on stdlib, numpy and torch. vLLM's mxfp4_csf loader reads FP4-CSF containers through them.
+- **GB10 DSV4.1 decode split policy and NVFP4 CSF scale defaults** — no upstream pull request
+  - Merged into the pinned revision (2 commits).
+  - The two GB10-specific tips of local-inference-lab/flashinfer's karmic-kraken GB10 line, replayed clean onto main 1d76585b1: three DSV4.1 decode splits on the 48-SM GB10 (mla/kernel.py) and CSF scale defaults on GB10 for the measured NVFP4 contract (fused_moe/_tuning.py).
 - **C S3-FIFO host row cache for disk PLE/Engram tables** — no upstream pull request
   - Merged into the pinned revision (12 commits).
-  - The twelve row-cache commits developed under local-inference-lab/flashinfer#44, replayed onto flashinfer-ai v0.7.4: the row-cache core, the caller-gated DiskTable.prefetch and host row-id helpers, and the prefetch telemetry commits. The upstream pull request later grew beyond these twelve; the lock carries exactly the audited set.
+  - The twelve row-cache commits developed under local-inference-lab/flashinfer#44, replayed clean onto main 1d76585b1: the row-cache core, the caller-gated DiskTable.prefetch and host row-id helpers, and the prefetch telemetry commits. The upstream pull request later grew beyond these twelve; the lock carries exactly the audited set.
 {/* included-changes:end */}
 
 ## Keeping this list honest

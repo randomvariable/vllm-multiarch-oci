@@ -4,9 +4,9 @@ This file records the selected source lock. Source selection does not establish 
 
 ## Integration Branches
 
-- vLLM target: `randomvariable/vllm:cycle/monstrous-moonshine` at `0e8f5041a1a9`. Its base is `vllm-project/vllm` `main` at `d1ad1088bc`, not the frozen `local-inference-lab/vllm:dev/karmic-kraken`. On top: the stacked shm-broadcast pull requests #68441, #68444 and #68445; one commit porting the fork's b12x GB10 integration onto main, with upstream #65233, #65240 and #67236 folded in; and one commit serving DeepSeek V4.1 Engram tables from the checkpoint files.
-- FlashInfer target: `randomvariable/flashinfer:cycle/monstrous-moonshine` at `f65a207fed4b`. Its base is `flashinfer-ai/flashinfer` `v0.7.4`, not LIL `main`. LIL `main` removed `b12x.moe.fused_moe.CsfScalePlanes` and stopped exporting `b12x._lib.intrinsics`, and upstream vLLM `main` calls both. On top: the twelve row-cache commits, the GB10 DSV4.1 decode-split commit, and the LIL CSF block and source readers.
-- The two scale-swizzle and pin-memory compatibility patches are retired: upstream main no longer needs them.
+- vLLM target: `randomvariable/vllm:cycle/monstrous-moonshine` at `ccf4a4ef07d4`. Its base is `vllm-project/vllm` `main` at `d1ad1088bc`, not the frozen `local-inference-lab/vllm:dev/karmic-kraken`. On top: the stacked shm-broadcast pull requests #68441, #68444 and #68445; one commit porting the fork's b12x GB10 integration onto main, with upstream #65233, #65240 and #67236 folded in; one commit serving DeepSeek V4.1 Engram tables from the checkpoint files; and one commit moving the b12x call sites to local-inference-lab FlashInfer's APIs.
+- FlashInfer target: `randomvariable/flashinfer:cycle/monstrous-moonshine` at `aaf6e76176a9` — `local-inference-lab/flashinfer` `main` at `1d76585b1` plus the twelve row-cache commits and the two GB10 tips. LIL `main` contains flashinfer-ai up to 2026-11-05 and is 271 commits ahead of `v0.7.4` under `experimental/b12x`; `v0.7.4` has no b12x commit that LIL lacks. It carries `paged_decode`, the PCIe/RoCE collectives and the CSF readers.
+- The two scale-swizzle and pin-memory compatibility patches are retired: the vLLM branch reads the swizzle from `b12x._lib.intrinsics.reference` itself.
 - Do not push to `local-inference-lab` repositories. The source lock stores immutable commits, not these moving branch names.
 
 ## Historical beta-base selections
@@ -27,12 +27,12 @@ The previous cycle recorded these changes as supplied by its base. This historic
 | vLLM | [#68441](https://github.com/vllm-project/vllm/pull/68441), [#68444](https://github.com/vllm-project/vllm/pull/68444), [#68445](https://github.com/vllm-project/vllm/pull/68445): bounded shared-memory broadcast waits | Three commits replayed onto `main` `d1ad1088bc`. |
 | vLLM | b12x GB10 integration from the LIL karmic-kraken fork: V2 runner, worker and engine-core preparation; b12x attention, noncausal and GDN backends; Qwen4Exp b12x QSA, PLE, hyperconnection and MTP; PCIe/RoCE all-reduce; row-cache prefetch bridge and Prometheus relay. Folds in [#65233](https://github.com/vllm-project/vllm/pull/65233), [#65240](https://github.com/vllm-project/vllm/pull/65240) and [#67236](https://github.com/vllm-project/vllm/pull/67236). | One commit `72161c0f43`. Dropped: recurrent boundary checkpoints, DCP-replicated hooks, adaptive-verification cost profiling, the `b12x` load format, and the fork's `ParallelLMHead` quantization API. |
 | vLLM | DeepSeek V4.1 Engram tables served from checkpoint files (`engram-config.disk_offload`). No upstream pull request. | One commit `0e8f5041a1`. |
-| FlashInfer | [#44](https://github.com/local-inference-lab/flashinfer/pull/44) C S3-FIFO host row cache for disk PLE/Engram tables | Twelve commits replayed onto `v0.7.4`. |
-| FlashInfer | GB10 DSV4.1 decode split policy. No upstream pull request. | One commit. The NVFP4 CSF scale-default commit is not carried: it edits a policy function that exists only on LIL `main`. |
-| FlashInfer | CSF block and source readers from LIL `main` | One commit, verbatim, for vLLM's `mxfp4_csf` loader. |
+| vLLM | b12x call sites moved to local-inference-lab FlashInfer APIs. No upstream pull request. | One commit `ccf4a4ef07`: MoE compressed scales use b12x online CSF compression instead of the removed `CsfScalePlanes` encoder; the scale swizzle comes from `b12x._lib.intrinsics.reference`. |
+| FlashInfer | [#44](https://github.com/local-inference-lab/flashinfer/pull/44) C S3-FIFO host row cache for disk PLE/Engram tables | Twelve commits replayed onto `local-inference-lab/flashinfer:main` at `1d76585b1`. |
+| FlashInfer | GB10 DSV4.1 decode split policy and NVFP4 CSF scale defaults. No upstream pull request. | Two commits replayed onto `main` `1d76585b1`. |
 | vLLM | `third_party/vllm_flash_attn_cute_namespace.patch` | Applied at build time. Packaging repair for this builder's symlink install path; carries no upstream change. |
 
-Risk: b12x `paged_decode` is absent from this FlashInfer. B12X decode and verify run on the paged-extend path. The image launcher maps LIL fork-only options to upstream equivalents or drops them when the installed vLLM is upstream lineage. `qwen38-flash-next-gb10-tp2` explicitly sets LIL scheduler options and fails to resolve on this image.
+Risk: the image launcher maps LIL fork-only options to upstream equivalents or drops them when the installed vLLM is upstream lineage. `qwen38-flash-next-gb10-tp2` explicitly sets LIL scheduler options and fails to resolve on this image.
 
 ## Retired selections, available for re-selection
 
