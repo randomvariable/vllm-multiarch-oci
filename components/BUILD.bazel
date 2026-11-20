@@ -40,7 +40,6 @@ _VLLM_CMAKE_SOURCES = {
     "flashkda": "@vllmb12x_vllm_cmake_flashkda//:source.tar",
     "flashmla": "@vllmb12x_vllm_cmake_flashmla//:source.tar",
     "msa": "@vllmb12x_vllm_cmake_msa//:source.tar",
-    "qutlass": "@vllmb12x_vllm_cmake_qutlass//:source.tar",
     "tml_fa4": "@vllmb12x_vllm_cmake_tml_fa4//:source.tar",
     "triton": "@vllmb12x_vllm_cmake_triton//:source.tar",
 }
@@ -96,15 +95,15 @@ _FLASHINFER_JIT_SHIM_ENV = select({
     "//platforms:cuda_sm120": {"FLASHINFER_DISABLE_VERSION_CHECK": "1", "FLASHINFER_JIT_CACHE_PROVIDER_ARCHS": "12.0"},
 })
 _TORCH_ENV = select({
-    "//platforms:cuda_sm12x": {"BUILD_CAFFE2": "0", "BUILD_TEST": "0", "CMAKE_CUDA_ARCHITECTURES": "120f", "PYTORCH_BUILD_NUMBER": "1", "PYTORCH_BUILD_VERSION": "2.13.0", "TORCH_CUDA_ARCH_LIST": "12.0+PTX", "USE_CUDA": "1", "USE_CUDNN": "1", "USE_CUFILE": "0", "USE_CUSPARSELT": "1", "USE_DISTRIBUTED": "1", "USE_NCCL": "1", "USE_SYSTEM_NCCL": "1"},
-    "//platforms:cuda_sm120": {"BUILD_CAFFE2": "0", "BUILD_TEST": "0", "CMAKE_CUDA_ARCHITECTURES": "120", "PYTORCH_BUILD_NUMBER": "1", "PYTORCH_BUILD_VERSION": "2.13.0", "TORCH_CUDA_ARCH_LIST": "12.0", "USE_CUDA": "1", "USE_CUDNN": "1", "USE_CUFILE": "0", "USE_CUSPARSELT": "1", "USE_DISTRIBUTED": "1", "USE_NCCL": "1", "USE_SYSTEM_NCCL": "1"},
+    "//platforms:cuda_sm12x": {"BUILD_CAFFE2": "0", "BUILD_TEST": "0", "CMAKE_CUDA_ARCHITECTURES": "120f", "PYTORCH_BUILD_NUMBER": "1", "PYTORCH_BUILD_VERSION": "2.14.0", "TORCH_CUDA_ARCH_LIST": "12.0+PTX", "USE_CUDA": "1", "USE_CUDNN": "1", "USE_CUFILE": "0", "USE_CUSPARSELT": "1", "USE_DISTRIBUTED": "1", "USE_NCCL": "1", "USE_SYSTEM_NCCL": "1"},
+    "//platforms:cuda_sm120": {"BUILD_CAFFE2": "0", "BUILD_TEST": "0", "CMAKE_CUDA_ARCHITECTURES": "120", "PYTORCH_BUILD_NUMBER": "1", "PYTORCH_BUILD_VERSION": "2.14.0", "TORCH_CUDA_ARCH_LIST": "12.0", "USE_CUDA": "1", "USE_CUDNN": "1", "USE_CUFILE": "0", "USE_CUSPARSELT": "1", "USE_DISTRIBUTED": "1", "USE_NCCL": "1", "USE_SYSTEM_NCCL": "1"},
 })
 _VLLM_ENV = select({
     "//platforms:cuda_sm12x": {"CMAKE_CUDA_ARCHITECTURES": "120f", "TORCH_CUDA_ARCH_LIST": "12.0+PTX", "VLLM_MAIN_CUDA_VERSION": "13.4", "VLLM_REQUIRE_RUST_FRONTEND": "1", "VLLM_RS_BUILD_VERSION": VLLM_BUILD_VERSION, "VLLM_DISABLED_KERNELS": "MarlinFP8ScaledMMLinearKernel", "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_VLLM_RUST_FRONTEND_BUILD": VLLM_BUILD_VERSION, "VLLM_TARGET_DEVICE": "cuda", "VLLM_VERSION_OVERRIDE": VLLM_BUILD_VERSION},
     "//platforms:cuda_sm120": {"CMAKE_CUDA_ARCHITECTURES": "120", "TORCH_CUDA_ARCH_LIST": "12.0", "VLLM_MAIN_CUDA_VERSION": "13.4", "VLLM_REQUIRE_RUST_FRONTEND": "1", "VLLM_RS_BUILD_VERSION": VLLM_BUILD_VERSION, "VLLM_DISABLED_KERNELS": "MarlinFP8ScaledMMLinearKernel", "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_VLLM_RUST_FRONTEND_BUILD": VLLM_BUILD_VERSION, "VLLM_TARGET_DEVICE": "cuda", "VLLM_VERSION_OVERRIDE": VLLM_BUILD_VERSION},
 })
-_TORCHVISION_ENV = select({"//platforms:cuda_sm12x": {"FORCE_CUDA": "1", "PYTORCH_VERSION": "2.13.0", "TORCH_CUDA_ARCH_LIST": "12.0+PTX"}, "//platforms:cuda_sm120": {"FORCE_CUDA": "1", "PYTORCH_VERSION": "2.13.0", "TORCH_CUDA_ARCH_LIST": "12.0"}})
-_TORCHAUDIO_ENV = select({"//platforms:cuda_sm12x": {"PYTORCH_VERSION": "2.13.0", "TORCH_CUDA_ARCH_LIST": "12.0+PTX"}, "//platforms:cuda_sm120": {"PYTORCH_VERSION": "2.13.0", "TORCH_CUDA_ARCH_LIST": "12.0"}})
+_TORCHVISION_ENV = select({"//platforms:cuda_sm12x": {"FORCE_CUDA": "1", "PYTORCH_VERSION": "2.14.0", "TORCH_CUDA_ARCH_LIST": "12.0+PTX"}, "//platforms:cuda_sm120": {"FORCE_CUDA": "1", "PYTORCH_VERSION": "2.14.0", "TORCH_CUDA_ARCH_LIST": "12.0"}})
+_TORCHAUDIO_ENV = select({"//platforms:cuda_sm12x": {"PYTORCH_VERSION": "2.14.0", "TORCH_CUDA_ARCH_LIST": "12.0+PTX"}, "//platforms:cuda_sm120": {"PYTORCH_VERSION": "2.14.0", "TORCH_CUDA_ARCH_LIST": "12.0"}})
 _TORCH_ARCH_ENV = select({"//platforms:cuda_sm12x": {"TORCH_CUDA_ARCH_LIST": "12.0+PTX"}, "//platforms:cuda_sm120": {"TORCH_CUDA_ARCH_LIST": "12.0"}})
 _DEEPGEMM_ENV = select({"//platforms:cuda_sm12x": {"DG_FORCE_BUILD": "1", "DG_USE_LOCAL_VERSION": "0", "TORCH_CUDA_ARCH_LIST": "12.0+PTX"}, "//platforms:cuda_sm120": {"DG_FORCE_BUILD": "1", "DG_USE_LOCAL_VERSION": "0", "TORCH_CUDA_ARCH_LIST": "12.0"}})
 _LMCACHE_ENV = select({"//platforms:cuda_sm12x": {"BUILD_WITH_CUDA": "1", "LMCACHE_CUDA_MAJOR": "13", "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_LMCACHE": "0.5.3.dev3", "TORCH_CUDA_ARCH_LIST": "12.0+PTX"}, "//platforms:cuda_sm120": {"BUILD_WITH_CUDA": "1", "LMCACHE_CUDA_MAJOR": "13", "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_LMCACHE": "0.5.3.dev3", "TORCH_CUDA_ARCH_LIST": "12.0"}})
@@ -204,8 +203,8 @@ cuda_wheel(
     host_wheels = _TORCH_BUILD_WHEELS,
     nccl = "//components/nccl:sdk",
     output = select({
-        "//platforms:linux_aarch64": "torch-2.13.0-cp312-cp312-linux_aarch64.whl",
-        "//platforms:linux_x86_64": "torch-2.13.0-cp312-cp312-linux_x86_64.whl",
+        "//platforms:linux_aarch64": "torch-2.14.0-cp312-cp312-linux_aarch64.whl",
+        "//platforms:linux_x86_64": "torch-2.14.0-cp312-cp312-linux_x86_64.whl",
     }),
     cpu = 20,
     memory = 32768,
@@ -283,8 +282,8 @@ cuda_wheel(
     host_wheels = _TORCH_BUILD_WHEELS,
     nccl = "//components/nccl:sdk",
     output = select({
-        "//platforms:linux_aarch64": "torchvision-0.28.0-cp312-cp312-linux_aarch64.whl",
-        "//platforms:linux_x86_64": "torchvision-0.28.0-cp312-cp312-linux_x86_64.whl",
+        "//platforms:linux_aarch64": "torchvision-0.29.2-cp312-cp312-linux_aarch64.whl",
+        "//platforms:linux_x86_64": "torchvision-0.29.2-cp312-cp312-linux_x86_64.whl",
     }),
     cpu = 20,
     memory = 32768,
@@ -302,8 +301,8 @@ cuda_wheel(
     host_wheels = _TORCH_BUILD_WHEELS,
     nccl = "//components/nccl:sdk",
     output = select({
-        "//platforms:linux_aarch64": "torchaudio-2.11.0-cp312-cp312-linux_aarch64.whl",
-        "//platforms:linux_x86_64": "torchaudio-2.11.0-cp312-cp312-linux_x86_64.whl",
+        "//platforms:linux_aarch64": "torchaudio-2.11.1-cp312-cp312-linux_aarch64.whl",
+        "//platforms:linux_x86_64": "torchaudio-2.11.1-cp312-cp312-linux_x86_64.whl",
     }),
     cpu = 20,
     memory = 32768,

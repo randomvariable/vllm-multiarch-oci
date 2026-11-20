@@ -26,7 +26,6 @@ _VLLM_CMAKE_SOURCE_NAMES = frozenset(
         "flashkda",
         "flashmla",
         "msa",
-        "qutlass",
         "tml_fa4",
         "triton",
     }
@@ -78,7 +77,6 @@ def materialize_vllm_cmake_sources(
         "FLASH_KDA_SRC_DIR": str(sources["flashkda"]),
         "FLASH_MLA_SRC_DIR": str(sources["flashmla"]),
         "FMHA_SM100_SRC_DIR": str(sources["msa"]),
-        "QUTLASS_SRC_DIR": str(sources["qutlass"]),
         "TML_FA4_SRC_DIR": str(sources["tml_fa4"]),
         "TRITON_KERNELS_SRC_DIR": str(triton_kernels),
         "VLLM_FLASH_ATTN_SRC_DIR": str(sources["flash_attn"]),

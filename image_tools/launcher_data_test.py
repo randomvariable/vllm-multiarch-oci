@@ -55,6 +55,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 IMAGE_TOOLS = Path(__file__).resolve().parent
 REPO = IMAGE_TOOLS.parent
@@ -481,6 +482,76 @@ class RecipeGoldenTest(LauncherDataBase):
                     f"{path} disagrees with the resolved recipe; run "
                     "python3 image_tools/launcher_data_test.py --update",
                 )
+
+
+@upstream_only
+class UpstreamEngineTest(LauncherDataBase):
+    def test_profile_defaults_map_for_qwen_recipe(self) -> None:
+        recipe = self.recipe("qwen38-flash-next-gb10-tp2")
+        layer = recipe_layer(recipe)
+        for option in resolver.UPSTREAM_ENGINE_OPTIONS:
+            layer["options"].pop(option, None)
+        with mock.patch.object(resolver, "installed_upstream_vllm", return_value=True):
+            plan = resolver.resolve(recipe.profile, recipe.hardware, recipe_layer=layer,
+                                    env={}, root=self.root)
+        self.assertEqual(plan.environment["VLLM_GDN_DECODE_KERNEL"], "b12x")
+        self.assertFalse(plan.values["kernel-config"]["enable_flashinfer_autotune"])
+        for option in resolver.UPSTREAM_ENGINE_OPTIONS:
+            self.assertNotIn("--" + option, plan.argv)
+            self.assertNotIn("--no-" + option, plan.argv)
+        self.assertTrue(any("gdn-decode-kernel" in w for w in plan.warnings))
+        self.assertTrue(any("enable-flashinfer-autotune" in w for w in plan.warnings))
+
+    def test_ds41_maps_speculation_and_records_drops(self) -> None:
+        with mock.patch.object(resolver, "installed_upstream_vllm", return_value=True):
+            plan = resolver.resolve("ds41-flash", HARDWARE, env={}, root=self.root)
+        self.assertTrue(plan.values["speculative-config"]["enable_adaptive_verification"])
+        self.assertNotIn("adaptive_verification_cost_scale", plan.values["speculative-config"])
+        self.assertNotIn("engram-config", plan.values)
+        for option in ("engram-table-memory", "engram-disk-resident-scales",
+                       "engram-projection-tp", "adaptive-verification-cost-scale",
+                       "prefill-policy", "swa-block-size"):
+            self.assertTrue(any(option in w for w in plan.warnings), option)
+            self.assertTrue(plan.origins[option].startswith("derived:"), option)
+            self.assertNotIn("--" + option, plan.argv)
+
+    def test_disk_offload_and_kernel_config_merge(self) -> None:
+        original_profile = resolver.profile
+
+        def profile_with_disk(kind, identifier, *, root):
+            result = original_profile(kind, identifier, root=root)
+            if kind == "model" and identifier == "ds41-flash":
+                result["defaults"]["engram-table-memory"] = "disk"
+            return result
+
+        with (mock.patch.object(resolver, "installed_upstream_vllm", return_value=True),
+              mock.patch.object(resolver, "profile", side_effect=profile_with_disk)):
+            plan = resolver.resolve("ds41-flash", HARDWARE, env={}, root=self.root,
+                                    config={"options": {"engram-config": {"cpu_offload": False}}})
+            self.assertEqual(plan.values["engram-config"],
+                             {"cpu_offload": False, "disk_offload": True})
+            plan = resolver.resolve("qwen38-flash-next", HARDWARE, env={}, root=self.root,
+                                    argv=["--kernel-config", '{"linear_backend":"b12x"}'])
+            self.assertEqual(plan.values["kernel-config"],
+                             {"linear_backend": "b12x", "enable_flashinfer_autotune": False})
+
+    def test_explicit_recipe_and_cli_values_are_rejected(self) -> None:
+        recipe = self.recipe("qwen38-flash-next-gb10-tp2")
+        with mock.patch.object(resolver, "installed_upstream_vllm", return_value=True):
+            with self.assertRaisesRegex(ConfigError, "max-parallel-prefills"):
+                resolver.resolve(recipe.profile, recipe.hardware, recipe_layer=recipe_layer(recipe),
+                                 env={}, root=self.root)
+            with self.assertRaisesRegex(ConfigError, "prefill-policy"):
+                resolver.resolve(recipe.profile, recipe.hardware, argv=["--prefill-policy", "round-robin"],
+                                 env={}, root=self.root)
+
+    def test_lineage_probe(self) -> None:
+        with mock.patch.object(resolver, "installed_source", return_value=None):
+            self.assertFalse(resolver.installed_upstream_vllm())
+        with mock.patch.object(resolver, "installed_source", return_value="gdn_decode_kernel: str"):
+            self.assertFalse(resolver.installed_upstream_vllm())
+        with mock.patch.object(resolver, "installed_source", return_value="class EngineArgs: pass"):
+            self.assertTrue(resolver.installed_upstream_vllm())
 
 
 @upstream_only
