@@ -118,7 +118,7 @@
       "remote": "https://github.com/triton-lang/triton.git"
     },
     "xgrammar": {
-      "commit": "2ea71da4ccb997a06928c9fb69b99f330da56697",
+      "commit": "8f9a1279fdbed47739bd75b4099d1d059a1ce3e0",
       "recursive_init_submodules": true,
       "remote": "https://github.com/mlc-ai/xgrammar.git"
     }

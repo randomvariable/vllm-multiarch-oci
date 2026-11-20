@@ -3,24 +3,27 @@
 # vLLM runtime requirements not built from this profile's pinned source trees.
 -r ../../third_party/vllm-common-requirements.txt
 
-# CUDA packages track the latest release, pre-releases included; see the
-# bump-vllmb12x-deps skill. Non-CUDA packages track upstream vLLM's pins.
+# Non-CUDA packages follow upstream vLLM's pins. A CUDA package ahead of
+# upstream's requirements/cuda.txt pin stays unpinned and tracks the latest
+# release, pre-releases included; one that was behind is pinned to upstream's
+# value. See the bump-vllmb12x-deps skill.
 apache-tvm-ffi
 cuda-python
 cuda-tile
 cupy-cuda13x
-# Tokenizer backend for VLLM_USE_FASTOKENS=1; vLLM requires >= 0.2.0.
-fastokens==0.3.2
+# Tokenizer backend for VLLM_USE_FASTOKENS=1; vLLM requires >= 0.3.5
+# (vllm/tokenizers/fastokens.py).
+fastokens>=0.3.5
 fastsafetensors>=0.3.3
-humming-kernels[cu13]
+humming-kernels[cu13]==0.1.20
 nccl4py
 # Object-store KV tiering (vllm/v1/kv_offload/tiering/obj). The metapackage
 # depends on both nixl-cu13 and nixl-cu12 unconditionally.
-nixl
+nixl==1.5.2
 # Upstream vLLM requirements/cuda.txt pin: ngram proposer, JIT monitor and
 # vision processors import it.
 numba==0.65.0
-nvidia-cudnn-frontend
+nvidia-cudnn-frontend>=1.31.0,<1.33
 nvidia-cutlass-dsl[cu13]
 nvidia-ml-py
 nvtx
@@ -45,7 +48,12 @@ sparkcache==0.1.0a2
 PyNvVideoCodec
 quack-kernels
 tilelang
-tokenspeed-mla
+tokenspeed-mla==2.0.3
+# Resolution anchor only: the image installs the source-built torch and
+# image/BUILD.bazel keeps this wheel out of the venv. Pinning it to that build's
+# version (upstream requirements/cuda.txt) keeps triton and the other wheels
+# torch selects matched to it.
+torch==2.14.0
 torchcodec>=0.14
 
 # Source-built wheels installed by venv_layer, excluded from Bazel's PyPI hub.

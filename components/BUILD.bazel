@@ -345,10 +345,16 @@ cuda_wheel(
     target_cpu = _TARGET_CPU,
     python = "@python_3_12//:python3",
     build = "//bazel:build_source_wheel.py",
-    host_wheels = _SCIKIT_BUILD_WHEELS,
+    # xgrammar takes its version from setuptools-scm since 0.2.6. The source
+    # archive has no .git, so state the version of the pinned v0.2.9 tag.
+    env = {"SETUPTOOLS_SCM_PRETEND_VERSION_FOR_XGRAMMAR": "0.2.9"},
+    host_wheels = _SCIKIT_BUILD_WHEELS + select({
+        "//platforms:linux_aarch64": ["@host_deps//setuptools_scm:whl", "@host_deps//vcs_versioning:whl"],
+        "//platforms:linux_x86_64": ["@host_deps_x86_64//setuptools_scm:whl", "@host_deps_x86_64//vcs_versioning:whl"],
+    }),
     output = select({
-        "//platforms:linux_aarch64": "xgrammar-0.2.5-cp312-cp312-linux_aarch64.whl",
-        "//platforms:linux_x86_64": "xgrammar-0.2.5-cp312-cp312-linux_x86_64.whl",
+        "//platforms:linux_aarch64": "xgrammar-0.2.9-cp312-cp312-linux_aarch64.whl",
+        "//platforms:linux_x86_64": "xgrammar-0.2.9-cp312-cp312-linux_x86_64.whl",
     }),
     cpu = 20,
     memory = 32768,

@@ -295,7 +295,7 @@
         "bzlTransitiveDigest": "7YjzLKfFcyz3tTFdR61rk3+1qauUakGlG2++BDsoWEA=",
         "usagesDigest": "9GuNruZa/tHnUvQ0VgeYQsUdGIoTXHIbMQDu714qyCs=",
         "recordedInputs": [
-          "FILE:@@//profiles/vllmb12x/profile.json 907d980f744c92664b4a1cd28e87bf83cb158744a0663cbcbbcf5a83002266ec"
+          "FILE:@@//profiles/vllmb12x/profile.json 3e00273660c6af29fda40632e3ff13561026c8518c157a2ab3bdf5216898b50c"
         ],
         "generatedRepoSpecs": {
           "vllmb12x_cutlass": {
@@ -552,7 +552,7 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/mlc-ai/xgrammar.git",
-              "commit": "2ea71da4ccb997a06928c9fb69b99f330da56697",
+              "commit": "8f9a1279fdbed47739bd75b4099d1d059a1ce3e0",
               "recursive_init_submodules": true,
               "patches": [],
               "cargo_vendor": false,

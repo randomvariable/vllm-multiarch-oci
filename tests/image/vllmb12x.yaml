@@ -167,17 +167,19 @@ commandTests:
     expectedOutput: ["launch path is python"]
   # The recipe is a two-rank LeaderWorkerSet, so the launcher refuses to resolve it
   # without the rank variables the controller injects; the test supplies rank zero
-  # the way a leader pod would see it.
+  # the way a leader pod would see it. qwen38-flash-next-gb10-tp2 is not used
+  # here: it sets LIL scheduler options that upstream-lineage vLLM rejects, so the
+  # launcher refuses it on this image.
   - name: "Recipe resolution needs no GPU and no download"
     command: "/opt/venv/bin/vllm-image"
-    args: ["launch", "--recipe", "qwen38-flash-next-gb10-tp2", "--print-config"]
+    args: ["launch", "--recipe", "deepseek-v4-flash-vision-gb10-tp2", "--print-config"]
     envVars:
       - key: "LWS_WORKER_INDEX"
         value: "0"
       - key: "LWS_GROUP_SIZE"
         value: "2"
       - key: "LWS_LEADER_ADDRESS"
-        value: "qwen38-flash-next-0.qwen38-flash-next"
+        value: "deepseek-v4-flash-0.deepseek-v4-flash"
       - key: "POD_IP"
         value: "192.0.2.10"
     expectedOutput: ["\"argv\":", "vllm.entrypoints.cli.main", "--moe-backend", "b12x"]
@@ -266,7 +268,7 @@ commandTests:
     args:
       - "-c"
       - "from vllm.tokenizers.fastokens import apply_fastokens_patch; from importlib.metadata import version; apply_fastokens_patch(); print('fastokens', version('fastokens'))"
-    expectedOutput: ["fastokens 0\\.3\\.2"]
+    expectedOutput: ["fastokens 0\\.3\\.6"]
   # b12x preparation compiles C++ shims in the container at first use; torch
   # cpp_extension requires the ninja binary, which pip --target installs of
   # the ninja wheel omit unless the venv layer materializes them.
