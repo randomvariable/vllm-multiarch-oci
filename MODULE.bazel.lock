@@ -292,8 +292,8 @@
     },
     "//bazel:sources.bzl%profile_sources": {
       "general": {
-        "bzlTransitiveDigest": "PlQrasKK7uhGwT44KdQxo55ORbetuJwFgpKcWztYtY4=",
-        "usagesDigest": "27S2nJnWs7icY1Yi+UWrPv4nfudZ01z3cIqvW9izwLY=",
+        "bzlTransitiveDigest": "7YjzLKfFcyz3tTFdR61rk3+1qauUakGlG2++BDsoWEA=",
+        "usagesDigest": "9GuNruZa/tHnUvQ0VgeYQsUdGIoTXHIbMQDu714qyCs=",
         "recordedInputs": [
           "FILE:@@//profiles/vllmb12x/profile.json 228fb662f574fbb09184e5ab13f4347e0937c3f5d2d98f97629cfff9dc2a118b"
         ],
@@ -315,7 +315,9 @@
               "remote": "https://github.com/deepseek-ai/DeepGEMM.git",
               "commit": "a6b593d2826719dcf4892609af7b84ee23aaf32a",
               "recursive_init_submodules": true,
-              "patches": [],
+              "patches": [
+                "@@//third_party:deepgemm_cxx20.patch"
+              ],
               "cargo_vendor": false,
               "cargo_manifest": "rust/Cargo.toml"
             }
@@ -348,7 +350,9 @@
               "remote": "https://github.com/voipmonitor/InstantTensor.git",
               "commit": "49b4010afc1cae0441e71fe0b0bffc24fa05e932",
               "recursive_init_submodules": true,
-              "patches": [],
+              "patches": [
+                "@@//third_party:instanttensor_cxx20.patch"
+              ],
               "cargo_vendor": false,
               "cargo_manifest": "rust/Cargo.toml"
             }
@@ -381,7 +385,9 @@
               "remote": "https://github.com/local-inference-lab/LMCache.git",
               "commit": "820af25ff630f4c00f7faefbcc31bc5ccd7bab71",
               "recursive_init_submodules": true,
-              "patches": [],
+              "patches": [
+                "@@//third_party:lmcache_cxx20.patch"
+              ],
               "cargo_vendor": false,
               "cargo_manifest": "rust/Cargo.toml"
             }
