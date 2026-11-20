@@ -164,7 +164,7 @@ class LaneScriptTest(unittest.TestCase):
             for index, command in enumerate(commands)
             if command[:1] == ["test"] and command[1:2] and command[1].startswith("//tests/image:vllmb12x_contract")
         ]
-        self.assertEqual(len(contracts), 3, f"one contract run per CUDA pool plus the x86 lane: {contracts!r}")
+        self.assertEqual(len(contracts), 6, f"one contract run per CUDA pool plus the x86 lane, each split into shared and arch config invocations: {contracts!r}")
         lanes = {
             scripts_tests,
             host_python,
@@ -205,8 +205,11 @@ class LaneScriptTest(unittest.TestCase):
             [(commands[index][1], commands[index][2]) for index in contracts],
             [
                 ("//tests/image:vllmb12x_contract", "--config=remote-sm120a"),
+                ("//tests/image:vllmb12x_contract_arch", "--config=remote-sm120a"),
                 ("//tests/image:vllmb12x_contract_sm121a", "--config=remote-sm120a"),
+                ("//tests/image:vllmb12x_contract_sm121a_arch", "--config=remote-sm120a"),
                 ("//tests/image:vllmb12x_contract", "--config=remote-x86_64"),
+                ("//tests/image:vllmb12x_contract_arch", "--config=remote-x86_64"),
             ],
         )
         # The fetch of a cargo-vendored source failed in CI because repository
