@@ -35,8 +35,11 @@ Pinned at [`3ab11fdec715`](https://github.com/randomvariable/vllm/commit/3ab11fd
 
 ## FlashInfer
 
-Pinned at [`f4989c22bfcf`](https://github.com/randomvariable/flashinfer/commit/f4989c22bfcf9c70b868a8b9208edc1114951704), branched from [`local-inference-lab/flashinfer`](https://github.com/local-inference-lab/flashinfer) `main`.
+Pinned at [`b4eef740639e`](https://github.com/randomvariable/flashinfer/commit/b4eef740639e7774eab4cd126242995c15d3ee6a), branched from [`local-inference-lab/flashinfer`](https://github.com/local-inference-lab/flashinfer) `main`.
 
+- **GB10 DSV4.1 decode split policy and NVFP4 CSF scale defaults** — no upstream pull request
+  - Merged into the pinned revision (2 commits).
+  - The two GB10-specific tips of local-inference-lab/flashinfer's karmic-kraken GB10 line, replayed clean onto auto/lil-main-20261119: 1c0f4c69f selects three DSV4.1 decode splits on the 48-SM GB10 (mla/kernel.py plus test_gb10_dsv41_split_policy.py) and 6d60ad155 enables CSF scale defaults on GB10 for the measured NVFP4 contract (fused_moe/_tuning.py plus test_gb10_nvfp4_csf_defaults.py). The rest of the four b12x-gb10-* branches is superseded: integrate/ds41-reviewed-kernels is contained in b12x-dsv41-gb10-mla-splits, and the compact-csf-inline racing commits patch the pre-October fused_moe tree this pin already moved past.
 - **C S3-FIFO host row cache for disk PLE/Engram tables** — no upstream pull request
   - Merged into the pinned revision (12 commits).
   - The twelve row-cache commits developed under local-inference-lab/flashinfer#44, replayed clean onto main 598c8547b on auto/lil-main-20261119: the row-cache core, the caller-gated DiskTable.prefetch and host row-id helpers, then the prefetch telemetry commits — requests, rows queued and dropped, jobs, errors, and rows loaded or cancelled only as the worker really published or released them. The upstream pull request later grew beyond these twelve; the lock deliberately carries exactly the audited set. vLLM's prefetch hook and its metrics both need the row-cache commit or later.

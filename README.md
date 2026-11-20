@@ -23,7 +23,8 @@ The image is built from pinned fork revisions rather than from upstream branches
 | vLLM `3ab11fdec715` | Resolve FlashInfer scale-swizzle intrinsics (no upstream pull request) | Applied at build time by `third_party/vllm_b12x_intrinsics_reference.patch` |
 | vLLM `3ab11fdec715` | Initialize pin-memory support after torch helpers (no upstream pull request) | Applied at build time by `third_party/vllm_pin_memory_import_order.patch` |
 | vLLM `3ab11fdec715` | Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute (no upstream pull request) | Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch` |
-| FlashInfer `f4989c22bfcf` | C S3-FIFO host row cache for disk PLE/Engram tables (no upstream pull request) | Merged into the pinned revision (12 commits) |
+| FlashInfer `b4eef740639e` | GB10 DSV4.1 decode split policy and NVFP4 CSF scale defaults (no upstream pull request) | Merged into the pinned revision (2 commits) |
+| FlashInfer `b4eef740639e` | C S3-FIFO host row cache for disk PLE/Engram tables (no upstream pull request) | Merged into the pinned revision (12 commits) |
 <!-- included-changes:end -->
 
 The retained NVFP4-CSF loader converts checkpoint scale streams to FlashInfer's

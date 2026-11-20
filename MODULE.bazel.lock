@@ -295,7 +295,7 @@
         "bzlTransitiveDigest": "PlQrasKK7uhGwT44KdQxo55ORbetuJwFgpKcWztYtY4=",
         "usagesDigest": "vdXVi/hsX+sKiyZH2raZEpAzPcwJjpeVEW7sC7MuJ64=",
         "recordedInputs": [
-          "FILE:@@//profiles/vllmb12x/profile.json 9a66921b9b0976306ea2e2be3a50194b9634573958fa9e60a728d4bb45424e29"
+          "FILE:@@//profiles/vllmb12x/profile.json f6369837d953fa8018244572e881bb8a455c4dca329f9bf68f9d923399dfc185"
         ],
         "generatedRepoSpecs": {
           "vllmb12x_cutlass": {
@@ -335,7 +335,7 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/randomvariable/flashinfer.git",
-              "commit": "f4989c22bfcf9c70b868a8b9208edc1114951704",
+              "commit": "b4eef740639e7774eab4cd126242995c15d3ee6a",
               "recursive_init_submodules": true,
               "patches": [],
               "cargo_vendor": false,

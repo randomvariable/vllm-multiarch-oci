@@ -5,7 +5,7 @@ This file records the selected source lock. Source selection does not establish 
 ## Integration Branches
 
 - vLLM target: `randomvariable/vllm:auto/karmic-kraken-20261109` at `3ab11fdec7151` — canonical `local-inference-lab/vllm:dev/karmic-kraken` at `8244d1c44348`, the advisory disk row-cache prefetch commit `c237f8373701`, PR #800's adaptive-spin commit replayed as `ce5f4148d44a`, then seven commits adding the b12x row-cache and prefetch Prometheus metrics, then the fused MXFP4 DSA indexer path. Canonical karmic uses the CSF source/block API shipped by the selected FlashInfer; lunar and karmic-beta still call the removed `CsfScalePlanes` API.
-- FlashInfer target: `randomvariable/flashinfer:auto/lil-main-20261119` at `f4989c22bfcf` — `local-inference-lab/flashinfer:main` at `598c8547b` (2026-11-18) plus all twelve commits of PR #44 replayed clean onto it. The replay keeps every row-cache, `DiskTable.prefetch`, host row-id predictor, telemetry and shutdown-race commit of the previous selection and moves the base ten days forward: the RoCE/PCIe collectives line, the `b12x/sequence/` tree extensions, and the loader/table fixes the GB10 fleet tracks.
+- FlashInfer target: `randomvariable/flashinfer:auto/gb10-dsv41-20261120` at `b4eef740639e` — the previous selection `auto/lil-main-20261119` at `f4989c22bfcf` (LIL `main` `598c8547b` plus the twelve row-cache commits) plus the two GB10-specific tips of LIL's karmic-kraken GB10 line replayed clean: `1c0f4c69f` selects three DSV4.1 decode splits on the 48-SM GB10, and `6d60ad155` enables CSF scale defaults on GB10 for the measured NVFP4 contract. The remainder of the four `b12x-gb10-*` branches was audited and excluded as superseded: `integrate/ds41-reviewed-kernels` is fully contained in `b12x-dsv41-gb10-mla-splits`, and the `compact-csf-inline` racing commits patch the pre-October `fused_moe` tree this selection already moved past.
 - The scale-swizzle compatibility patch updates both the intrinsics module cache and getter to `b12x._lib.intrinsics.reference`.
 - Do not push to `local-inference-lab` repositories. The source lock stores immutable commits, not these moving branch names.
 
@@ -24,6 +24,7 @@ The previous cycle recorded these changes as supplied by its base. This historic
 
 | Component | Change | Inclusion |
 | --- | --- | --- |
+| FlashInfer | GB10 DSV4.1 decode split policy and NVFP4 CSF scale defaults. No upstream pull request. | Two commits replayed onto `auto/lil-main-20261119`, published on `auto/gb10-dsv41-20261120`: `1c0f4c69f` selects three DSV4.1 decode splits on the 48-SM GB10 with `test_gb10_dsv41_split_policy.py`, and `6d60ad155` enables CSF scale defaults on GB10 for the measured NVFP4 contract with `test_gb10_nvfp4_csf_defaults.py`. |
 | vLLM | [#800](https://github.com/local-inference-lab/vllm/pull/800) bounded shared-memory broadcast waits | One commit replayed on top of the prefetch commit, published on `auto/karmic-kraken-20261109`. |
 | vLLM | Advisory disk row-cache prefetch for Qwen4Exp PLE and DeepSeek V4.1 Engram. No upstream pull request. | One commit `c237f8373701`, behind `VLLM_PLE_PREFETCH`. |
 | vLLM | b12x row-cache and prefetch Prometheus metrics, served by the API process on `/metrics`. No upstream pull request. | Seven commits; the caches are sampled on a daemon thread, never on the step path. |
