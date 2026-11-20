@@ -2,11 +2,13 @@
 """Resolve model policy without importing vLLM, CUDA, or model checkpoints.
 
 This module is a port of ``runtime/launcher.py`` and the policy half of
-``runtime/cache.py`` from ``local-inference-lab/blackwell-llm-docker`` at
-commit ``f5bc69c221dc7933a153cf5340c53f3f795aad85``, the ``lil_runtime`` pin of
-``profiles/vllmb12x/profile.json``. Functions are kept in upstream order and
-upstream shape so that ``launcher_parity_test`` and a reviewer can diff the two
-files side by side.
+``runtime/cache.py`` from ``local-inference-lab/blackwell-llm-docker``. The
+``lil_runtime`` pin of ``profiles/vllmb12x/profile.json`` names the commit to
+diff against; the fallback handling follows the pin's ``preset_fallbacks``
+semantics (a dict or newest-first list of entries, each gating on
+``requires_environment`` and/or ``requires_csf_encodings``). Functions are
+kept in upstream order and upstream shape so that ``launcher_parity_test``
+and a reviewer can diff the two files side by side.
 
 The port is deliberate about three things:
 
@@ -330,6 +332,37 @@ def profile(kind: str, identifier: str, *, root: Path = DEFAULT_DATA_ROOT) -> di
     return result
 
 
+def _valid_preset_fallback(entry: Any, preset: dict) -> bool:
+    """One vllm_fallback entry: options for an image without the named features.
+
+    requires_environment names vLLM variables the preset sets; requires_csf_encodings
+    names FP4-CSF scale encodings the image must read.
+    """
+    if not isinstance(entry, dict) or not isinstance(entry.get("options"), dict):
+        return False
+    keys = set(entry) - {"options"}
+    if not keys or keys - {"requires_environment", "requires_csf_encodings"}:
+        return False
+    environment = entry.get("requires_environment", [])
+    encodings = entry.get("requires_csf_encodings", [])
+    return (
+        isinstance(environment, list)
+        and all(
+            isinstance(key, str) and key in preset["environment"] for key in environment
+        )
+        and isinstance(encodings, list)
+        and all(encoding in CSF_ENCODINGS for encoding in encodings)
+    )
+
+
+def _preset_fallbacks(deployment: dict) -> list[dict]:
+    """A preset's vllm_fallback entries, newest requirement first."""
+    fallback = deployment.get("vllm_fallback")
+    if fallback is None:
+        return []
+    return [fallback] if isinstance(fallback, dict) else list(fallback)
+
+
 def deployment_presets(*, root: Path = DEFAULT_DATA_ROOT) -> dict:
     """Read data-only deployment overlays owned by the container recipe."""
     data = read_yaml(root / "presets.yaml")
@@ -355,15 +388,11 @@ def deployment_presets(*, root: Path = DEFAULT_DATA_ROOT) -> dict:
         if not required <= set(item) <= required | optional:
             raise ConfigError(f"Invalid deployment preset fields: {name}")
         fallback = item.get("vllm_fallback")
+        entries = [fallback] if isinstance(fallback, dict) else fallback
         if fallback is not None and (
-            not isinstance(fallback, dict)
-            or set(fallback) != {"requires_environment", "options"}
-            or not isinstance(fallback["options"], dict)
-            or not isinstance(fallback["requires_environment"], list)
-            or not all(
-                isinstance(key, str) and key in item["environment"]
-                for key in fallback["requires_environment"]
-            )
+            not isinstance(entries, list)
+            or not entries
+            or not all(_valid_preset_fallback(entry, item) for entry in entries)
         ):
             raise ConfigError(f"Invalid preset vllm_fallback: {name}")
         by_dcp = item.get("kv_bytes_by_dcp", {})
@@ -506,6 +535,28 @@ def installed_csf_families() -> frozenset[str] | None:
                 re.findall(r'^\s+"([a-z][a-z0-9_]*)"\s*:', table.group(1), re.MULTILINE)
             )
     return frozenset(families)
+
+
+def installed_csf_encodings() -> frozenset[str] | None:
+    """FP4-CSF scale encodings the installed vLLM and B12X read, or None without vLLM.
+
+    Every CSF-capable image reads slab scales ("csf"). The csf_32x2_v1 block
+    encoding needs a vLLM whose ModelOpt recipes accept it and a FlashInfer
+    whose B12X ships the block loader.
+    """
+    modelopt = installed_source(
+        "vllm", "model_executor/layers/quantization/modelopt.py"
+    )
+    if modelopt is None:
+        return None
+    encodings = {"csf"}
+    if (
+        '"csf_32x2_v1"' in modelopt
+        and installed_source("flashinfer", "experimental/b12x/loader/_csf_blocks.py")
+        is not None
+    ):
+        encodings.add("csf_32x2_v1")
+    return frozenset(encodings)
 
 
 
@@ -1294,6 +1345,7 @@ def resolve(
     vllm_environment: frozenset[str] | None = None,
     csf_formats: frozenset[str] | None = None,
     csf_families: frozenset[str] | None = None,
+    csf_encodings: frozenset[str] | None = None,
     root: Path = DEFAULT_DATA_ROOT,
 ) -> ResolvedPlan:
     incoming = dict(os.environ if env is None else env)
@@ -1320,18 +1372,26 @@ def resolve(
     deployment = deployment_preset(preset, root=root) if preset else None
     if deployment and deployment["profile"] != identifier:
         raise ConfigError("The deployment preset belongs to a different model profile")
-    fallback_reason = None
-    if deployment and deployment.get("vllm_fallback") and vllm_environment is not None:
-        # A preset that relies on vLLM features newer than the installed vLLM
-        # (for example the same recipe in a channel with an older vLLM) keeps
-        # its previously qualified values instead.
-        fallback = deployment["vllm_fallback"]
-        missing = sorted(set(fallback["requires_environment"]) - vllm_environment)
+    fallback_reasons = []
+    for fallback in _preset_fallbacks(deployment) if deployment else []:
+        # A preset that relies on vLLM or B12X features newer than the installed
+        # ones (for example the same recipe in a channel with an older vLLM)
+        # keeps its previously qualified values instead. Entries go from the
+        # newest requirement to the oldest, so an older image ends on the
+        # oldest entry's values.
+        missing = []
+        if vllm_environment is not None:
+            required = set(fallback.get("requires_environment", []))
+            missing += sorted(required - vllm_environment)
+        if csf_encodings is not None:
+            required = set(fallback.get("requires_csf_encodings", []))
+            missing += sorted(required - csf_encodings)
         if missing:
             deployment["options"].update(fallback["options"])
-            for name in fallback["requires_environment"]:
+            for name in fallback.get("requires_environment", []):
                 deployment["environment"].pop(name, None)
-            fallback_reason = "installed vLLM lacks " + ", ".join(missing)
+            fallback_reasons.append("installed vLLM lacks " + ", ".join(missing))
+    fallback_reason = "; ".join(fallback_reasons) or None
     if deployment:
         model = copy.deepcopy(model)
         for mode_name, overrides in deployment["modes"].items():
@@ -2312,6 +2372,7 @@ def configure_expert_precision(
 
 
 CSF_FORMATS = ("nvfp4_csf", "mxfp4_csf")
+CSF_ENCODINGS = ("csf", "csf_32x2_v1")
 CSF_SCHEMAS = {
     "lil-nvfp4-csf-checkpoint/1": "nvfp4_csf",
     "lil-mxfp4-csf-checkpoint/1": "mxfp4_csf",
