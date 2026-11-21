@@ -242,7 +242,12 @@ sources.profile(
     # torch 2.14 headers require C++20; these extensions hard-code C++17.
     deepgemm_patches = ["//third_party:deepgemm_cxx20.patch"],
     instanttensor_patches = ["//third_party:instanttensor_cxx20.patch"],
-    lmcache_patches = ["//third_party:lmcache_cxx20.patch"],
+    lmcache_patches = [
+        "//third_party:lmcache_cxx20.patch",
+        # The pinned LMCache fork targets the LIL vLLM fork's KV-cache API;
+        # this adapts its vLLM integration to upstream's (vllm-project/vllm#61452).
+        "//third_party:lmcache_upstream_vllm_kv_api.patch",
+    ],
 )
 use_repo(
     sources,

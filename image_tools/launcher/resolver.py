@@ -171,7 +171,6 @@ UPSTREAM_ENGINE_OPTIONS: dict[str, UpstreamForm] = {
     "prefill-compute-share": UpstreamForm(),
     "prefill-compute-half-life": UpstreamForm(),
     "decode-refill-target": UpstreamForm(),
-    "recurrent-checkpoint-policy": UpstreamForm(),
     "swa-block-size": UpstreamForm(),
 }
 

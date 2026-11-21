@@ -12,7 +12,7 @@ A change reaches the build in one of two ways. It is either already merged into 
 {/* included-changes:start */}
 ## vLLM
 
-Pinned at [`ccf4a4ef07d4`](https://github.com/randomvariable/vllm/commit/ccf4a4ef07d451a553a8186622dc1f43be428289), branched from [`vllm-project/vllm`](https://github.com/vllm-project/vllm) `main`.
+Pinned at [`851f8046784c`](https://github.com/randomvariable/vllm/commit/851f8046784cf7892f5427504eef1a76f89d3cec), branched from [`vllm-project/vllm`](https://github.com/vllm-project/vllm) `main`.
 
 - **[vllm-project/vllm#68445](https://github.com/vllm-project/vllm/pull/68445)** — Bounded shared-memory broadcast waits
   - Merged into the pinned revision (3 commits).
@@ -26,6 +26,12 @@ Pinned at [`ccf4a4ef07d4`](https://github.com/randomvariable/vllm/commit/ccf4a4e
 - **b12x call sites moved to local-inference-lab FlashInfer APIs** — no upstream pull request
   - Merged into the pinned revision (1 commits).
   - MoE compressed scales use b12x online CSF compression (WeightPlanConstraints(scale_compression="csf")) instead of the CsfScalePlanes encoder local-inference-lab removed, and the scale swizzle is read from b12x._lib.intrinsics.reference.
+- **Qwen4Exp b12x modules import their config from transformers** — no upstream pull request
+  - Merged into the pinned revision (1 commits).
+  - Fixes an import break in the b12x Qwen QSA, PLE and indexer modules after the fork's config shim was removed; MTP index sharing is read from the draft model config, where main's speculative-config plumbing sets it (default off).
+- **Request-boundary recurrent checkpoints for Qwen3.8-Flash-Next** — no upstream pull request
+  - Merged into the pinned revision (1 commits).
+  - Ports local-inference-lab's boundary checkpoint cache, admission, endpoint reservations, capture/restore and KV connector hooks onto main, so the LMCache recurrent checkpoint connector resumes follow-up turns. Checkpoint keys cover only tokens below the endpoint under main's hash lookahead. Out of scope: GLM-5-Next, Kimi-K3/KDA, DFlash replay, DCP, LoRA and the fork's prefill-policy scheduler. Also fixes b12x profiling/warm-up hooks running without b12x and an env leak in a carried test.
 - **Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute** — no upstream pull request
   - Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch`.
   - Packaging repair for this builder's symlink install path, which skips the import rewrite the upstream CMake copy performs. It carries no upstream change.

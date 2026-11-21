@@ -37,6 +37,20 @@
         },
         {
           "pull_request": null,
+          "title": "Qwen4Exp b12x modules import their config from transformers",
+          "inclusion": "branch",
+          "commits": 1,
+          "note": "Fixes an import break in the b12x Qwen QSA, PLE and indexer modules after the fork's config shim was removed; MTP index sharing is read from the draft model config, where main's speculative-config plumbing sets it (default off)."
+        },
+        {
+          "pull_request": null,
+          "title": "Request-boundary recurrent checkpoints for Qwen3.8-Flash-Next",
+          "inclusion": "branch",
+          "commits": 1,
+          "note": "Ports local-inference-lab's boundary checkpoint cache, admission, endpoint reservations, capture/restore and KV connector hooks onto main, so the LMCache recurrent checkpoint connector resumes follow-up turns. Checkpoint keys cover only tokens below the endpoint under main's hash lookahead. Out of scope: GLM-5-Next, Kimi-K3/KDA, DFlash replay, DCP, LoRA and the fork's prefill-policy scheduler. Also fixes b12x profiling/warm-up hooks running without b12x and an env leak in a carried test."
+        },
+        {
+          "pull_request": null,
           "title": "Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute",
           "inclusion": "patch",
           "patch": "third_party/vllm_flash_attn_cute_namespace.patch",

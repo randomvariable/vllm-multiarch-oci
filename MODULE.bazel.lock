@@ -293,9 +293,9 @@
     "//bazel:sources.bzl%profile_sources": {
       "general": {
         "bzlTransitiveDigest": "7YjzLKfFcyz3tTFdR61rk3+1qauUakGlG2++BDsoWEA=",
-        "usagesDigest": "9GuNruZa/tHnUvQ0VgeYQsUdGIoTXHIbMQDu714qyCs=",
+        "usagesDigest": "sGfpqB0QEbtrb6lGJE+b0qJMpWaFXBOqyNl+SulejzU=",
         "recordedInputs": [
-          "FILE:@@//profiles/vllmb12x/profile.json 3e00273660c6af29fda40632e3ff13561026c8518c157a2ab3bdf5216898b50c"
+          "FILE:@@//profiles/vllmb12x/profile.json d36116cd9e277182e4e80d6c6c2fc375cbb4e7fa064afe1d7a3c0c3d622cfc9e"
         ],
         "generatedRepoSpecs": {
           "vllmb12x_cutlass": {
@@ -386,7 +386,8 @@
               "commit": "820af25ff630f4c00f7faefbcc31bc5ccd7bab71",
               "recursive_init_submodules": true,
               "patches": [
-                "@@//third_party:lmcache_cxx20.patch"
+                "@@//third_party:lmcache_cxx20.patch",
+                "@@//third_party:lmcache_upstream_vllm_kv_api.patch"
               ],
               "cargo_vendor": false,
               "cargo_manifest": "rust/Cargo.toml"
@@ -440,7 +441,7 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/randomvariable/vllm.git",
-              "commit": "ccf4a4ef07d451a553a8186622dc1f43be428289",
+              "commit": "851f8046784cf7892f5427504eef1a76f89d3cec",
               "recursive_init_submodules": true,
               "patches": [
                 "@@//third_party:vllm_flash_attn_cute_namespace.patch"
