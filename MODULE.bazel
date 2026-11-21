@@ -240,7 +240,6 @@ sources.profile(
         "//third_party:vllm_flash_attn_cute_namespace.patch",
     ],
     # torch 2.14 headers require C++20; these extensions hard-code C++17.
-    deepgemm_patches = ["//third_party:deepgemm_cxx20.patch"],
     instanttensor_patches = ["//third_party:instanttensor_cxx20.patch"],
     lmcache_patches = [
         "//third_party:lmcache_cxx20.patch",

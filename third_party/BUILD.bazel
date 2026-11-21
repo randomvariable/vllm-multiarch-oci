@@ -1,5 +1,4 @@
 exports_files([
-    "deepgemm_cxx20.patch",
     "instanttensor_cxx20.patch",
     "lmcache_cxx20.patch",
     "lmcache_upstream_vllm_kv_api.patch",

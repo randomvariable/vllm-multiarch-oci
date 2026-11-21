@@ -331,8 +331,8 @@ cuda_wheel(
     host_wheels = _HOST_WHEELS + _TORCH_IMPORT_WHEELS,
     nccl = "//components/nccl:sdk",
     output = select({
-        "//platforms:linux_aarch64": "deep_gemm-2.5.0-cp312-cp312-linux_aarch64.whl",
-        "//platforms:linux_x86_64": "deep_gemm-2.5.0-cp312-cp312-linux_x86_64.whl",
+        "//platforms:linux_aarch64": "deep_gemm-2.8.1-cp310-abi3-linux_aarch64.whl",
+        "//platforms:linux_x86_64": "deep_gemm-2.8.1-cp310-abi3-linux_x86_64.whl",
     }),
     cpu = 20,
     memory = 32768,

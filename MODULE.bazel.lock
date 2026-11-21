@@ -293,9 +293,9 @@
     "//bazel:sources.bzl%profile_sources": {
       "general": {
         "bzlTransitiveDigest": "7YjzLKfFcyz3tTFdR61rk3+1qauUakGlG2++BDsoWEA=",
-        "usagesDigest": "sGfpqB0QEbtrb6lGJE+b0qJMpWaFXBOqyNl+SulejzU=",
+        "usagesDigest": "TbToXvRwiI8PsHdrsxGPuPfbejspkLY+sFzGYsHqeN4=",
         "recordedInputs": [
-          "FILE:@@//profiles/vllmb12x/profile.json d36116cd9e277182e4e80d6c6c2fc375cbb4e7fa064afe1d7a3c0c3d622cfc9e"
+          "FILE:@@//profiles/vllmb12x/profile.json 156cbd696e36fac1e422e1bda1cf1088fb4b66a313c9a358d1d6f19e2bcb3e84"
         ],
         "generatedRepoSpecs": {
           "vllmb12x_cutlass": {
@@ -312,12 +312,10 @@
           "vllmb12x_deepgemm": {
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
-              "remote": "https://github.com/deepseek-ai/DeepGEMM.git",
-              "commit": "a6b593d2826719dcf4892609af7b84ee23aaf32a",
+              "remote": "https://github.com/vllm-project/DeepGEMM.git",
+              "commit": "44cba7d28066182852005c59052f035ebc18e211",
               "recursive_init_submodules": true,
-              "patches": [
-                "@@//third_party:deepgemm_cxx20.patch"
-              ],
+              "patches": [],
               "cargo_vendor": false,
               "cargo_manifest": "rust/Cargo.toml"
             }

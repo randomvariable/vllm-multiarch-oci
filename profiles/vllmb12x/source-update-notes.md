@@ -33,7 +33,8 @@ The previous cycle recorded these changes as supplied by its base. This historic
 | FlashInfer | [#44](https://github.com/local-inference-lab/flashinfer/pull/44) C S3-FIFO host row cache for disk PLE/Engram tables | Twelve commits replayed onto `local-inference-lab/flashinfer:main` at `1d76585b1`. |
 | FlashInfer | GB10 DSV4.1 decode split policy and NVFP4 CSF scale defaults. No upstream pull request. | Two commits replayed onto `main` `1d76585b1`. |
 | LMCache | `third_party/lmcache_upstream_vllm_kv_api.patch` | Applied at build time. Adapts the pinned LMCache fork's vLLM integration to upstream's KV-cache group API and config hashing; both connectors refuse KV groups marked non-transferable. |
-| LMCache, DeepGEMM, InstantTensor | `third_party/{lmcache,deepgemm,instanttensor}_cxx20.patch` | Applied at build time. torch 2.14 headers need C++20. |
+| LMCache, InstantTensor | `third_party/{lmcache,instanttensor}_cxx20.patch` | Applied at build time. torch 2.14 headers need C++20. |
+| DeepGEMM | Standalone `deep_gemm` built from `vllm-project/DeepGEMM` `44cba7d280`, the commit vLLM main vendors. | vLLM imports the top-level `deep_gemm` before its vendored copy. deepseek-ai `a6b593d` asserted `block_kv == 64` in SM12x paged MQA logits and failed DeepSeek-V4.1 indexer warmup at `--block-size 64`. `44cba7d` accepts 32 and 64 and already builds with C++20. |
 | vLLM | `third_party/vllm_flash_attn_cute_namespace.patch` | Applied at build time. Packaging repair for this builder's symlink install path; carries no upstream change. |
 
 Risk: the image launcher maps LIL fork-only options to upstream equivalents or drops them when the installed vLLM is upstream lineage. `qwen38-flash-next-gb10-tp2` explicitly sets LIL scheduler options and fails to resolve on this image.

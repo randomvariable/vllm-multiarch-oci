@@ -10,9 +10,9 @@
       "remote": "https://github.com/NVIDIA/cutlass.git"
     },
     "deepgemm": {
-      "commit": "a6b593d2826719dcf4892609af7b84ee23aaf32a",
+      "commit": "44cba7d28066182852005c59052f035ebc18e211",
       "recursive_init_submodules": true,
-      "remote": "https://github.com/deepseek-ai/DeepGEMM.git"
+      "remote": "https://github.com/vllm-project/DeepGEMM.git"
     },
     "exllamav3": {
       "commit": "704aefd743b390af4bd0fb429d1906f9b964c7d8",
