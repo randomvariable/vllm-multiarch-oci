@@ -12,6 +12,7 @@ import shutil
 import shlex
 import subprocess
 import tarfile
+import tempfile
 import zipfile
 from pathlib import Path
 from typing import Mapping, Sequence
@@ -453,9 +454,9 @@ def configure_compiler_cache(
     cache_dir = compiler_cache_dir()
     try:
         cache_dir.mkdir(parents=True, exist_ok=True)
-        probe = cache_dir / ".ccache-write-probe"
-        probe.touch(exist_ok=True)
-        probe.unlink()
+        # Concurrent actions share this directory; a fixed probe name races.
+        with tempfile.NamedTemporaryFile(dir=cache_dir, prefix=".ccache-write-probe-"):
+            pass
     except OSError as error:
         raise RuntimeError(f"required durable ccache is unavailable at {cache_dir}: {error}") from error
 
