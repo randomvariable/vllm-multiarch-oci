@@ -1,8 +1,8 @@
 {
-  "flashinfer_ref": "refs/heads/auto/gb10-dsv41-20261120",
+  "flashinfer_ref": "refs/heads/cycle/monstrous-moonshine",
   "lil_runtime_ref": "refs/heads/main",
   "name": "vllmb12x",
-  "source_ref": "refs/heads/auto/karmic-kraken-20261109",
+  "source_ref": "refs/heads/cycle/monstrous-moonshine",
   "sources": {
     "cutlass": {
       "commit": "e6233cbac5d7c7a865c19c91cd684ceece19513c",
@@ -20,7 +20,7 @@
       "remote": "https://github.com/brandonmmusic-max/exllamav3.git"
     },
     "flashinfer": {
-      "commit": "b4eef740639e7774eab4cd126242995c15d3ee6a",
+      "commit": "aaf6e76176a96f2dac70ee0862e3cc83d3c357f8",
       "recursive_init_submodules": true,
       "remote": "https://github.com/randomvariable/flashinfer.git"
     },
@@ -52,23 +52,23 @@
       "remote": "https://github.com/local-inference-lab/nccl-canonical.git"
     },
     "torch": {
-      "commit": "cf30153c4c131c8164ee7798e5022d810682e2cb",
+      "commit": "2b3ec34829036a65cd9d1398ea72a0167dc37470",
       "recursive_init_submodules": true,
       "remote": "https://github.com/pytorch/pytorch.git"
     },
     "torchaudio": {
-      "commit": "34c52a67e8941bbd8e6adaca0eb0b9eabec11d78",
+      "commit": "455331b1b3bb4aabfe3228f6f911fc3f11ae93b1",
       "recursive_init_submodules": true,
       "remote": "https://github.com/pytorch/audio.git"
     },
     "torchvision": {
-      "commit": "8fb87713a24951e639c494b0f2a8a81b5f8e33a6",
+      "commit": "f12281517f1b2f6255904639b027c9436f3e5008",
       "recursive_init_submodules": true,
       "remote": "https://github.com/pytorch/vision.git"
     },
     "vllm": {
       "cargo_vendor": true,
-      "commit": "3ab11fdec7151d043bdbd994fc8f1b2810797fb8",
+      "commit": "851f8046784cf7892f5427504eef1a76f89d3cec",
       "recursive_init_submodules": true,
       "remote": "https://github.com/randomvariable/vllm.git"
     },
@@ -78,9 +78,9 @@
       "remote": "https://github.com/nvidia/cutlass.git"
     },
     "vllm_cmake_deepgemm": {
-      "commit": "ad1f1726aa540a76c1d26d6a120effb8de21eaa4",
+      "commit": "44cba7d28066182852005c59052f035ebc18e211",
       "recursive_init_submodules": true,
-      "remote": "https://github.com/deepseek-ai/DeepGEMM.git"
+      "remote": "https://github.com/vllm-project/DeepGEMM.git"
     },
     "vllm_cmake_deepselect": {
       "commit": "d96d33afe1fab0d6066da49cdc91e64c2bee65ea",
@@ -88,45 +88,40 @@
       "remote": "https://github.com/vllm-project/DeepSelect.git"
     },
     "vllm_cmake_flash_attn": {
-      "commit": "506341a143fcabd4bb79052a7605ada727d6b3f5",
+      "commit": "1b32c5caf71f5183248bdeda0855d4669b1d8744",
       "recursive_init_submodules": true,
       "remote": "https://github.com/vllm-project/flash-attention.git"
     },
     "vllm_cmake_flashkda": {
-      "commit": "b59532f1f464fbd536272780e30df5bf6a2ccc02",
+      "commit": "9d9e928edc42475a67a523dd37814540d105f51c",
       "recursive_init_submodules": true,
       "remote": "https://github.com/vllm-project/FlashKDA.git"
     },
     "vllm_cmake_flashmla": {
-      "commit": "0eee43b12f034b657133cf2afca6a72ebb6efccf",
+      "commit": "b18ed7442d7da2fdc38eac11436e28acc04cb1e6",
       "recursive_init_submodules": false,
       "remote": "https://github.com/vllm-project/FlashMLA.git"
     },
     "vllm_cmake_msa": {
-      "commit": "f355c37eb4e1413f21ee2ad8bbad25079e6bef9d",
+      "commit": "14437868b453b3efc858878e24754cb5523e7d69",
       "recursive_init_submodules": true,
       "remote": "https://github.com/vllm-project/MSA.git"
     },
-    "vllm_cmake_qutlass": {
-      "commit": "e74319e3405ce6d71965732880f5dc1f52371f64",
-      "recursive_init_submodules": true,
-      "remote": "https://github.com/IST-DASLab/qutlass.git"
-    },
     "vllm_cmake_tml_fa4": {
-      "commit": "75765e76a9c2c012c1f6ecd64577eb646eb4d303",
+      "commit": "2133206ae50288d266dd2b82edfc7cf0cca01006",
       "recursive_init_submodules": false,
       "remote": "https://github.com/vllm-project/tml-fa4.git"
     },
     "vllm_cmake_triton": {
-      "commit": "0f380657dbf3ee86eb57558ff71df24f03b5d4e7",
+      "commit": "3ef5021860f07f76820cce2e4c8e92d5e834bf39",
       "recursive_init_submodules": false,
       "remote": "https://github.com/triton-lang/triton.git"
     },
     "xgrammar": {
-      "commit": "2ea71da4ccb997a06928c9fb69b99f330da56697",
+      "commit": "8f9a1279fdbed47739bd75b4099d1d059a1ce3e0",
       "recursive_init_submodules": true,
       "remote": "https://github.com/mlc-ai/xgrammar.git"
     }
   },
-  "vllm_base_version": "0.29.0"
+  "vllm_base_version": "0.33.0"
 }

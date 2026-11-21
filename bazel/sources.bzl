@@ -161,11 +161,11 @@ def _sources_impl(ctx):
                     cargo_manifest = source.get("cargo_manifest", "rust/Cargo.toml"),
                 )
 
+_PATCHED_SOURCES = ("vllm", "flashinfer", "deepgemm", "instanttensor", "lmcache")
+
 def _patches_for(tag, name):
-    if name == "vllm":
-        return tag.vllm_patches
-    if name == "flashinfer":
-        return tag.flashinfer_patches
+    if name in _PATCHED_SOURCES:
+        return getattr(tag, name + "_patches")
     return []
 
 profile_sources = module_extension(
@@ -175,6 +175,9 @@ profile_sources = module_extension(
             "manifest": attr.label(mandatory = True, allow_single_file = True),
             "vllm_patches": attr.label_list(allow_files = True),
             "flashinfer_patches": attr.label_list(allow_files = True),
+            "deepgemm_patches": attr.label_list(allow_files = True),
+            "instanttensor_patches": attr.label_list(allow_files = True),
+            "lmcache_patches": attr.label_list(allow_files = True),
         }),
     },
 )

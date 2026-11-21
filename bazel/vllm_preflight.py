@@ -70,7 +70,7 @@ def main() -> None:
     extract(path_from_execroot(args.src_tar), source)
     cmake_sources = dict(item.split("=", 1) for item in args.cmake_source)
     cmake_env, cmake_source_args = materialize_vllm_cmake_sources(
-        {name: path_from_execroot(path) for name, path in cmake_sources.items()}, work, source
+        {name: path_from_execroot(path) for name, path in cmake_sources.items()}, work
     )
     cuda = extract_durable(path_from_execroot(args.cuda_tar), "cuda")
     ensure_cuda_lib64(cuda)

@@ -1,7 +1,9 @@
 exports_files([
+    "deepgemm_cxx20.patch",
+    "instanttensor_cxx20.patch",
+    "lmcache_cxx20.patch",
+    "lmcache_upstream_vllm_kv_api.patch",
     "rules_python_raw_wheel.patch",
     "vllm_flash_attn_cute_namespace.patch",
-    "vllm_pin_memory_import_order.patch",
-    "vllm_b12x_intrinsics_reference.patch",
     "flashinfer_b12x_loader_unity_order.patch",
 ])

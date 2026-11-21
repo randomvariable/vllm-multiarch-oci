@@ -1,0 +1,13 @@
+diff --git a/setup.py b/setup.py
+index 69cb0a1..e3ea149 100644
+--- a/setup.py
++++ b/setup.py
+@@ -82,7 +82,7 @@ class BuildExt(build_ext):
+ 
+ def get_ext_modules():
+     debug = os.environ.get("DEBUG", "0") == "1"
+-    cxx_flags = ["-std=c++17", "-fvisibility=hidden", "-fvisibility-inlines-hidden"]
++    cxx_flags = ["-std=c++20", "-fvisibility=hidden", "-fvisibility-inlines-hidden"]
+     cxx_flags += ["-O0", "-g"] if debug else []
+ 
+     return [

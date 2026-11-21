@@ -191,7 +191,6 @@ provenance_layer(
         "vllm_cmake_flashkda": "@vllmb12x_vllm_cmake_flashkda//:source.identity.json",
         "vllm_cmake_flashmla": "@vllmb12x_vllm_cmake_flashmla//:source.identity.json",
         "vllm_cmake_msa": "@vllmb12x_vllm_cmake_msa//:source.identity.json",
-        "vllm_cmake_qutlass": "@vllmb12x_vllm_cmake_qutlass//:source.identity.json",
         "vllm_cmake_tml_fa4": "@vllmb12x_vllm_cmake_tml_fa4//:source.identity.json",
         "vllm_cmake_triton": "@vllmb12x_vllm_cmake_triton//:source.identity.json",
         "xgrammar": "@vllmb12x_xgrammar//:source.identity.json",

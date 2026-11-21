@@ -1,0 +1,1161 @@
+diff --git a/lmcache/integration/vllm/checkpoint_scheduler.py b/lmcache/integration/vllm/checkpoint_scheduler.py
+index cf2c1e29..21c09a86 100644
+--- a/lmcache/integration/vllm/checkpoint_scheduler.py
++++ b/lmcache/integration/vllm/checkpoint_scheduler.py
+@@ -251,6 +251,9 @@ class CheckpointSchedulerBridge:
+             drain, so their completion cannot cancel or erase another lookup.
+         """
+         request_id = request.request_id
++        if request.skip_reading_external_kv:
++            self.finish_request(request_id)
++            return True
+         if request_id in self._cancelled:
+             return False
+         if not self.handles(request) or not self._manager.prefix_cache_lookup_enabled(
+@@ -343,6 +346,11 @@ class CheckpointSchedulerBridge:
+                 self._stop_waiting(request_id, state)
+                 state.done = True
+                 return True
++        limit = request.prefix_cache_hit_limit
++        if limit is not None and manifest.prefix.num_tokens > limit:
++            self._stop_waiting(request_id, state)
++            state.done = True
++            return True
+         if local is not None and manifest.prefix.num_tokens <= local.num_tokens:
+             # Reuse the local checkpoint; external_tokens counts imports only.
+             state.selected_tokens = local.num_tokens
+@@ -542,7 +550,7 @@ class CheckpointSchedulerBridge:
+         # Import against the source-locked vLLM boundary allocator only when
+         # semantic checkpoint storage is active.
+         # Third Party
+-        from vllm.v1.kv_cache_interface import MambaSpec, iter_layer_specs
++        from vllm.v1.kv_cache_interface import MambaSpec
+ 
+         managers = self._manager.coordinator.single_type_managers
+         specs = self._manager.kv_cache_config.kv_cache_groups
+@@ -555,7 +563,7 @@ class CheckpointSchedulerBridge:
+         ):
+             recurrent = all(
+                 isinstance(layer_spec, MambaSpec)
+-                for layer_spec in iter_layer_specs(spec.kv_cache_spec)
++                for layer_spec in spec.distinct_specs
+             )
+             widths.append(len(pages))
+             for position in pages:
+diff --git a/lmcache/integration/vllm/kv_cache_group_edits.py b/lmcache/integration/vllm/kv_cache_group_edits.py
+index c8e66b00..383debc2 100644
+--- a/lmcache/integration/vllm/kv_cache_group_edits.py
++++ b/lmcache/integration/vllm/kv_cache_group_edits.py
+@@ -41,12 +41,8 @@ from collections.abc import Mapping
+ from typing import TypeAlias
+ 
+ # Third Party
+-from vllm.v1.kv_cache_interface import (
+-    KVCacheConfig,
+-    KVCacheSpec,
+-    KVCacheSpecKind,
+-    get_kv_cache_spec_kind,
+-)
++from vllm.v1.core.single_type_kv_cache_manager import get_kv_cache_kind
++from vllm.v1.kv_cache_interface import KVCacheConfig, KVCacheSpec, KVCacheSpecKind
+ import torch
+ 
+ # First Party
+@@ -87,19 +83,12 @@ def _declares_slot_compression(spec: KVCacheSpec) -> bool:
+     )
+ 
+ 
+-def _leaf_specs(spec: KVCacheSpec) -> list[KVCacheSpec]:
+-    """Return a group spec's leaf specs, unwrapping ``UniformTypeKVCacheSpecs``."""
+-    inner = getattr(spec, "kv_cache_specs", None)
+-    if isinstance(inner, dict):
+-        return list(inner.values())
+-    return [spec]
+-
+-
+ def validate_kv_cache_groups(kv_cache_config: KVCacheConfig | None) -> None:
+     """Reject KV cache group specs the transfer path cannot serve correctly.
+ 
+     Rejected, with one aggregated error listing every offending group:
+ 
++    - Groups with ``enable_kv_transfer=False`` (replica indexing is unsupported).
+     - ``CrossAttentionSpec`` (encoder-decoder caches).
+     - Mamba groups with ``mamba_cache_mode`` other than ``"align"`` or
+       ``"all"``: the remaining mode (``"none"``) keeps no reusable per-block
+@@ -121,16 +110,20 @@ def validate_kv_cache_groups(kv_cache_config: KVCacheConfig | None) -> None:
+         return
+     unsupported: list[str] = []
+     for group_idx, group in enumerate(kv_cache_config.kv_cache_groups):
+-        for spec in _leaf_specs(group.kv_cache_spec):
+-            kind = get_kv_cache_spec_kind(spec)
++        if not group.enable_kv_transfer:
++            unsupported.append(
++                f"group {group_idx}: enable_kv_transfer=False is unsupported"
++            )
++            continue
++        for spec in group.distinct_specs:
++            kind = get_kv_cache_kind(group.manager_config, [spec])
++            mode = getattr(group.manager_config.params, "mamba_cache_mode", "none")
+             if kind == KVCacheSpecKind.CROSS_ATTENTION:
+                 unsupported.append(f"group {group_idx}: CrossAttentionSpec")
+-            elif kind == KVCacheSpecKind.MAMBA and getattr(
+-                spec, "mamba_cache_mode", "none"
+-            ) not in ("align", "all"):
++            elif kind == KVCacheSpecKind.MAMBA and mode not in ("align", "all"):
+                 unsupported.append(
+                     f"group {group_idx}: MambaSpec with mamba_cache_mode="
+-                    f"'{getattr(spec, 'mamba_cache_mode', 'none')}' "
++                    f"'{mode}' "
+                     f"(only 'align' and 'all' keep reusable state snapshots)"
+                 )
+     if unsupported:
+@@ -207,7 +200,9 @@ class KVCacheGroupEdit(ABC):
+     name: str
+ 
+     @abstractmethod
+-    def matches(self, spec: KVCacheSpec, kv_cache: RegisteredKVCache) -> bool:
++    def matches(
++        self, spec: KVCacheSpec, kv_cache: RegisteredKVCache, kind: KVCacheSpecKind
++    ) -> bool:
+         """Return whether this rule applies to the layer's registered cache.
+ 
+         Args:
+@@ -254,8 +249,10 @@ class _MambaPageViewEdit(KVCacheGroupEdit):
+ 
+     name = "mamba-page-view"
+ 
+-    def matches(self, spec: KVCacheSpec, kv_cache: RegisteredKVCache) -> bool:
+-        return get_kv_cache_spec_kind(spec) == KVCacheSpecKind.MAMBA and isinstance(
++    def matches(
++        self, spec: KVCacheSpec, kv_cache: RegisteredKVCache, kind: KVCacheSpecKind
++    ) -> bool:
++        return kind == KVCacheSpecKind.MAMBA and isinstance(
+             kv_cache, list
+         )
+ 
+@@ -322,11 +319,13 @@ class _SubpagedAttentionViewEdit(KVCacheGroupEdit):
+ 
+     name = "subpaged-attention-view"
+ 
+-    def matches(self, spec: KVCacheSpec, kv_cache: RegisteredKVCache) -> bool:
++    def matches(
++        self, spec: KVCacheSpec, kv_cache: RegisteredKVCache, kind: KVCacheSpecKind
++    ) -> bool:
+         return (
+             # Standard-paged attention only; MLA layouts and declared slot
+             # compression (DeepSeek) belong to other transfer paths.
+-            get_kv_cache_spec_kind(spec) in _SUBPAGEABLE_ATTENTION_KINDS
++            kind in _SUBPAGEABLE_ATTENTION_KINDS
+             and not _declares_slot_compression(spec)
+             # (num_blocks, 2, block_size, num_heads, head_size) layout whose
+             # block dim disagrees with the scheduler block-id unit -- the
+@@ -414,12 +413,14 @@ class _MambaUnifiedViewEdit(KVCacheGroupEdit):
+ 
+     name = "mamba-unified-view"
+ 
+-    def matches(self, spec: KVCacheSpec, kv_cache: RegisteredKVCache) -> bool:
++    def matches(
++        self, spec: KVCacheSpec, kv_cache: RegisteredKVCache, kind: KVCacheSpecKind
++    ) -> bool:
+         """
+         Matches the mamba kv cache with unified layout.
+         """
+         return (
+-            get_kv_cache_spec_kind(spec) == KVCacheSpecKind.MAMBA
++            kind == KVCacheSpecKind.MAMBA
+             and isinstance(kv_cache, torch.Tensor)
+             and kv_cache.ndim == 4
+         )
+@@ -534,8 +535,9 @@ class _PaddedAttentionPageViewEdit(KVCacheGroupEdit):
+ 
+     name = "padded-attention-page-view"
+ 
+-    def matches(self, spec: KVCacheSpec, kv_cache: RegisteredKVCache) -> bool:
+-        kind = get_kv_cache_spec_kind(spec)
++    def matches(
++        self, spec: KVCacheSpec, kv_cache: RegisteredKVCache, kind: KVCacheSpecKind
++    ) -> bool:
+         return (
+             (
+                 kind == KVCacheSpecKind.MLA_ATTENTION
+@@ -606,9 +608,11 @@ class _SubpagedMLAAttentionViewEdit(KVCacheGroupEdit):
+ 
+     name = "subpaged-mla-attention-view"
+ 
+-    def matches(self, spec: KVCacheSpec, kv_cache: RegisteredKVCache) -> bool:
++    def matches(
++        self, spec: KVCacheSpec, kv_cache: RegisteredKVCache, kind: KVCacheSpecKind
++    ) -> bool:
+         return (
+-            get_kv_cache_spec_kind(spec) == KVCacheSpecKind.MLA_ATTENTION
++            kind == KVCacheSpecKind.MLA_ATTENTION
+             and not _declares_slot_compression(spec)
+             and isinstance(kv_cache, torch.Tensor)
+             and kv_cache.ndim == 3
+@@ -704,10 +708,10 @@ def apply_kv_cache_group_edits(
+     edited = dict(kv_caches)
+     counts: Counter[str] = Counter()
+     for group in kv_cache_config.kv_cache_groups:
+-        spec = group.kv_cache_spec
+-        for name in group.layer_names:
++        for name, spec in group.kv_cache_specs.items():
++            kind = get_kv_cache_kind(group.manager_config, [spec])
+             for edit in _EDITS:
+-                if edit.matches(spec, kv_caches[name]):
++                if edit.matches(spec, kv_caches[name], kind):
+                     edited[name] = edit.apply(spec, kv_caches[name], layout_hints)
+                     counts[edit.name] += 1
+                     break
+diff --git a/lmcache/integration/vllm/kv_cache_groups.py b/lmcache/integration/vllm/kv_cache_groups.py
+index ce73058c..7ba11eb4 100644
+--- a/lmcache/integration/vllm/kv_cache_groups.py
++++ b/lmcache/integration/vllm/kv_cache_groups.py
+@@ -19,69 +19,21 @@ from lmcache.v1.multiprocess.group_view import EngineGroupInfo
+ logger = init_logger(__name__)
+ 
+ 
+-def _is_attention_spec(spec: Any) -> bool:
+-    """Return whether the KV cache spec is a vLLM attention spec.
++def get_tokens_per_block(group: Any, dcp_size: int) -> int:
++    """Return the group's global block span in scheduler token coordinates."""
++    return group.block_size * (dcp_size if group.dcp_sharded else 1)
+ 
+-    Checked by class name so this module stays importable without vLLM.
+-    ``UniformTypeKVCacheSpecs`` is unwrapped first (same-typed layers, one
+-    leaf suffices); it does not derive from ``AttentionSpec`` itself.
+-    """
+-    inner = getattr(spec, "kv_cache_specs", None)
+-    if isinstance(inner, dict) and inner:
+-        spec = next(iter(inner.values()))
+-    return any(cls.__name__ == "AttentionSpec" for cls in type(spec).__mro__)
+-
+-
+-def _is_dcp_replicated_spec(spec: Any) -> bool:
+-    """Return whether every layer represented by ``spec`` is DCP-replicated.
+-
+-    DFlash draft attention marks its cache spec ``dcp_replicated=True``: every
+-    DCP rank stores the complete sequence, so one block ID still covers only
+-    ``block_size`` tokens. ``UniformTypeKVCacheSpecs`` may wrap those leaf
+-    specs; inspect the leaves directly instead of relying on a vLLM-version-
+-    specific convenience property on the wrapper.
+-    """
+-    inner = getattr(spec, "kv_cache_specs", None)
+-    specs = list(inner.values()) if isinstance(inner, dict) else [spec]
+-    return bool(specs) and all(getattr(leaf, "dcp_replicated", False) for leaf in specs)
+-
+-
+-def get_tokens_per_block(kv_cache_spec: Any, dcp_size: int) -> int:
+-    """Global tokens covered by one block id of ``kv_cache_spec``.
+-
+-    Attention blocks span ``block_size * dcp_size`` tokens under DCP
+-    (vLLM's ``resolve_kv_cache_block_sizes`` rule), except attention specs
+-    explicitly marked ``dcp_replicated`` (e.g. DFlash draft KV). Replicated
+-    attention and recurrent state both stay at ``block_size``.
+-    """
+-    block_size = kv_cache_spec.block_size
+-    if dcp_size <= 1:
+-        return block_size
+-    if _is_attention_spec(kv_cache_spec) and not _is_dcp_replicated_spec(kv_cache_spec):
+-        return block_size * dcp_size
+-    return block_size
+ 
+-
+-def _is_sliding_window_spec(spec: Any) -> bool:
+-    """Return whether the KV cache spec is a vLLM sliding-window spec.
+-
+-    Checked by class name so this module stays importable without vLLM.
+-    Subclasses such as ``SlidingWindowMLASpec`` count.
+-    """
+-    return any(cls.__name__ == "SlidingWindowSpec" for cls in type(spec).__mro__)
+-
+-
+-def _is_cachable_mamba_spec(spec: Any) -> bool:
++def _is_cachable_mamba_spec(group: Any, spec: Any) -> bool:
+     """Return whether the spec is a snapshotting Mamba/linear-attention spec.
+ 
+     Align mode snapshots only the last block; all mode snapshots every block
+     boundary. Either way a restore consumes only the last matched block's
+     page, so both behave like a cross-chunk sliding window of one block.
+-    Checked by class name (like :func:`_is_sliding_window_spec`) so this
+-    module stays importable without vLLM.
++    Checked by class name so this module stays importable without vLLM.
+     """
+     return any(cls.__name__ == "MambaSpec" for cls in type(spec).__mro__) and getattr(
+-        spec, "mamba_cache_mode", "none"
++        group.manager_config.params, "mamba_cache_mode", "none"
+     ) in ("align", "all")
+ 
+ 
+@@ -108,17 +60,15 @@ def _resolve_per_layer_sw_sizes(
+     """
+     per_layer_sw_size = [-1] * num_layers
+     for group in vllm_groups:
+-        spec = getattr(group, "kv_cache_spec", None)
+-        if spec is None:
+-            continue
+-        # ``UniformTypeKVCacheSpecs`` carries per-layer specs in
+-        # ``kv_cache_specs``; other specs apply to all of the group's layers.
+-        per_layer_specs = getattr(spec, "kv_cache_specs", None)
+-        for name in group.layer_names:
+-            layer_spec = per_layer_specs[name] if per_layer_specs else spec
+-            if _is_sliding_window_spec(layer_spec):
+-                per_layer_sw_size[layer_to_idx[name]] = layer_spec.sliding_window
+-            elif _is_cachable_mamba_spec(layer_spec):
++        for name, layer_spec in group.kv_cache_specs.items():
++            if any(
++                cls.__name__ == "SlidingWindowManager"
++                for cls in group.manager_cls.__mro__
++            ):
++                per_layer_sw_size[layer_to_idx[name]] = (
++                    group.manager_config.params.sliding_window
++                )
++            elif _is_cachable_mamba_spec(group, layer_spec):
+                 per_layer_sw_size[layer_to_idx[name]] = layer_spec.block_size
+     return per_layer_sw_size
+ 
+@@ -187,13 +137,8 @@ def _resolve_per_layer_recurrent(
+     """
+     per_layer_recurrent = [False] * num_layers
+     for group in vllm_groups:
+-        spec = getattr(group, "kv_cache_spec", None)
+-        if spec is None:
+-            continue
+-        per_layer_specs = getattr(spec, "kv_cache_specs", None)
+-        for name in group.layer_names:
+-            layer_spec = per_layer_specs[name] if per_layer_specs else spec
+-            if _is_cachable_mamba_spec(layer_spec):
++        for name, layer_spec in group.kv_cache_specs.items():
++            if _is_cachable_mamba_spec(group, layer_spec):
+                 per_layer_recurrent[layer_to_idx[name]] = True
+     return per_layer_recurrent
+ 
+@@ -311,7 +256,7 @@ def create_engine_group_infos_from_vllm(
+     layer_index_groups = [
+         [layer_to_idx[name] for name in group.layer_names]
+         for group in vllm_groups
+-        if getattr(group.kv_cache_spec, "prefix_cacheable", True)
++        if group.prefix_cacheable
+     ]
+ 
+     # CacheBlend fused-aux (presence-gated): the pool joins detection as
+@@ -337,14 +282,14 @@ def create_engine_group_infos_from_vllm(
+     if vllm_groups:
+         per_layer_group_idx = [EXCLUDED_ENGINE_GROUP] * num_layers
+         for engine_group_id, group in enumerate(vllm_groups):
+-            if not getattr(group.kv_cache_spec, "prefix_cacheable", True):
++            if not group.prefix_cacheable:
+                 continue
+             # The spec's block_size is the logical tokens covered by one of
+             # this group's paged chunks (block IDs); the physical slot count
+             # per chunk is discovered later from the registered tensors.
+             # Under DCP the two diverge (see get_tokens_per_block).
+             group_tokens_per_block[engine_group_id] = get_tokens_per_block(
+-                group.kv_cache_spec, dcp_size
++                group, dcp_size
+             )
+             for name in group.layer_names:
+                 per_layer_group_idx[layer_to_idx[name]] = engine_group_id
+diff --git a/lmcache/integration/vllm/lmcache_mp_connector.py b/lmcache/integration/vllm/lmcache_mp_connector.py
+index 7253c252..e1baaa50 100644
+--- a/lmcache/integration/vllm/lmcache_mp_connector.py
++++ b/lmcache/integration/vllm/lmcache_mp_connector.py
+@@ -159,21 +159,12 @@ def _iter_kv_cache_specs(
+     for group_id, group in enumerate(kv_cache_config.kv_cache_groups):
+         if excluded_group_ids and group_id in excluded_group_ids:
+             continue
+-        group_spec = group.kv_cache_spec
+-        per_layer_specs = getattr(group_spec, "kv_cache_specs", None)
+-        if isinstance(per_layer_specs, dict):
+-            yield from per_layer_specs.values()
+-        else:
+-            yield group_spec
++        yield from group.distinct_specs
+ 
+ 
+ def _is_mamba_group_spec(spec: object) -> bool:
+     """Return whether a resolved KV group contains recurrent Mamba state."""
+-    per_layer_specs = getattr(spec, "kv_cache_specs", None)
+-    specs = per_layer_specs.values() if isinstance(per_layer_specs, dict) else (spec,)
+-    return any(
+-        any(cls.__name__ == "MambaSpec" for cls in type(item).__mro__) for item in specs
+-    )
++    return any(cls.__name__ == "MambaSpec" for cls in type(spec).__mro__)
+ 
+ 
+ def _has_recurrent_cache(kv_cache_config: "KVCacheConfig | None") -> bool:
+@@ -233,7 +224,7 @@ def get_group_tokens_per_block(
+         else ()
+     )
+     return [
+-        get_tokens_per_block(group.kv_cache_spec, dcp_size) for group in groups
++        get_tokens_per_block(group, dcp_size) for group in groups
+     ] or [vllm_config.cache_config.block_size * dcp_size]
+ 
+ 
+@@ -520,7 +511,7 @@ class LMCacheMPConnector(KVConnectorBase_V1, SupportsHMA):
+         self._excluded_group_ids = {
+             group_id
+             for group_id, group in enumerate(groups)
+-            if not getattr(group.kv_cache_spec, "prefix_cacheable", True)
++            if not group.prefix_cacheable
+         }
+         if groups and len(self._excluded_group_ids) == len(groups):
+             raise ValueError("LMCache requires at least one prefix-cacheable group")
+@@ -528,10 +519,9 @@ class LMCacheMPConnector(KVConnectorBase_V1, SupportsHMA):
+             0,
+             max(
+                 (
+-                    getattr(spec, "prefill_replay_tokens", 0)
+-                    for spec in _iter_kv_cache_specs(
+-                        kv_cache_config, self._excluded_group_ids
+-                    )
++                    group.prefix_replay_tokens
++                    for group_id, group in enumerate(groups)
++                    if group_id not in self._excluded_group_ids
+                 ),
+                 default=0,
+             ),
+@@ -718,7 +708,7 @@ class LMCacheMPConnector(KVConnectorBase_V1, SupportsHMA):
+             for group_idx, group in enumerate(
+                 getattr(kv_cache_config, "kv_cache_groups", ())
+             )
+-            if _is_mamba_group_spec(group.kv_cache_spec)
++            if any(_is_mamba_group_spec(spec) for spec in group.distinct_specs)
+         }
+         logger.info(
+             "Detected recurrent KV cache groups: %s",
+@@ -1081,6 +1071,8 @@ class LMCacheMPConnector(KVConnectorBase_V1, SupportsHMA):
+             connectivity issues or eviction), those tokens must not be taken
+             into account.
+         """
++        if request.skip_reading_external_kv:
++            return 0, False
+         tracker = self._get_or_create_request_tracker(request)
+         # TODO: support loading KV for preempted requests in the future
+         if request.status == RequestStatus.PREEMPTED:
+@@ -1210,7 +1202,11 @@ class LMCacheMPConnector(KVConnectorBase_V1, SupportsHMA):
+         """
+         if self.role != KVConnectorRole.SCHEDULER:
+             return
+-        if not self._eager_prefetch or request.resumable:
++        if (
++            not self._eager_prefetch
++            or request.resumable
++            or request.skip_reading_external_kv
++        ):
+             return
+ 
+         tracker = self._get_or_create_request_tracker(request)
+diff --git a/lmcache/integration/vllm/recurrent_checkpoint_connector.py b/lmcache/integration/vllm/recurrent_checkpoint_connector.py
+index 9e2f6225..427784e7 100644
+--- a/lmcache/integration/vllm/recurrent_checkpoint_connector.py
++++ b/lmcache/integration/vllm/recurrent_checkpoint_connector.py
+@@ -16,6 +16,7 @@ import re
+ 
+ # Third Party
+ from vllm.config import VllmConfig
++from vllm.config.utils import hash_config
+ from vllm.distributed.kv_transfer.kv_connector.v1.base import (
+     KVConnectorBase_V1,
+     KVConnectorMetadata,
+@@ -137,6 +138,12 @@ class LMCacheRecurrentCheckpointConnector(KVConnectorBase_V1, SupportsHMA):
+         kv_cache_config: KVCacheConfig,
+     ) -> None:
+         super().__init__(vllm_config, role, kv_cache_config)
++        if kv_cache_config is not None:
++            for group_id, group in enumerate(kv_cache_config.kv_cache_groups):
++                if not group.enable_kv_transfer:
++                    raise ValueError(
++                        f"group {group_id}: enable_kv_transfer=False is unsupported"
++                    )
+         if not self.supports_request_boundary_checkpoints(vllm_config):
+             raise ValueError(
+                 "Semantic LMCache requires immutable target/draft/source revisions"
+@@ -204,8 +211,8 @@ class LMCacheRecurrentCheckpointConnector(KVConnectorBase_V1, SupportsHMA):
+             )
+         )
+         identity.setdefault("draft_revision", "")
+-        identity["runtime_config_hash"] = config.compute_hash()
+-        identity["model_config_hash"] = config.model_config.compute_hash()
++        identity["runtime_config_hash"] = hash_config(config)
++        identity["model_config_hash"] = hash_config(config.model_config)
+         identity["precision_environment"] = {
+             name: os.environ.get(name) for name in _PRECISION_ENVIRONMENT
+         }
+diff --git a/lmcache/integration/vllm/vllm_v1_adapter.py b/lmcache/integration/vllm/vllm_v1_adapter.py
+index 69d675cc..b973fbdc 100644
+--- a/lmcache/integration/vllm/vllm_v1_adapter.py
++++ b/lmcache/integration/vllm/vllm_v1_adapter.py
+@@ -1376,6 +1376,9 @@ class LMCacheConnectorV1Impl:
+             the number of tokens that can be loaded from the
+             external KV cache beyond what is already computed.
+         """
++        # Bounded prefix reads must use the local cache only.
++        if request.skip_reading_external_kv:
++            return 0
+         # Ignore DP attention mock requests
+         if request.request_id.startswith("mock_req"):
+             return 0
+diff --git a/lmcache/sdk/qringbuffer.py b/lmcache/sdk/qringbuffer.py
+index 8a629fa5..bdc349ed 100644
+--- a/lmcache/sdk/qringbuffer.py
++++ b/lmcache/sdk/qringbuffer.py
+@@ -229,8 +229,10 @@ def attention_layer_names_from_vllm(
+ 
+     attention_names: set[str] = set()
+     for group in vllm_groups:
+-        if isinstance(group.kv_cache_spec, AttentionSpec):
+-            attention_names.update(group.layer_names)
++        attention_names.update(
++            name for name, spec in group.kv_cache_specs.items()
++            if isinstance(spec, AttentionSpec)
++        )
+     return [name for name in kv_caches.keys() if name in attention_names]
+ 
+ 
+diff --git a/lmcache/v1/compute/attention/flash_attn.py b/lmcache/v1/compute/attention/flash_attn.py
+index 27751342..910f9c5c 100644
+--- a/lmcache/v1/compute/attention/flash_attn.py
++++ b/lmcache/v1/compute/attention/flash_attn.py
+@@ -2,12 +2,8 @@
+ # Standard
+ from typing import TYPE_CHECKING
+ 
+-try:
+-    # Third Party
+-    from vllm.attention import Attention
+-except ImportError:
+-    # vLLM >= 0.17 moved the Attention class.
+-    from vllm.model_executor.layers.attention.attention import Attention
++# Third Party
++from vllm.model_executor.layers.attention.attention import Attention
+ 
+ # Third Party
+ from vllm.v1.attention.backends.flash_attn import FlashAttentionImpl
+diff --git a/lmcache/v1/compute/attention/flash_infer_sparse.py b/lmcache/v1/compute/attention/flash_infer_sparse.py
+index 357c2186..2107bba7 100644
+--- a/lmcache/v1/compute/attention/flash_infer_sparse.py
++++ b/lmcache/v1/compute/attention/flash_infer_sparse.py
+@@ -12,7 +12,7 @@ from flashinfer.utils import (
+     check_shape_dtype_device,
+     device_support_pdl,
+ )
+-from vllm.attention import Attention
++from vllm.model_executor.layers.attention import Attention
+ from vllm.v1.attention.backends.flashinfer import FlashInferImpl
+ import flashinfer
+ import torch
+diff --git a/tests/sdk/test_qringbuffer_ring.py b/tests/sdk/test_qringbuffer_ring.py
+index 654682e4..4c0b0d38 100644
+--- a/tests/sdk/test_qringbuffer_ring.py
++++ b/tests/sdk/test_qringbuffer_ring.py
+@@ -158,7 +158,7 @@ def _attention_spec() -> object:
+     """Registers a fake attention spec for testing
+     attention_layer_names_from_vllm()."""
+     kv_iface = pytest.importorskip("vllm.v1.kv_cache_interface")
+-    return kv_iface.FullAttentionSpec(
++    return kv_iface.AttentionSpec(
+         block_size=16, num_kv_heads=8, head_size=64, dtype=torch.bfloat16
+     )
+ 
+@@ -183,9 +183,8 @@ def test_only_attention_layers_selected_in_kv_cache_order() -> None:
+     returned in the order they appear in the kv_caches dict."""
+     config = SimpleNamespace(
+         kv_cache_groups=[
+-            SimpleNamespace(layer_names=["layer.2"], kv_cache_spec=_attention_spec()),
+-            SimpleNamespace(layer_names=["layer.1"], kv_cache_spec=object()),
+-            SimpleNamespace(layer_names=["layer.0"], kv_cache_spec=_attention_spec()),
++            SimpleNamespace(kv_cache_specs={"layer.2": _attention_spec(), "layer.1": object()}),
++            SimpleNamespace(kv_cache_specs={"layer.0": _attention_spec()}),
+         ]
+     )
+     names = attention_layer_names_from_vllm(
+diff --git a/tests/v1/test_mp_multimodal_identity_contract.py b/tests/v1/test_mp_multimodal_identity_contract.py
+index c322e245..03bf8c2b 100644
+--- a/tests/v1/test_mp_multimodal_identity_contract.py
++++ b/tests/v1/test_mp_multimodal_identity_contract.py
+@@ -31,6 +31,7 @@ def _request(identifier: str) -> SimpleNamespace:
+         request_id="image-key-contract",
+         cache_salt="identity-test",
+         resumable=False,
++        skip_reading_external_kv=False,
+         prompt_token_ids=[10, 11, 12, 13] + [99] * 4 + [20, 21, 22, 23],
+         all_token_ids=[10, 11, 12, 13] + [99] * 4 + [20, 21, 22, 23],
+         mm_features=[
+diff --git a/tests/v1/test_vllm_dcp_support.py b/tests/v1/test_vllm_dcp_support.py
+index f87c6467..4ac41727 100644
+--- a/tests/v1/test_vllm_dcp_support.py
++++ b/tests/v1/test_vllm_dcp_support.py
+@@ -244,9 +244,10 @@ def test_writers_cover_every_shard_exactly_once_with_pp():
+ 
+ @dataclass
+ class _FakeMambaSpec:
+-    """Stands in for MambaSpec: anything that is not an AttentionSpec."""
++    """Recurrent group geometry."""
+ 
+     block_size: int
++    dcp_sharded: bool = False
+ 
+ 
+ @dataclass
+@@ -264,6 +265,10 @@ class AttentionSpec:
+     block_size: int
+     dcp_replicated: bool = False
+ 
++    @property
++    def dcp_sharded(self) -> bool:
++        return not self.dcp_replicated
++
+ 
+ @dataclass
+ class FullAttentionSpec(AttentionSpec):
+@@ -278,6 +283,21 @@ class UniformTypeKVCacheSpecs:
+     block_size: int
+     kv_cache_specs: dict = field(default_factory=dict)
+ 
++    @property
++    def dcp_sharded(self) -> bool:
++        return all(getattr(spec, "dcp_sharded", False) for spec in self.kv_cache_specs.values())
++
++
++def KVCacheGroupSpec(names, spec):
++    from vllm.v1.core.single_type_kv_cache_manager import FullAttentionManager, MambaManager
++    from vllm.v1.kv_cache_interface import KVCacheGroup, ManagerConfig, MambaSpec
++
++    manager = MambaManager if isinstance(spec, MambaSpec) else FullAttentionManager
++    params = (MambaManager.Params(mamba_cache_mode="align") if manager is MambaManager
++              else FullAttentionManager.Params())
++    return KVCacheGroup({name: spec for name in names}, ManagerConfig(manager, params),
++                        spec.block_size, spec.dcp_sharded)
++
+ 
+ def _attention_spec(block_size: int) -> AttentionSpec:
+     """Build an attention spec double so the MRO-name check is exercised."""
+@@ -346,8 +366,10 @@ def _hybrid_kv_cache_config(
+     """Resolved GLM-like groups after platform page-size equalization."""
+     return SimpleNamespace(
+         kv_cache_groups=[
+-            SimpleNamespace(kv_cache_spec=_attention_spec(attention_block_size)),
+-            SimpleNamespace(kv_cache_spec=MambaSpec(mamba_block_size)),
++            SimpleNamespace(block_size=attention_block_size, dcp_sharded=True,
++                            distinct_specs=(_attention_spec(attention_block_size),)),
++            SimpleNamespace(block_size=mamba_block_size, dcp_sharded=False,
++                            distinct_specs=(MambaSpec(mamba_block_size),)),
+         ]
+     )
+ 
+@@ -413,7 +435,7 @@ def test_mamba_unified_view_preserves_blocks_first_pool_stride(
+ ):
+     """Jovian Mamba pages use the padded-stride-capable opaque format."""
+     # Third Party
+-    from vllm.v1.kv_cache_interface import KVCacheConfig, KVCacheGroupSpec
++    from vllm.v1.kv_cache_interface import KVCacheConfig
+     from vllm.v1.kv_cache_interface import MambaSpec as VllmMambaSpec
+ 
+     # First Party
+@@ -437,7 +459,6 @@ def test_mamba_unified_view_preserves_blocks_first_pool_stride(
+         shapes=((row,),),
+         dtypes=(torch.float32,),
+         page_size_padded=page_elems * torch.float32.itemsize,
+-        mamba_cache_mode="align",
+     )
+     kv_config = KVCacheConfig(
+         num_blocks=num_blocks,
+@@ -479,7 +500,7 @@ def test_mamba_dcp1_exact_fit_page_uses_one_opaque_slot():
+     group metadata retains its 4096-token logical span.
+     """
+     # Third Party
+-    from vllm.v1.kv_cache_interface import KVCacheConfig, KVCacheGroupSpec
++    from vllm.v1.kv_cache_interface import KVCacheConfig
+     from vllm.v1.kv_cache_interface import MambaSpec as VllmMambaSpec
+ 
+     # First Party
+@@ -507,7 +528,6 @@ def test_mamba_dcp1_exact_fit_page_uses_one_opaque_slot():
+         shapes=((page_elems,),),
+         dtypes=(torch.uint8,),
+         page_size_padded=page_elems,
+-        mamba_cache_mode="align",
+     )
+     kv_config = KVCacheConfig(
+         num_blocks=num_blocks,
+@@ -564,9 +584,8 @@ def test_padded_attention_page_views_preserve_hma_block_padding(
+     """Jovian HMA MLA and DFlash pages become padded rank-3 tensors."""
+     # Third Party
+     from vllm.v1.kv_cache_interface import (
+-        FullAttentionSpec,
++        AttentionSpec as VllmAttentionSpec,
+         KVCacheConfig,
+-        KVCacheGroupSpec,
+     )
+     from vllm.v1.kv_cache_interface import MambaSpec as VllmMambaSpec
+     from vllm.v1.kv_cache_interface import (
+@@ -615,15 +634,14 @@ def test_padded_attention_page_views_preserve_hma_block_padding(
+         shapes=((13,),),
+         dtypes=(torch.float32,),
+         page_size_padded=64,
+-        mamba_cache_mode="align",
+     )
+-    draft_spec = FullAttentionSpec(
++    draft_spec = VllmAttentionSpec(
+         block_size=4,
+         num_kv_heads=1,
+         head_size=8,
+         dtype=torch.uint8,
+     )
+-    dflash_spec = FullAttentionSpec(
++    dflash_spec = VllmAttentionSpec(
+         block_size=8,
+         num_kv_heads=2,
+         head_size=4,
+@@ -708,7 +726,6 @@ def test_padded_attention_page_view_includes_declared_opaque_tail():
+     # Third Party
+     from vllm.v1.kv_cache_interface import (
+         KVCacheConfig,
+-        KVCacheGroupSpec,
+     )
+     from vllm.v1.kv_cache_interface import MambaSpec as VllmMambaSpec
+     from vllm.v1.kv_cache_interface import (
+@@ -741,7 +758,6 @@ def test_padded_attention_page_view_includes_declared_opaque_tail():
+         shapes=((13,),),
+         dtypes=(torch.float32,),
+         page_size_padded=64,
+-        mamba_cache_mode="align",
+     )
+     mamba_pool = torch.zeros(num_blocks * 16, dtype=torch.float32)
+     mamba = mamba_pool.as_strided(
+@@ -780,7 +796,6 @@ def test_packed_nvfp4_page_uses_one_opaque_slot_per_logical_block():
+     # Third Party
+     from vllm.v1.kv_cache_interface import (
+         KVCacheConfig,
+-        KVCacheGroupSpec,
+     )
+     from vllm.v1.kv_cache_interface import MambaSpec as VllmMambaSpec
+     from vllm.v1.kv_cache_interface import (
+@@ -825,7 +840,6 @@ def test_packed_nvfp4_page_uses_one_opaque_slot_per_logical_block():
+         shapes=((13,),),
+         dtypes=(torch.float32,),
+         page_size_padded=logical_block_size * torch.float32.itemsize,
+-        mamba_cache_mode="align",
+     )
+     mamba_pool = torch.zeros(num_blocks * logical_block_size, dtype=torch.float32)
+     mamba = mamba_pool.as_strided(
+@@ -885,9 +899,8 @@ def test_subpaged_attention_excludes_incomplete_logical_page_tail(
+     """Natural HMA pool sizes retain every complete logical cache page."""
+     # Third Party
+     from vllm.v1.kv_cache_interface import (
+-        FullAttentionSpec,
++        AttentionSpec as VllmAttentionSpec,
+         KVCacheConfig,
+-        KVCacheGroupSpec,
+     )
+     from vllm.v1.kv_cache_interface import MambaSpec as VllmMambaSpec
+     from vllm.v1.kv_cache_interface import (
+@@ -909,7 +922,7 @@ def test_subpaged_attention_excludes_incomplete_logical_page_tail(
+         attention = torch.arange(11 * 2 * 8, dtype=torch.uint8).reshape(11, 2, 8)
+         expected = attention[:10].reshape(5, 4, 8)
+     else:
+-        attention_spec = FullAttentionSpec(
++        attention_spec = VllmAttentionSpec(
+             block_size=4,
+             num_kv_heads=1,
+             head_size=8,
+@@ -925,7 +938,6 @@ def test_subpaged_attention_excludes_incomplete_logical_page_tail(
+         shapes=((13,),),
+         dtypes=(torch.float32,),
+         page_size_padded=64,
+-        mamba_cache_mode="align",
+     )
+     mamba_pool = torch.zeros(5 * 16, dtype=torch.float32)
+     mamba = mamba_pool.as_strided((5, 1, 1, 13), (16, 13, 13, 1))
+@@ -950,6 +962,15 @@ def test_subpaged_attention_excludes_incomplete_logical_page_tail(
+     assert torch.equal(edited, expected)
+ 
+ 
++@requires_vllm
++def test_nontransfer_group_is_rejected():
++    from lmcache.integration.vllm.kv_cache_group_edits import validate_kv_cache_groups
++
++    config = SimpleNamespace(kv_cache_groups=[SimpleNamespace(enable_kv_transfer=False)])
++    with pytest.raises(ValueError, match="group 0: enable_kv_transfer=False"):
++        validate_kv_cache_groups(config)
++
++
+ @requires_vllm
+ def test_dcp_interleave_participates_in_cache_identity():
+     _, get_lmcache_model_name, _, _ = _import_connector_geometry_helpers()
+diff --git a/tests/v1/test_vllm_kv_cache_groups.py b/tests/v1/test_vllm_kv_cache_groups.py
+index 64345745..f236ca71 100644
+--- a/tests/v1/test_vllm_kv_cache_groups.py
++++ b/tests/v1/test_vllm_kv_cache_groups.py
+@@ -1,6 +1,7 @@
+ # SPDX-License-Identifier: Apache-2.0
+ # Standard
+ from dataclasses import dataclass, field
++from types import SimpleNamespace
+ 
+ # Third Party
+ import pytest
+@@ -75,6 +76,42 @@ class MockKVCacheGroup:
+     layer_names: list[str]
+     kv_cache_spec: object
+ 
++    @property
++    def kv_cache_specs(self):
++        specs = getattr(self.kv_cache_spec, "kv_cache_specs", None)
++        return specs if specs is not None else {
++            name: self.kv_cache_spec for name in self.layer_names
++        }
++
++    @property
++    def block_size(self):
++        return self.kv_cache_spec.block_size
++
++    @property
++    def dcp_sharded(self):
++        return isinstance(self.kv_cache_spec, AttentionSpec) or isinstance(
++            self.kv_cache_spec, UniformTypeKVCacheSpecs
++        )
++
++    @property
++    def prefix_cacheable(self):
++        return getattr(self.kv_cache_spec, "prefix_cacheable", True)
++
++    @property
++    def manager_cls(self):
++        return SlidingWindowManager if isinstance(self.kv_cache_spec, SlidingWindowSpec) else object
++
++    @property
++    def manager_config(self):
++        return SimpleNamespace(params=SimpleNamespace(
++            sliding_window=getattr(self.kv_cache_spec, "sliding_window", None),
++            mamba_cache_mode=getattr(self.kv_cache_spec, "mamba_cache_mode", "none"),
++        ))
++
++
++class SlidingWindowManager:
++    pass
++
+ 
+ @dataclass
+ class MockKVCacheConfig:
+@@ -265,22 +302,16 @@ def test_conversion_mamba_non_align_not_windowed():
+ 
+ 
+ def test_conversion_uniform_type_specs_resolve_per_layer():
+-    """Inside a UniformTypeKVCacheSpecs group, per-layer specs decide the
+-    window. SW layers with a distinct transfer identity get their own group
+-    carrying the window size."""
++    """Distinct manager policies retain their respective window sizes."""
+     caches = _same_shape_caches(["layer.0", "layer.1"])
+     # layer.1 has a different head count -> distinct transfer identity.
+     caches["layer.1"] = torch.randn(2, 32, 16, 16, 64, dtype=torch.float16)
+-    uniform_spec = UniformTypeKVCacheSpecs(
+-        block_size=16,
+-        kv_cache_specs={
+-            "layer.0": FullAttentionSpec(block_size=16),
+-            "layer.1": SlidingWindowSpec(block_size=16, sliding_window=512),
+-        },
+-    )
+     spec = create_engine_group_infos_from_vllm(
+         MockKVCacheConfig(
+-            kv_cache_groups=[MockKVCacheGroup(["layer.0", "layer.1"], uniform_spec)]
++            kv_cache_groups=[
++                MockKVCacheGroup(["layer.0"], FullAttentionSpec(block_size=16)),
++                MockKVCacheGroup(["layer.1"], SlidingWindowSpec(block_size=16, sliding_window=512)),
++            ]
+         ),
+         caches,
+     )
+@@ -292,20 +323,10 @@ def test_conversion_uniform_type_specs_resolve_per_layer():
+ def test_conversion_mixed_window_layers_in_one_group_rejected():
+     """Same-identity layers mixing different windows are inconsistent vLLM
+     metadata and fail loudly."""
+-    uniform_spec = UniformTypeKVCacheSpecs(
+-        block_size=16,
+-        kv_cache_specs={
+-            "layer.0": FullAttentionSpec(block_size=16),
+-            "layer.1": SlidingWindowSpec(block_size=16, sliding_window=64),
+-        },
+-    )
++    from lmcache.integration.vllm.kv_cache_groups import _merge_layer_sw_sizes
++
+     with pytest.raises(ValueError, match="different sliding window sizes"):
+-        create_engine_group_infos_from_vllm(
+-            MockKVCacheConfig(
+-                kv_cache_groups=[MockKVCacheGroup(["layer.0", "layer.1"], uniform_spec)]
+-            ),
+-            _same_shape_caches(["layer.0", "layer.1"]),
+-        )
++        _merge_layer_sw_sizes([-1, 64], [0, 1])
+ 
+ 
+ def test_conversion_mixed_kv_and_mla_groups():
+diff --git a/tests/v1/test_vllm_mp_adapter.py b/tests/v1/test_vllm_mp_adapter.py
+index 54ef431a..cdf26616 100644
+--- a/tests/v1/test_vllm_mp_adapter.py
++++ b/tests/v1/test_vllm_mp_adapter.py
+@@ -990,6 +990,7 @@ def test_failed_full_retrieve_is_recomputed_instead_of_retried_remotely() -> Non
+             self.status = RequestStatus.WAITING
+             self.num_computed_tokens = 0
+             self.num_preemptions = 0
++            self.skip_reading_external_kv = False
+             self.cache_salt = ""
+             self.prompt_token_ids = [1, 2, 3, 4]
+             self.all_token_ids = [1, 2, 3, 4]
+diff --git a/tests/v1/test_vllm_mp_exact_recurrent_boundaries.py b/tests/v1/test_vllm_mp_exact_recurrent_boundaries.py
+index 3991eece..042e25d8 100644
+--- a/tests/v1/test_vllm_mp_exact_recurrent_boundaries.py
++++ b/tests/v1/test_vllm_mp_exact_recurrent_boundaries.py
+@@ -42,13 +42,6 @@ class AttentionSpec:
+     """Non-recurrent compatibility stand-in."""
+ 
+ 
+-class UniformTypeKVCacheSpecs:
+-    """Compatibility stand-in for vLLM's per-layer group wrapper."""
+-
+-    def __init__(self, kv_cache_specs: dict[str, object]) -> None:
+-        self.kv_cache_specs = kv_cache_specs
+-
+-
+ class RecordingBlockPool:
+     """Minimal block-pool contract for scheduler reference tests."""
+ 
+@@ -80,41 +73,20 @@ def _bind_recording_block_pool(connector: LMCacheMPConnector) -> RecordingBlockP
+ def test_live_six_group_detection_finds_only_recurrent_groups() -> None:
+     layer_counts = [9, 9, 8, 8]
+     groups = [
+-        SimpleNamespace(
+-            kv_cache_spec=UniformTypeKVCacheSpecs(
+-                {
+-                    f"model.layers.{layer_id}": MambaSpec()
+-                    for layer_id in range(layer_count)
+-                }
+-            )
+-        )
++        SimpleNamespace(distinct_specs=tuple(MambaSpec() for _ in range(layer_count)))
+         for layer_count in layer_counts
+     ]
+     groups.extend(
+         [
+-            SimpleNamespace(
+-                kv_cache_spec=UniformTypeKVCacheSpecs(
+-                    {
+-                        f"model.layers.{layer_id}": AttentionSpec()
+-                        for layer_id in range(11)
+-                    }
+-                )
+-            ),
+-            SimpleNamespace(
+-                kv_cache_spec=UniformTypeKVCacheSpecs(
+-                    {
+-                        f"draft.layers.{layer_id}": AttentionSpec()
+-                        for layer_id in range(5)
+-                    }
+-                )
+-            ),
++            SimpleNamespace(distinct_specs=tuple(AttentionSpec() for _ in range(11))),
++            SimpleNamespace(distinct_specs=tuple(AttentionSpec() for _ in range(5))),
+         ]
+     )
+ 
+     detected_group_ids = {
+         group_id
+         for group_id, group in enumerate(groups)
+-        if _is_mamba_group_spec(group.kv_cache_spec)
++        if any(_is_mamba_group_spec(spec) for spec in group.distinct_specs)
+     }
+ 
+     assert detected_group_ids == RECURRENT_GROUP_IDS
+diff --git a/tests/v1/test_vllm_mp_mixed_recurrent.py b/tests/v1/test_vllm_mp_mixed_recurrent.py
+index 2854851b..957b4b34 100644
+--- a/tests/v1/test_vllm_mp_mixed_recurrent.py
++++ b/tests/v1/test_vllm_mp_mixed_recurrent.py
+@@ -21,7 +21,6 @@ from lmcache.integration.vllm.lmcache_mp_connector import (  # noqa: E402
+     LMCacheMPConnector,
+     LMCacheMPRequestState,
+     _has_recurrent_cache,
+-    _iter_kv_cache_specs,
+     _recurrent_safe_lookup_end,
+ )
+ 
+@@ -38,6 +37,7 @@ class _Request:
+         self.status = object()
+         self.kv_transfer_params = None
+         self.resumable = False
++        self.skip_reading_external_kv = False
+ 
+ 
+ class _SchedulerAdapter:
+@@ -111,14 +111,14 @@ class AttentionSpec:
+         (
+             SimpleNamespace(
+                 has_mamba_layers=False,
+-                kv_cache_groups=[SimpleNamespace(kv_cache_spec=MambaSpec())],
++                kv_cache_groups=[SimpleNamespace(distinct_specs=(MambaSpec(),))],
+             ),
+             True,
+         ),
+         (
+             SimpleNamespace(
+                 has_mamba_layers=False,
+-                kv_cache_groups=[SimpleNamespace(kv_cache_spec=AttentionSpec())],
++                kv_cache_groups=[SimpleNamespace(distinct_specs=(AttentionSpec(),))],
+             ),
+             False,
+         ),
+@@ -141,6 +141,17 @@ def test_recurrent_safe_lookup_excludes_final_token_chunk(
+     assert _recurrent_safe_lookup_end(num_tokens, 3072) == expected
+ 
+ 
++def test_bounded_request_does_not_submit_external_lookup() -> None:
++    connector = _scheduler_connector(has_recurrent_cache=False, lookup_tokens=0)
++    request = _Request("bounded", 8)
++    request.skip_reading_external_kv = True
++    connector._role = KVConnectorRole.SCHEDULER
++    connector._eager_prefetch = True
++    connector.on_new_request(request)
++    assert connector.get_num_new_matched_tokens(request, 0) == (0, False)
++    assert connector.scheduler_adapter.submit_count == 0
++
++
+ def test_recurrent_lookup_submits_only_safe_prefix() -> None:
+     connector = _scheduler_connector(
+         has_recurrent_cache=True,
+@@ -201,17 +212,15 @@ def test_lookup_leaves_model_required_private_replay_tail(eager: bool) -> None:
+ 
+ 
+ def test_private_group_does_not_increase_replay_tail() -> None:
+-    cache_config = SimpleNamespace(
+-        kv_cache_groups=[
+-            SimpleNamespace(kv_cache_spec=SimpleNamespace(prefill_replay_tokens=0)),
+-            SimpleNamespace(kv_cache_spec=SimpleNamespace(prefill_replay_tokens=128)),
+-            SimpleNamespace(kv_cache_spec=SimpleNamespace(prefill_replay_tokens=64)),
+-        ]
+-    )
+-
++    groups = [
++        SimpleNamespace(prefix_replay_tokens=0),
++        SimpleNamespace(prefix_replay_tokens=128),
++        SimpleNamespace(prefix_replay_tokens=64),
++    ]
+     replay_tokens = max(
+-        getattr(spec, "prefill_replay_tokens", 0)
+-        for spec in _iter_kv_cache_specs(cache_config, {1})
++        group.prefix_replay_tokens
++        for group_id, group in enumerate(groups)
++        if group_id != 1
+     )
+ 
+     assert replay_tokens == 64
+diff --git a/tests/v1/test_vllm_semantic_checkpoint_transfer.py b/tests/v1/test_vllm_semantic_checkpoint_transfer.py
+index 211205ab..d87331f5 100644
+--- a/tests/v1/test_vllm_semantic_checkpoint_transfer.py
++++ b/tests/v1/test_vllm_semantic_checkpoint_transfer.py
+@@ -33,10 +33,15 @@ from vllm.v1.core.kv_cache_utils import (  # noqa: E402
+     get_request_block_hasher,
+     init_none_hash,
+ )
++from vllm.v1.core.single_type_kv_cache_manager import (  # noqa: E402
++    FullAttentionManager,
++    MambaManager,
++)
+ from vllm.v1.kv_cache_interface import (  # noqa: E402
+-    FullAttentionSpec,
++    AttentionSpec,
+     KVCacheConfig,
+-    KVCacheGroupSpec,
++    KVCacheGroup,
++    ManagerConfig,
+     MambaSpec,
+ )
+ from vllm.v1.request import Request  # noqa: E402
+@@ -116,6 +121,13 @@ def test_connector_capability_rejects_mutable_revision_names() -> None:
+         identity[key] = original
+ 
+ 
++def test_checkpoint_connector_rejects_nontransfer_group() -> None:
++    config = SimpleNamespace(kv_transfer_config=SimpleNamespace())
++    groups = SimpleNamespace(kv_cache_groups=[SimpleNamespace(enable_kv_transfer=False)])
++    with pytest.raises(ValueError, match="group 0: enable_kv_transfer=False"):
++        LMCacheRecurrentCheckpointConnector(config, KVConnectorRole.SCHEDULER, groups)
++
++
+ def test_worker_acknowledgements_preserve_rank_identity() -> None:
+     left = RecurrentCheckpointWorkerMetadata(
+         {0: {"page_bytes": 128}}, {"copy": {0: True}}
+@@ -330,22 +342,25 @@ def make_manager() -> KVCacheManager:
+         num_blocks=64,
+         kv_cache_tensors=[],
+         kv_cache_groups=[
+-            KVCacheGroupSpec(
+-                ["target.attention"],
+-                FullAttentionSpec(
++            KVCacheGroup(
++                {"target.attention": AttentionSpec(
+                     block_size=4,
+                     num_kv_heads=1,
+                     head_size=1,
+                     dtype=torch.float32,
+-                ),
++                )},
++                ManagerConfig(FullAttentionManager, FullAttentionManager.Params()),
++                block_size=4,
++                dcp_sharded=True,
+             ),
+-            KVCacheGroupSpec(
+-                ["target.recurrent"],
+-                MambaSpec(
++            KVCacheGroup(
++                {"target.recurrent": MambaSpec(
+                     block_size=4,
+                     shapes=((1, 1),),
+                     dtypes=(torch.float32,),
+-                ),
++                )},
++                ManagerConfig(MambaManager, MambaManager.Params(mamba_cache_mode="align")),
++                block_size=4,
+             ),
+         ],
+     )
+@@ -987,6 +1002,41 @@ class FakeDirectory:
+         return SimpleNamespace(query=lambda: answered, result=lambda: listed)
+ 
+ 
++def test_bounded_request_never_submits_external_checkpoint_lookup() -> None:
++    manager = make_manager()
++    directory = FakeDirectory()
++    bridge = make_bridge(directory, manager, 60)
++    request = make_request("bounded")
++    request.prefix_cache_hit_limit = 4
++    assert bridge.poll_prefix(request)
++    assert bridge.poll_prefix(request)
++    assert directory.finds == 0
++    assert bridge.take_tasks() == []
++
++
++def test_oversize_manifest_is_not_admitted_or_retried() -> None:
++    manager = make_manager()
++    directory = FakeDirectory()
++    bridge = make_bridge(directory, manager, 60)
++    publish_external(bridge, manager, 11)
++    request = make_request("bounded-after-lookup")
++    assert not bridge.poll_prefix(request)
++    # Model a limit changing while the directory request is in flight.
++    bounded = SimpleNamespace(
++        request_id=request.request_id,
++        skip_reading_external_kv=False,
++        prefix_cache_hit_limit=4,
++        num_tokens=request.num_tokens,
++    )
++    with patch.object(bridge, "handles", return_value=True), patch.object(
++        bridge._cache, "find", return_value=None
++    ):
++        assert bridge.poll_prefix(bounded)
++        assert bridge.poll_prefix(bounded)
++    assert directory.finds == 1
++    assert bridge.take_tasks() == []
++
++
+ class LegacyAllocator:
+     """A real allocator seen through vLLM's API before restore admission.
+ 
