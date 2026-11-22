@@ -20,7 +20,7 @@
       "remote": "https://github.com/brandonmmusic-max/exllamav3.git"
     },
     "flashinfer": {
-      "commit": "aaf6e76176a96f2dac70ee0862e3cc83d3c357f8",
+      "commit": "fbf53f8dc859ef5ed8e65bc3290e29e484a94c9a",
       "recursive_init_submodules": true,
       "remote": "https://github.com/randomvariable/flashinfer.git"
     },
@@ -68,7 +68,7 @@
     },
     "vllm": {
       "cargo_vendor": true,
-      "commit": "851f8046784cf7892f5427504eef1a76f89d3cec",
+      "commit": "f1317532b5ec9bb5f48ddd4571985919b05cf6bd",
       "recursive_init_submodules": true,
       "remote": "https://github.com/randomvariable/vllm.git"
     },

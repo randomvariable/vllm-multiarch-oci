@@ -594,6 +594,10 @@ def installed_csf_families() -> frozenset[str] | None:
         table = re.search(
             r"^FAMILIES\b[^=\n]*=\s*\{(.*?)^\}", source or "", re.MULTILINE | re.DOTALL
         )
+        if fmt == "mxfp4_csf" and installed_source(
+            "vllm", "models/deepseek_v41/nvidia/mxfp4_csf.py"
+        ) is not None:
+            families.add("deepseek_v41")
         if table:
             families.update(
                 re.findall(r'^\s+"([a-z][a-z0-9_]*)"\s*:', table.group(1), re.MULTILINE)
@@ -1644,7 +1648,7 @@ def resolve(
         return None
 
     checkpoint_warnings: list[str] = []
-    local_csf = None
+    local_csf = local_csf_format(values["model"])
     if "checkpoint" in values:
         variants = model.get("checkpoints", {})
         profile_level = ("common:", "model:", "hardware:")
