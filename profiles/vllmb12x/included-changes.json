@@ -3,7 +3,7 @@
     {
       "name": "vllm",
       "title": "vLLM",
-      "branch": "refs/heads/cycle/monstrous-moonshine",
+      "branch": "refs/heads/feat/ds41-dcp-rocenante",
       "upstream": "vllm-project/vllm",
       "upstream_base": "refs/heads/main",
       "changes": [
@@ -55,6 +55,13 @@
           "inclusion": "branch",
           "commits": 4,
           "note": "Ports local-inference-lab/vllm#764 to SM12x packed sparse attention and adds legacy GEMM warmup coverage for DSpark adaptive verification. DCP4 shards compressed KV and optionally the FP8 index, while keeping sliding-window KV and compressor state replicated."
+        },
+        {
+          "pull_request": null,
+          "title": "Opt-in RoCEnante DCP gather and reduce-scatter",
+          "inclusion": "branch",
+          "commits": 1,
+          "note": "VLLM_DCP_ROCENANTE enables prepared RoCE collectives on the DCP group. Unsupported tensors retain NCCL dispatch."
         },
         {
           "pull_request": null,

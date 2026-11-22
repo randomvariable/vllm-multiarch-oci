@@ -2,7 +2,7 @@
   "flashinfer_ref": "refs/heads/cycle/monstrous-moonshine",
   "lil_runtime_ref": "refs/heads/main",
   "name": "vllmb12x",
-  "source_ref": "refs/heads/cycle/monstrous-moonshine",
+  "source_ref": "refs/heads/feat/ds41-dcp-rocenante",
   "sources": {
     "cutlass": {
       "commit": "e6233cbac5d7c7a865c19c91cd684ceece19513c",
@@ -68,7 +68,7 @@
     },
     "vllm": {
       "cargo_vendor": true,
-      "commit": "b0b0d8e1e45185c6195a6a4668109657f44c400d",
+      "commit": "3c2529b7985f77f8d85d454df70c8ececf96ca9c",
       "recursive_init_submodules": true,
       "remote": "https://github.com/randomvariable/vllm.git"
     },

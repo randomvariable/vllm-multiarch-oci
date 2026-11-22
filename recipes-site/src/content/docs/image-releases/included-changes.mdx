@@ -12,7 +12,7 @@ A change reaches the build in one of two ways. It is either already merged into 
 {/* included-changes:start */}
 ## vLLM
 
-Pinned at [`b0b0d8e1e451`](https://github.com/randomvariable/vllm/commit/b0b0d8e1e45185c6195a6a4668109657f44c400d), branched from [`vllm-project/vllm`](https://github.com/vllm-project/vllm) `main`.
+Pinned at [`3c2529b7985f`](https://github.com/randomvariable/vllm/commit/3c2529b7985f77f8d85d454df70c8ececf96ca9c), branched from [`vllm-project/vllm`](https://github.com/vllm-project/vllm) `main`.
 
 - **[vllm-project/vllm#68445](https://github.com/vllm-project/vllm/pull/68445)** — Bounded shared-memory broadcast waits
   - Merged into the pinned revision (3 commits).
@@ -35,6 +35,9 @@ Pinned at [`b0b0d8e1e451`](https://github.com/randomvariable/vllm/commit/b0b0d8e
 - **GB10 decode context parallelism for DeepSeek V4.1** — no upstream pull request
   - Merged into the pinned revision (4 commits).
   - Ports local-inference-lab/vllm#764 to SM12x packed sparse attention and adds legacy GEMM warmup coverage for DSpark adaptive verification. DCP4 shards compressed KV and optionally the FP8 index, while keeping sliding-window KV and compressor state replicated.
+- **Opt-in RoCEnante DCP gather and reduce-scatter** — no upstream pull request
+  - Merged into the pinned revision (1 commits).
+  - VLLM_DCP_ROCENANTE enables prepared RoCE collectives on the DCP group. Unsupported tensors retain NCCL dispatch.
 - **Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute** — no upstream pull request
   - Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch`.
   - Packaging repair for this builder's symlink install path, which skips the import rewrite the upstream CMake copy performs. It carries no upstream change.

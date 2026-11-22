@@ -17,14 +17,15 @@ The image is built from pinned fork revisions rather than from upstream branches
 
 | Component | Change | Included as |
 | --- | --- | --- |
-| vLLM `b0b0d8e1e451` | [vllm-project/vllm#68445](https://github.com/vllm-project/vllm/pull/68445) Bounded shared-memory broadcast waits | Merged into the pinned revision (3 commits) |
-| vLLM `b0b0d8e1e451` | b12x GB10 integration ported from local-inference-lab karmic-kraken (no upstream pull request) | Merged into the pinned revision (1 commits) |
-| vLLM `b0b0d8e1e451` | DeepSeek V4.1 Engram tables served from checkpoint files (no upstream pull request) | Merged into the pinned revision (1 commits) |
-| vLLM `b0b0d8e1e451` | b12x call sites moved to local-inference-lab FlashInfer APIs (no upstream pull request) | Merged into the pinned revision (1 commits) |
-| vLLM `b0b0d8e1e451` | Qwen4Exp b12x modules import their config from transformers (no upstream pull request) | Merged into the pinned revision (1 commits) |
-| vLLM `b0b0d8e1e451` | Request-boundary recurrent checkpoints for Qwen3.8-Flash-Next (no upstream pull request) | Merged into the pinned revision (1 commits) |
-| vLLM `b0b0d8e1e451` | GB10 decode context parallelism for DeepSeek V4.1 (no upstream pull request) | Merged into the pinned revision (4 commits) |
-| vLLM `b0b0d8e1e451` | Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute (no upstream pull request) | Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch` |
+| vLLM `3c2529b7985f` | [vllm-project/vllm#68445](https://github.com/vllm-project/vllm/pull/68445) Bounded shared-memory broadcast waits | Merged into the pinned revision (3 commits) |
+| vLLM `3c2529b7985f` | b12x GB10 integration ported from local-inference-lab karmic-kraken (no upstream pull request) | Merged into the pinned revision (1 commits) |
+| vLLM `3c2529b7985f` | DeepSeek V4.1 Engram tables served from checkpoint files (no upstream pull request) | Merged into the pinned revision (1 commits) |
+| vLLM `3c2529b7985f` | b12x call sites moved to local-inference-lab FlashInfer APIs (no upstream pull request) | Merged into the pinned revision (1 commits) |
+| vLLM `3c2529b7985f` | Qwen4Exp b12x modules import their config from transformers (no upstream pull request) | Merged into the pinned revision (1 commits) |
+| vLLM `3c2529b7985f` | Request-boundary recurrent checkpoints for Qwen3.8-Flash-Next (no upstream pull request) | Merged into the pinned revision (1 commits) |
+| vLLM `3c2529b7985f` | GB10 decode context parallelism for DeepSeek V4.1 (no upstream pull request) | Merged into the pinned revision (4 commits) |
+| vLLM `3c2529b7985f` | Opt-in RoCEnante DCP gather and reduce-scatter (no upstream pull request) | Merged into the pinned revision (1 commits) |
+| vLLM `3c2529b7985f` | Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute (no upstream pull request) | Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch` |
 | FlashInfer `46932c8f0c14` | GB10 DSV4.1 decode split policy and NVFP4 CSF scale defaults (no upstream pull request) | Merged into the pinned revision (2 commits) |
 | FlashInfer `46932c8f0c14` | C S3-FIFO host row cache for disk PLE/Engram tables (no upstream pull request) | Merged into the pinned revision (12 commits) |
 | FlashInfer `46932c8f0c14` | SM12x packed sparse attention partial outputs (no upstream pull request) | Merged into the pinned revision (1 commits) |
