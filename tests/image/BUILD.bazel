@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load("@container_structure_test//:defs.bzl", "container_structure_test")
-load("//bazel:contract_image.bzl", "contract_image")
+load("//bazel:contract_image.bzl", "contract_image", "x86_contract_test")
 
 # Match the OCI index's transitions from the same top-level configuration.
 # Selecting the image on the test's target platform would require a different
@@ -20,11 +20,6 @@ contract_image(
 
 _ARM64_EXEC = [
     "@platforms//cpu:aarch64",
-    "@platforms//os:linux",
-]
-
-_X86_64_EXEC = [
-    "@platforms//cpu:x86_64",
     "@platforms//os:linux",
 ]
 
@@ -76,22 +71,20 @@ container_structure_test(
     platform = "linux/arm64",
 )
 
-container_structure_test(
+x86_contract_test(
     name = "vllmb12x_contract_x86_64",
     timeout = "long",
     configs = ["vllmb12x.yaml"],
     driver = "docker",
-    exec_compatible_with = _X86_64_EXEC,
     image = ":contract_image_x86_64",
     platform = "linux/amd64",
 )
 
-container_structure_test(
+x86_contract_test(
     name = "vllmb12x_contract_x86_64_arch",
     timeout = "long",
     configs = ["vllmb12x-x86_64.yaml"],
     driver = "docker",
-    exec_compatible_with = _X86_64_EXEC,
     image = ":contract_image_x86_64",
     platform = "linux/amd64",
 )
