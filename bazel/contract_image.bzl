@@ -2,7 +2,9 @@
 """Select the same platform transition as the OCI index for contract inputs."""
 
 def _platform_impl(_, attr):
-    return {"//command_line_option:platforms": str(attr.image_platform.label)}
+    # A label attr is a Label in a transition; str() matches rules_oci's index
+    # transition exactly, so both reach the same configuration and outputs.
+    return {"//command_line_option:platforms": str(attr.image_platform)}
 
 _platform = transition(implementation = _platform_impl, inputs = [], outputs = ["//command_line_option:platforms"])
 
