@@ -119,6 +119,13 @@ test -x "$BAZEL_PY" || {
     --disk_cache= \
     --//platforms:vllmb12x_cache_root="$VLLMB12X_CACHE_ROOT"
 
+# One ccache counter summary per native action. A remote-cache hit replays the
+# log of the run that executed it, so these describe the producing execution.
+while IFS= read -r -d '' statslog; do
+    echo "ccache stats: ${statslog#bazel-out/}"
+    sort "$statslog" | uniq -c | sort -rn
+done < <(find -L bazel-out -name '*.ccache.statslog' -print0 2>/dev/null)
+
 # The rule defaults to --test-report $XML_OUTPUT_FILE --output junit, which
 # sends every per-test line to a file that dies with the pod. Clearing the
 # report and forcing text keeps container-structure-test's === RUN / --- FAIL
