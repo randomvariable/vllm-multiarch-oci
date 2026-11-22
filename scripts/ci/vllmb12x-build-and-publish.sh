@@ -69,6 +69,21 @@ build --repo_env=PATH=${PATH}
 build --credential_helper=index.docker.io=%workspace%/scripts/ci/dockerhub-credential-helper.py
 EOF
 
+# Keep download blobs and reusable repository trees off the per-run workspace.
+if [[ -n "${VLLMB12X_REPOSITORY_CACHE_ROOT:-}" ]]; then
+    mkdir -p "$VLLMB12X_REPOSITORY_CACHE_ROOT"/{downloads,contents}
+    printf 'common --repository_cache=%s/downloads\ncommon --repo_contents_cache=%s/contents\n' \
+        "$VLLMB12X_REPOSITORY_CACHE_ROOT" "$VLLMB12X_REPOSITORY_CACHE_ROOT" >>.bazelrc.user
+fi
+
+if [[ -n "${NORA_URL:-}" ]]; then
+    export VLLMB12X_PIP_INDEX_URL="${NORA_URL%/}/simple/"
+    export VLLMB12X_CARGO_INDEX_URL="sparse+${NORA_URL%/}/cargo/index/"
+    # Inherit by name so client arguments and the generated rc omit the URL.
+    printf '%s\n' 'common --repo_env=VLLMB12X_PIP_INDEX_URL' \
+        'common --repo_env=VLLMB12X_CARGO_INDEX_URL' >>.bazelrc.user
+fi
+
 # Local strategy: this is a host Python test, and the remote ARM64 worker
 # image carries no python3 interpreter.
 "$BAZEL" test //scripts:all --disk_cache= --test_output=errors
@@ -100,6 +115,7 @@ test -x "$BAZEL_PY" || {
 
 "$BAZEL" build //image:vllmb12x \
     --config=remote-multiarch \
+    --remote_download_regex='.*\.ccache\.statslog$' \
     --disk_cache= \
     --//platforms:vllmb12x_cache_root="$VLLMB12X_CACHE_ROOT"
 

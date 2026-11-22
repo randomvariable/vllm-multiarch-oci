@@ -44,6 +44,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--target-cpu", required=True)
     parser.add_argument("--max-jobs", required=True, type=int)
     parser.add_argument("--output", required=True)
+    parser.add_argument("--cache-stats-output", required=True)
     parser.add_argument("--rustc")
     parser.add_argument("--cargo")
     parser.add_argument("--cargo-vendor-tar")
@@ -164,7 +165,11 @@ def main() -> None:
         env["CXX_" + rust_target] = env["CXX"]
         env["CARGO_TARGET_" + rust_target + "_LINKER"] = env["CC"]
 
+    statslog = work / "ccache.statslog"
+    statslog.write_bytes(b"")  # Some wheels never invoke a compiler.
+    env["CCACHE_STATSLOG"] = str(statslog)
     run([python, build_script, python, wheels_dir], cwd=source, env=env)
+    shutil.copyfile(statslog, work_root(args.cache_stats_output))
     wheel = single_wheel(wheels_dir)
     output.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(wheel, output)
