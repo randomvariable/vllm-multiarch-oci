@@ -12,7 +12,7 @@ A change reaches the build in one of two ways. It is either already merged into 
 {/* included-changes:start */}
 ## vLLM
 
-Pinned at [`daa3816ce4c6`](https://github.com/randomvariable/vllm/commit/daa3816ce4c6e2ec05fed7cdd115afb2b7cbc17b), branched from [`vllm-project/vllm`](https://github.com/vllm-project/vllm) `main`.
+Pinned at [`15af777a5c80`](https://github.com/randomvariable/vllm/commit/15af777a5c80a6779c2eddc8a395214fcb408018), branched from [`vllm-project/vllm`](https://github.com/vllm-project/vllm) `main`.
 
 - **[vllm-project/vllm#68445](https://github.com/vllm-project/vllm/pull/68445)** — Bounded shared-memory broadcast waits
   - Merged into the pinned revision (3 commits).
@@ -33,7 +33,7 @@ Pinned at [`daa3816ce4c6`](https://github.com/randomvariable/vllm/commit/daa3816
   - Merged into the pinned revision (1 commits).
   - Ports local-inference-lab's boundary checkpoint cache, admission, endpoint reservations, capture/restore and KV connector hooks onto main, so the LMCache recurrent checkpoint connector resumes follow-up turns. Checkpoint keys cover only tokens below the endpoint under main's hash lookahead. Out of scope: GLM-5-Next, Kimi-K3/KDA, DFlash replay, DCP, LoRA and the fork's prefill-policy scheduler. Also fixes b12x profiling/warm-up hooks running without b12x and an env leak in a carried test.
 - **GB10 decode context parallelism for DeepSeek V4.1** — no upstream pull request
-  - Merged into the pinned revision (2 commits).
+  - Merged into the pinned revision (3 commits).
   - Ports local-inference-lab/vllm#764 to SM12x packed sparse attention and adds legacy GEMM warmup coverage for DSpark adaptive verification. DCP4 shards compressed KV and optionally the FP8 index, while keeping sliding-window KV and compressor state replicated.
 - **Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute** — no upstream pull request
   - Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch`.

@@ -53,7 +53,7 @@
           "pull_request": null,
           "title": "GB10 decode context parallelism for DeepSeek V4.1",
           "inclusion": "branch",
-          "commits": 2,
+          "commits": 3,
           "note": "Ports local-inference-lab/vllm#764 to SM12x packed sparse attention and adds legacy GEMM warmup coverage for DSpark adaptive verification. DCP4 shards compressed KV and optionally the FP8 index, while keeping sliding-window KV and compressor state replicated."
         },
         {

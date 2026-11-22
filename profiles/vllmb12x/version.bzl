@@ -10,6 +10,6 @@ manifest, so identical inputs rebuild the same version; recompute it with
 `scripts/refresh-vllmb12x.py --dry-run`.
 """
 
-VLLM_BUILD_VERSION = "0.33.0+monstrous.moonshine.daa3816ce4c6.46932c8f0c14.dae064f84e69"
+VLLM_BUILD_VERSION = "0.33.0+monstrous.moonshine.15af777a5c80.46932c8f0c14.ac24a4d9fdf8"
 VLLM_SOURCE_REF = "refs/heads/cycle/monstrous-moonshine"
-VLLM_SOURCE_REVISION = "daa3816ce4c6e2ec05fed7cdd115afb2b7cbc17b"
+VLLM_SOURCE_REVISION = "15af777a5c80a6779c2eddc8a395214fcb408018"
