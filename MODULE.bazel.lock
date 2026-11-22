@@ -295,7 +295,7 @@
         "bzlTransitiveDigest": "XSzcTcOvJmZivwj2/hWD9i65/D03rTP30mZBZJAw5gc=",
         "usagesDigest": "TbToXvRwiI8PsHdrsxGPuPfbejspkLY+sFzGYsHqeN4=",
         "recordedInputs": [
-          "FILE:@@//profiles/vllmb12x/profile.json e07784260fa66a285051645609cd28e06d1220371a30d8abd26a9cb506c190c2"
+          "FILE:@@//profiles/vllmb12x/profile.json 20d5693c2a69403ce5ab713945d6745c89fd83db76b4343dd586e9782a6ca025"
         ],
         "generatedRepoSpecs": {
           "vllmb12x_cutlass": {
@@ -439,7 +439,7 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/randomvariable/vllm.git",
-              "commit": "15af777a5c80a6779c2eddc8a395214fcb408018",
+              "commit": "b0b0d8e1e45185c6195a6a4668109657f44c400d",
               "recursive_init_submodules": true,
               "patches": [
                 "@@//third_party:vllm_flash_attn_cute_namespace.patch"
