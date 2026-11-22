@@ -254,6 +254,12 @@ filegroup(
 )
 
 filegroup(
+    name = "flashinfer_aot_compiler_cache_stats",
+    srcs = [":flashinfer_jit_cache_provider"],
+    output_group = "compiler_cache_stats",
+)
+
+filegroup(
     name = "vllm_compiler_cache_stats",
     srcs = [":vllm"],
     output_group = "compiler_cache_stats",

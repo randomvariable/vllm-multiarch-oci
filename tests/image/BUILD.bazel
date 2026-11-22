@@ -1,11 +1,18 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load("@container_structure_test//:defs.bzl", "container_structure_test")
+load("//bazel:contract_image.bzl", "contract_image")
 
-_IMAGE = select({
-    "//platforms:linux_aarch64": "//image:vllmb12x_image",
-    "//platforms:linux_x86_64": "//image:vllmb12x_image",
-})
+contract_image(
+    name = "contract_image",
+    image = "//image:vllmb12x_image",
+    image_platform = select({
+        "//platforms:linux_aarch64": "//platforms:blackwell_arm64_sm12x",
+        "//platforms:linux_x86_64": "//platforms:blackwell_x86_64_sm120",
+    }),
+)
+
+_IMAGE = ":contract_image"
 
 _PLATFORM = select({
     "//platforms:linux_aarch64": "linux/arm64",

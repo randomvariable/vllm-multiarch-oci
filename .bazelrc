@@ -20,7 +20,7 @@ build:spark --platforms=//platforms:blackwell_arm64_sm12x
 # through NativeLink properties. The x86 executor supplies host/QEMU tools.
 build:remote-sm120a --platforms=//platforms:blackwell_arm64_sm12x
 build:remote-sm120a --extra_execution_platforms=//platforms:blackwell_arm64_sm12x,//platforms:blackwell_x86_64_sm120
-build:remote-sm120a --extra_toolchains=//platforms:hermetic_linux_aarch64_cc_toolchain
+build:remote-sm120a --extra_toolchains=//platforms:hermetic_linux_aarch64_cc_toolchain,//platforms:hermetic_linux_x86_64_cc_toolchain
 build:remote-sm120a --remote_timeout=21600
 build:remote-sm120a --spawn_strategy=remote
 build:remote-sm120a --remote_local_fallback=false
@@ -45,8 +45,8 @@ test:remote-sm121a --nocache_test_results
 # The x86 Blackwell lane builds CUDA sm_120 with native x86 tools. Private
 # scheduler endpoints and container-image properties stay in .bazelrc.user.
 build:remote-x86_64 --platforms=//platforms:blackwell_x86_64_sm120
-build:remote-x86_64 --extra_execution_platforms=//platforms:blackwell_x86_64_sm120
-build:remote-x86_64 --extra_toolchains=//platforms:hermetic_linux_x86_64_cc_toolchain
+build:remote-x86_64 --extra_execution_platforms=//platforms:blackwell_arm64_sm12x,//platforms:blackwell_x86_64_sm120
+build:remote-x86_64 --extra_toolchains=//platforms:hermetic_linux_aarch64_cc_toolchain,//platforms:hermetic_linux_x86_64_cc_toolchain
 build:remote-x86_64 --remote_timeout=21600
 build:remote-x86_64 --spawn_strategy=remote
 build:remote-x86_64 --remote_local_fallback=false

@@ -137,6 +137,8 @@ spec:
                 - {name: PUBLISHER_NAMESPACE, value: $(params.publisher_namespace)}
                 - {name: REMOTE_CACHE, value: $(params.remote_cache)}
                 - {name: REMOTE_EXECUTOR, value: $(params.remote_executor)}
+                - {name: NORA_URL, value: "{{ nora_url }}"}
+                - {name: VLLMB12X_REPOSITORY_CACHE_ROOT, value: /var/cache/bazel-repositories}
                 - {name: RESULT, value: $(workspaces.source.path)/.build-home/publish-result.json}
               computeResources:
                 requests: {cpu: "4", memory: 8Gi}
@@ -159,8 +161,12 @@ spec:
                 REF="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["reference"])' "$RESULT")"
                 printf '%s' "$REF" > "$(results.image_ref.path)"
               volumeMounts:
+                - {name: bazel-repositories, mountPath: /var/cache/bazel-repositories}
                 - {name: github-token, mountPath: /var/run/vllmb12x/github, readOnly: true}
           volumes:
+            - name: bazel-repositories
+              persistentVolumeClaim:
+                claimName: "{{ bazel_repository_cache_claim }}"
             - name: github-token
               secret:
                 secretName: $(params.publisher_token_secret)

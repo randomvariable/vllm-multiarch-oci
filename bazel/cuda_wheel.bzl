@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 """Build an upstream Python CUDA extension as a content-addressed wheel action."""
 
-load("//bazel:compiler_cache.bzl", "CCACHE_ATTR", "GCC_SYSROOT_ATTR", "MEMORY_PER_JOB_ATTR", "compile_jobs")
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
+load("//bazel:compiler_cache.bzl", "CCACHE_ATTR", "GCC_SYSROOT_ATTR", "MEMORY_PER_JOB_ATTR", "compile_jobs")
 
 def _cuda_wheel_impl(ctx):
     output = ctx.actions.declare_file(ctx.attr.output)
+    cache_stats = ctx.actions.declare_file(ctx.label.name + ".ccache.statslog")
     args = ctx.actions.args()
     args.add(ctx.file._driver.path)
     args.add("--work-dir", ctx.label.name + ".work")
@@ -20,6 +21,7 @@ def _cuda_wheel_impl(ctx):
     args.add("--target-cpu", ctx.attr.target_cpu)
     args.add("--max-jobs", str(compile_jobs(ctx.attr)))
     args.add("--output", output.path)
+    args.add("--cache-stats-output", cache_stats.path)
     rust_toolchain = None
     if ctx.file.cargo_vendor:
         rust_toolchain = ctx.toolchains["@rules_rust//rust:toolchain"]
@@ -49,7 +51,7 @@ def _cuda_wheel_impl(ctx):
             direct = inputs,
             transitive = [rust_toolchain.all_files] if rust_toolchain else [],
         ),
-        outputs = [output],
+        outputs = [output, cache_stats],
         mnemonic = "BuildCUDAWheel",
         progress_message = "Building %s from source" % ctx.label.name,
         execution_requirements = {
@@ -60,7 +62,10 @@ def _cuda_wheel_impl(ctx):
         env = dict(ctx.attr.env, **_cache_env(ctx)),
         use_default_shell_env = False,
     )
-    return [DefaultInfo(files = depset([output]))]
+    return [
+        DefaultInfo(files = depset([output])),
+        OutputGroupInfo(compiler_cache_stats = depset([cache_stats])),
+    ]
 
 cuda_wheel = rule(
     implementation = _cuda_wheel_impl,
@@ -116,7 +121,6 @@ cuda_wheel = rule(
         "@rules_rust//rust:toolchain",
     ],
 )
-
 
 def _cache_env(ctx):
     root = ctx.attr._cache_root[BuildSettingInfo].value

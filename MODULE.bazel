@@ -330,7 +330,9 @@ pip.default(
 )
 pip.parse(
     download_only = True,
+    envsubst = ["VLLMB12X_PIP_INDEX_URL"],
     extra_pip_args = [
+        "--index-url=${VLLMB12X_PIP_INDEX_URL:-https://pypi.org/simple/}",
         "--platform=manylinux_2_34_aarch64",
         "--platform=manylinux_2_31_aarch64",
         "--platform=manylinux_2_28_aarch64",
@@ -346,7 +348,9 @@ pip.parse(
 )
 pip.parse(
     download_only = True,
+    envsubst = ["VLLMB12X_PIP_INDEX_URL"],
     extra_pip_args = [
+        "--index-url=${VLLMB12X_PIP_INDEX_URL:-https://pypi.org/simple/}",
         "--platform=manylinux_2_34_aarch64",
         "--platform=manylinux_2_31_aarch64",
         "--platform=manylinux_2_28_aarch64",
@@ -362,7 +366,9 @@ pip.parse(
 )
 pip.parse(
     download_only = True,
+    envsubst = ["VLLMB12X_PIP_INDEX_URL"],
     extra_pip_args = [
+        "--index-url=${VLLMB12X_PIP_INDEX_URL:-https://pypi.org/simple/}",
         "--platform=manylinux_2_34_x86_64",
         "--platform=manylinux_2_31_x86_64",
         "--platform=manylinux_2_28_x86_64",
@@ -378,7 +384,9 @@ pip.parse(
 )
 pip.parse(
     download_only = True,
+    envsubst = ["VLLMB12X_PIP_INDEX_URL"],
     extra_pip_args = [
+        "--index-url=${VLLMB12X_PIP_INDEX_URL:-https://pypi.org/simple/}",
         "--platform=manylinux_2_34_x86_64",
         "--platform=manylinux_2_31_x86_64",
         "--platform=manylinux_2_28_x86_64",
