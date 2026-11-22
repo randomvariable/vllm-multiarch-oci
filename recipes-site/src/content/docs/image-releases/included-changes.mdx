@@ -12,7 +12,7 @@ A change reaches the build in one of two ways. It is either already merged into 
 {/* included-changes:start */}
 ## vLLM
 
-Pinned at [`68e08dfdd38d`](https://github.com/randomvariable/vllm/commit/68e08dfdd38df476a7215fb807db0e98e3ffcce9), branched from [`vllm-project/vllm`](https://github.com/vllm-project/vllm) `main`.
+Pinned at [`daa3816ce4c6`](https://github.com/randomvariable/vllm/commit/daa3816ce4c6e2ec05fed7cdd115afb2b7cbc17b), branched from [`vllm-project/vllm`](https://github.com/vllm-project/vllm) `main`.
 
 - **[vllm-project/vllm#68445](https://github.com/vllm-project/vllm/pull/68445)** — Bounded shared-memory broadcast waits
   - Merged into the pinned revision (3 commits).
@@ -32,13 +32,16 @@ Pinned at [`68e08dfdd38d`](https://github.com/randomvariable/vllm/commit/68e08df
 - **Request-boundary recurrent checkpoints for Qwen3.8-Flash-Next** — no upstream pull request
   - Merged into the pinned revision (1 commits).
   - Ports local-inference-lab's boundary checkpoint cache, admission, endpoint reservations, capture/restore and KV connector hooks onto main, so the LMCache recurrent checkpoint connector resumes follow-up turns. Checkpoint keys cover only tokens below the endpoint under main's hash lookahead. Out of scope: GLM-5-Next, Kimi-K3/KDA, DFlash replay, DCP, LoRA and the fork's prefill-policy scheduler. Also fixes b12x profiling/warm-up hooks running without b12x and an env leak in a carried test.
+- **GB10 decode context parallelism for DeepSeek V4.1** — no upstream pull request
+  - Merged into the pinned revision (2 commits).
+  - Ports local-inference-lab/vllm#764 to SM12x packed sparse attention and adds legacy GEMM warmup coverage for DSpark adaptive verification. DCP4 shards compressed KV and optionally the FP8 index, while keeping sliding-window KV and compressor state replicated.
 - **Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute** — no upstream pull request
   - Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch`.
   - Packaging repair for this builder's symlink install path, which skips the import rewrite the upstream CMake copy performs. It carries no upstream change.
 
 ## FlashInfer
 
-Pinned at [`fbf53f8dc859`](https://github.com/randomvariable/flashinfer/commit/fbf53f8dc859ef5ed8e65bc3290e29e484a94c9a), branched from [`local-inference-lab/flashinfer`](https://github.com/local-inference-lab/flashinfer) `main`.
+Pinned at [`46932c8f0c14`](https://github.com/randomvariable/flashinfer/commit/46932c8f0c14edfc4ff6a767206e25c8d9dbe529), branched from [`local-inference-lab/flashinfer`](https://github.com/local-inference-lab/flashinfer) `main`.
 
 - **GB10 DSV4.1 decode split policy and NVFP4 CSF scale defaults** — no upstream pull request
   - Merged into the pinned revision (2 commits).
@@ -46,6 +49,9 @@ Pinned at [`fbf53f8dc859`](https://github.com/randomvariable/flashinfer/commit/f
 - **C S3-FIFO host row cache for disk PLE/Engram tables** — no upstream pull request
   - Merged into the pinned revision (12 commits).
   - The twelve row-cache commits developed under local-inference-lab/flashinfer#44, replayed clean onto main 1d76585b1: the row-cache core, the caller-gated DiskTable.prefetch and host row-id helpers, and the prefetch telemetry commits. The upstream pull request later grew beyond these twelve; the lock carries exactly the audited set.
+- **SM12x packed sparse attention partial outputs** — no upstream pull request
+  - Merged into the pinned revision (1 commits).
+  - Ports the log-sum-exp output contract from local-inference-lab/b12x#374 to FlashInfer's existing packed sparse attention API.
 {/* included-changes:end */}
 
 ## Keeping this list honest

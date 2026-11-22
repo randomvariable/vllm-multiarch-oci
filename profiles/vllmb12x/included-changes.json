@@ -51,6 +51,13 @@
         },
         {
           "pull_request": null,
+          "title": "GB10 decode context parallelism for DeepSeek V4.1",
+          "inclusion": "branch",
+          "commits": 2,
+          "note": "Ports local-inference-lab/vllm#764 to SM12x packed sparse attention and adds legacy GEMM warmup coverage for DSpark adaptive verification. DCP4 shards compressed KV and optionally the FP8 index, while keeping sliding-window KV and compressor state replicated."
+        },
+        {
+          "pull_request": null,
           "title": "Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute",
           "inclusion": "patch",
           "patch": "third_party/vllm_flash_attn_cute_namespace.patch",
@@ -78,6 +85,13 @@
           "inclusion": "branch",
           "commits": 12,
           "note": "The twelve row-cache commits developed under local-inference-lab/flashinfer#44, replayed clean onto main 1d76585b1: the row-cache core, the caller-gated DiskTable.prefetch and host row-id helpers, and the prefetch telemetry commits. The upstream pull request later grew beyond these twelve; the lock carries exactly the audited set."
+        },
+        {
+          "pull_request": null,
+          "title": "SM12x packed sparse attention partial outputs",
+          "inclusion": "branch",
+          "commits": 1,
+          "note": "Ports the log-sum-exp output contract from local-inference-lab/b12x#374 to FlashInfer's existing packed sparse attention API."
         }
       ]
     }
