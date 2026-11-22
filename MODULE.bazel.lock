@@ -292,7 +292,7 @@
     },
     "//bazel:sources.bzl%profile_sources": {
       "general": {
-        "bzlTransitiveDigest": "7YjzLKfFcyz3tTFdR61rk3+1qauUakGlG2++BDsoWEA=",
+        "bzlTransitiveDigest": "XSzcTcOvJmZivwj2/hWD9i65/D03rTP30mZBZJAw5gc=",
         "usagesDigest": "TbToXvRwiI8PsHdrsxGPuPfbejspkLY+sFzGYsHqeN4=",
         "recordedInputs": [
           "FILE:@@//profiles/vllmb12x/profile.json 00ae93c4c13fc932638ac0aef90624a379ce5606f7dcbf33909dd951a732989d"
