@@ -23,6 +23,7 @@ exports_files(
 def _pinned_source_repository_impl(ctx):
     source = ctx.path("src")
     patches = []
+
     # Fetch the locked object into an empty repository instead of cloning the
     # remote. A full clone of PyTorch transfers its entire history for one
     # pinned commit, which is what exhausted the fetch timeout in CI and which
@@ -58,6 +59,7 @@ def _pinned_source_repository_impl(ctx):
 
     for patch in ctx.attr.patches:
         patch_path = ctx.path(patch)
+
         # External commands do not register file reads with Bazel.
         ctx.watch(patch_path)
         result = ctx.execute(["sha256sum", patch_path])
@@ -99,16 +101,27 @@ def _pinned_source_repository_impl(ctx):
         for component in ctx.attr.cargo_manifest.split("/"):
             manifest = manifest.get_child(component)
         vendor = ctx.path("cargo-vendor")
-        result = ctx.execute([
-            "cargo",
-            "vendor",
-            "--locked",
+        args = ["cargo"]
+        sparse_index = ctx.getenv("VLLMB12X_CARGO_INDEX_URL")
+        if sparse_index:
+            args += [
+                "--config",
+                'source.crates-io.replace-with="nora"',
+                "--config",
+                "source.nora.registry=" + json.encode(sparse_index),
+            ]
+        args += ["vendor", "--locked"]
+        if sparse_index:
+            # cargo vendor ignores source replacements by default.
+            args.append("--respect-source-config")
+        result = ctx.execute(args + [
             "--manifest-path",
             manifest,
             vendor.get_child("vendor"),
         ], timeout = _NETWORK_TIMEOUT)
         if result.return_code:
             fail("cargo vendor failed for %s: %s" % (ctx.attr.remote, result.stderr))
+
         # Keep Cargo's source replacement relative to the action-local CARGO_HOME.
         config = result.stdout.replace(
             'directory = "%s"' % vendor.get_child("vendor"),
@@ -144,7 +157,6 @@ _pinned_source_repository = repository_rule(
     },
 )
 
-
 def _sources_impl(ctx):
     for mod in ctx.modules:
         for tag in mod.tags.profile:
@@ -161,11 +173,11 @@ def _sources_impl(ctx):
                     cargo_manifest = source.get("cargo_manifest", "rust/Cargo.toml"),
                 )
 
+_PATCHED_SOURCES = ("vllm", "flashinfer", "deepgemm", "instanttensor", "lmcache")
+
 def _patches_for(tag, name):
-    if name == "vllm":
-        return tag.vllm_patches
-    if name == "flashinfer":
-        return tag.flashinfer_patches
+    if name in _PATCHED_SOURCES:
+        return getattr(tag, name + "_patches")
     return []
 
 profile_sources = module_extension(
@@ -175,6 +187,9 @@ profile_sources = module_extension(
             "manifest": attr.label(mandatory = True, allow_single_file = True),
             "vllm_patches": attr.label_list(allow_files = True),
             "flashinfer_patches": attr.label_list(allow_files = True),
+            "deepgemm_patches": attr.label_list(allow_files = True),
+            "instanttensor_patches": attr.label_list(allow_files = True),
+            "lmcache_patches": attr.label_list(allow_files = True),
         }),
     },
 )

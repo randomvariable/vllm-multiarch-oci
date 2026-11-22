@@ -238,8 +238,14 @@ sources.profile(
     # part of source.identity.json.
     vllm_patches = [
         "//third_party:vllm_flash_attn_cute_namespace.patch",
-        "//third_party:vllm_pin_memory_import_order.patch",
-        "//third_party:vllm_b12x_intrinsics_reference.patch",
+    ],
+    # torch 2.14 headers require C++20; these extensions hard-code C++17.
+    instanttensor_patches = ["//third_party:instanttensor_cxx20.patch"],
+    lmcache_patches = [
+        "//third_party:lmcache_cxx20.patch",
+        # The pinned LMCache fork targets the LIL vLLM fork's KV-cache API;
+        # this adapts its vLLM integration to upstream's (vllm-project/vllm#61452).
+        "//third_party:lmcache_upstream_vllm_kv_api.patch",
     ],
 )
 use_repo(
@@ -264,7 +270,6 @@ use_repo(
     "vllmb12x_vllm_cmake_flashkda",
     "vllmb12x_vllm_cmake_flashmla",
     "vllmb12x_vllm_cmake_msa",
-    "vllmb12x_vllm_cmake_qutlass",
     "vllmb12x_vllm_cmake_tml_fa4",
     "vllmb12x_vllm_cmake_triton",
     "vllmb12x_xgrammar",
@@ -325,7 +330,12 @@ pip.default(
 )
 pip.parse(
     download_only = True,
+    envsubst = ["VLLMB12X_PIP_INDEX_URL"],
     extra_pip_args = [
+        "--index-url=${VLLMB12X_PIP_INDEX_URL:-https://pypi.org/simple/}",
+        # A pull-through cache answers a cold file only after fetching all of
+        # it upstream; pip's default 15s read timeout fails large wheels.
+        "--timeout=900",
         "--platform=manylinux_2_34_aarch64",
         "--platform=manylinux_2_31_aarch64",
         "--platform=manylinux_2_28_aarch64",
@@ -341,7 +351,12 @@ pip.parse(
 )
 pip.parse(
     download_only = True,
+    envsubst = ["VLLMB12X_PIP_INDEX_URL"],
     extra_pip_args = [
+        "--index-url=${VLLMB12X_PIP_INDEX_URL:-https://pypi.org/simple/}",
+        # A pull-through cache answers a cold file only after fetching all of
+        # it upstream; pip's default 15s read timeout fails large wheels.
+        "--timeout=900",
         "--platform=manylinux_2_34_aarch64",
         "--platform=manylinux_2_31_aarch64",
         "--platform=manylinux_2_28_aarch64",
@@ -357,7 +372,12 @@ pip.parse(
 )
 pip.parse(
     download_only = True,
+    envsubst = ["VLLMB12X_PIP_INDEX_URL"],
     extra_pip_args = [
+        "--index-url=${VLLMB12X_PIP_INDEX_URL:-https://pypi.org/simple/}",
+        # A pull-through cache answers a cold file only after fetching all of
+        # it upstream; pip's default 15s read timeout fails large wheels.
+        "--timeout=900",
         "--platform=manylinux_2_34_x86_64",
         "--platform=manylinux_2_31_x86_64",
         "--platform=manylinux_2_28_x86_64",
@@ -373,7 +393,12 @@ pip.parse(
 )
 pip.parse(
     download_only = True,
+    envsubst = ["VLLMB12X_PIP_INDEX_URL"],
     extra_pip_args = [
+        "--index-url=${VLLMB12X_PIP_INDEX_URL:-https://pypi.org/simple/}",
+        # A pull-through cache answers a cold file only after fetching all of
+        # it upstream; pip's default 15s read timeout fails large wheels.
+        "--timeout=900",
         "--platform=manylinux_2_34_x86_64",
         "--platform=manylinux_2_31_x86_64",
         "--platform=manylinux_2_28_x86_64",

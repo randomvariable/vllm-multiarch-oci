@@ -34,6 +34,8 @@ spec:
     - {name: release_tag, value: "{{ git_tag }}"}
     - {name: remote_cache, value: "{{ bazel_remote_cache }}"}
     - {name: remote_executor, value: "{{ bazel_remote_executor }}"}
+    - {name: repository_cache_claim, value: "{{ bazel_repository_cache_claim }}"}
+    - {name: nora_url, value: "{{ nora_url }}"}
     - {name: image_repository, value: "{{ image_repository }}"}
     - {name: publisher_lease, value: "{{ publisher_lease }}"}
     - {name: publisher_namespace, value: "{{ publisher_namespace }}"}
@@ -65,6 +67,8 @@ spec:
       - {name: release_tag, type: string}
       - {name: remote_cache, type: string}
       - {name: remote_executor, type: string}
+      - {name: repository_cache_claim, type: string}
+      - {name: nora_url, type: string}
       - {name: image_repository, type: string}
       - {name: publisher_lease, type: string}
       - {name: publisher_namespace, type: string}
@@ -111,6 +115,8 @@ spec:
             - {name: release_tag, type: string}
             - {name: remote_cache, type: string}
             - {name: remote_executor, type: string}
+            - {name: repository_cache_claim, type: string}
+            - {name: nora_url, type: string}
             - {name: image_repository, type: string}
             - {name: publisher_lease, type: string}
             - {name: publisher_namespace, type: string}
@@ -140,6 +146,8 @@ spec:
                 - {name: PUBLISHER_NAMESPACE, value: $(params.publisher_namespace)}
                 - {name: REMOTE_CACHE, value: $(params.remote_cache)}
                 - {name: REMOTE_EXECUTOR, value: $(params.remote_executor)}
+                - {name: NORA_URL, value: $(params.nora_url)}
+                - {name: VLLMB12X_REPOSITORY_CACHE_ROOT, value: /var/cache/bazel-repositories}
                 - {name: RESULT, value: $(workspaces.source.path)/.build-home/publish-result.json}
               computeResources:
                 requests: {cpu: "4", memory: 8Gi}
@@ -175,8 +183,12 @@ spec:
                 printf '%s' "$REF" > "$(results.image_ref.path)"
                 printf '%s' "$PUB" > "$(results.publication_tag.path)"
               volumeMounts:
+                - {name: bazel-repositories, mountPath: /var/cache/bazel-repositories}
                 - {name: github-token, mountPath: /var/run/vllmb12x/github, readOnly: true}
           volumes:
+            - name: bazel-repositories
+              persistentVolumeClaim:
+                claimName: $(params.repository_cache_claim)
             - name: github-token
               secret:
                 secretName: $(params.publisher_token_secret)
@@ -186,6 +198,8 @@ spec:
           - {name: release_tag, value: $(params.release_tag)}
           - {name: remote_cache, value: $(params.remote_cache)}
           - {name: remote_executor, value: $(params.remote_executor)}
+          - {name: repository_cache_claim, value: $(params.repository_cache_claim)}
+          - {name: nora_url, value: $(params.nora_url)}
           - {name: image_repository, value: $(params.image_repository)}
           - {name: publisher_lease, value: $(params.publisher_lease)}
           - {name: publisher_namespace, value: $(params.publisher_namespace)}

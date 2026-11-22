@@ -14,7 +14,8 @@ This reference describes the Bazel builder for [local-inference-lab/vllm](https:
 | `//components:torch` | Combined native-and-Python PyTorch wheel |
 | `//components:vllm` | vLLM wheel |
 | `//components:vllm_compiler_cache_stats` | Action-local compiler-cache statistics |
-| `//tests/image:vllmb12x_contract` | Docker-backed metadata and file contract selected by platform |
+| `//tests/image:vllmb12x_contract` | Docker-backed common contract for the ARM64 image |
+| `//tests/image:vllmb12x_contract_x86_64` | Docker-backed common contract for the x86_64 image |
 
 Sources: [image targets](../../image/BUILD.bazel), [components](../../components/BUILD.bazel), [image contract](../../tests/image/BUILD.bazel).
 
@@ -167,7 +168,20 @@ A calendar component would make two builds of identical inputs disagree, so the 
 
 ## Optional CI Configuration
 
-NativeLink is our optional CI backend. Both ARM CUDA pools are exercised by every vllmb12x lane, routed by the NativeLink `gpu` exec property (exact match), not by any Kubernetes label. The server21 pass runs the plain image contract under `remote-sm120a` (`gpu=nvidia-rtx-pro-6000-blackwell`); the server24 GB10 pass runs a dedicated `//tests/image:vllmb12x_contract_sm121a` target that pins `gpu=nvidia-gb10` on its own test action only, so the ARM64 image dependency actions keep their server21 action key and are reused rather than rebuilt, and the published index stays exactly one `linux/arm64` + one `linux/amd64` entry. This contract is a device/library-resolution check (torch/cuDNN import, b12x C-shim compile) executed on real GB10 hardware — not a CUDA kernel forward-pass, which is covered separately by the CUDA smoke evidence. `remote-sm121a` additionally offers a general opt-in profile that runs the whole ARM build on GB10. `remote-multiarch` assembles the two-entry index and `remote-x86_64` compiles the `sm_120` host lane; each keeps the family object at `cuda_arch=120f` (ARM) / `120` (x86). Every remote config selects execution with no local fallback, minimal downloads, compression, and a 21600-second timeout. CI supplies endpoints as plaintext `grpc://` (no TLS secret); TLS applies only to external workstation use. No private infrastructure is configured in the repository. Local Justfile recipes do not use these configurations.
+NativeLink is our optional CI backend. Both ARM CUDA pools are exercised by every vllmb12x lane, routed by the NativeLink `gpu` exec property (exact match), not by any Kubernetes label. CI runs all six contract targets with `remote-multiarch`, the same configuration as the image build. Each target selects its image and execution architecture explicitly. The GB10 targets set `gpu=nvidia-gb10` on their test actions only; their image dependencies still use the standard ARM64 build pool. The index contains one `linux/arm64` and one `linux/amd64` entry. This contract is a device/library-resolution check (torch/cuDNN import, b12x C-shim compile) executed on real GB10 hardware — not a CUDA kernel forward-pass, which is covered separately by the CUDA smoke evidence. `remote-sm121a` additionally offers a general opt-in profile that runs the whole ARM build on GB10. `remote-multiarch` assembles the two-entry index and `remote-x86_64` compiles the `sm_120` host lane; each keeps the family object at `cuda_arch=120f` (ARM) / `120` (x86). Every remote config selects execution with no local fallback, minimal downloads, compression, and a 21600-second timeout. CI supplies endpoints as plaintext `grpc://` (no TLS secret); TLS applies only to external workstation use. No private infrastructure is configured in the repository. Local Justfile recipes do not use these configurations.
+
+The CI build step mounts a retained claim at `/var/cache/bazel-repositories`.
+Bazel stores downloaded blobs in `downloads/` and shareable repository trees
+in `contents/`. TaskRun cleanup removes the checkout and output base, not this
+claim. Deleting the backing dataset or clearing the cache removes its bytes;
+Bazel can also collect old repository trees. Repositories that Bazel cannot
+share still run again, including source clones and Cargo vendoring. NORA caches
+PyPI and crates.io traffic when configured; APT continues to use upstream.
+
+CUDA wheel actions expose `compiler_cache_stats` without adding logs to the
+image. `//components:flashinfer_aot_compiler_cache_stats` selects the FlashInfer
+AOT log. An empty log means the action recorded no ccache events. A Bazel action
+cache hit returns the log from the original compile, not a new ccache sample.
 
 ## Runtime
 

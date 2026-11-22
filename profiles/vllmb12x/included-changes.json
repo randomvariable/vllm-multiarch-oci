@@ -3,44 +3,65 @@
     {
       "name": "vllm",
       "title": "vLLM",
-      "branch": "refs/heads/auto/karmic-kraken-20261109",
-      "upstream": "local-inference-lab/vllm",
-      "upstream_base": "refs/heads/dev/karmic-kraken",
+      "branch": "refs/heads/feat/ds41-dcp-rocenante",
+      "upstream": "vllm-project/vllm",
+      "upstream_base": "refs/heads/main",
       "changes": [
         {
-          "pull_request": null,
+          "pull_request": "vllm-project/vllm#68445",
           "title": "Bounded shared-memory broadcast waits",
           "inclusion": "branch",
-          "commits": 1,
-          "note": "Adaptive spin commit from local-inference-lab/vllm#800 replayed on top of the prefetch commit; recorded as ce5f4148d4. The upstream pull request later grew to four commits; this lock carries the one the recipe exercises. This base uses FlashInfer's CSF source/block APIs rather than the removed CsfScalePlanes API."
+          "commits": 3,
+          "note": "The stacked #68441, #68444 and #68445 replayed onto main d1ad1088bc: lost wake-up fix, bounded WFET/WAITPKG spin waits, and opt-in adaptive spin time. #68445 lists all three commits."
         },
         {
           "pull_request": null,
-          "title": "Advisory disk row-cache prefetch for Qwen4Exp PLE and DeepSeek V4.1 Engram",
+          "title": "b12x GB10 integration ported from local-inference-lab karmic-kraken",
           "inclusion": "branch",
           "commits": 1,
-          "note": "One switch, VLLM_PLE_PREFETCH=1, warms the host row cache ahead of the lookup through the pinned FlashInfer's DiskTable.prefetch and the ple_hash.host and engram.host row-id helpers."
+          "note": "One commit carries the fork's b12x path onto main: V2 runner, worker and engine-core preparation hooks; b12x paged attention, noncausal and GDN backends; Qwen4Exp b12x QSA, PLE, hyperconnection and MTP; PCIe/RoCE all-reduce; row-cache prefetch bridge and Prometheus relay; and upstream #65233, #65240 (MXFP4 CSF experts) and #67236 (NVFP4 draft lm_head on SM121) folded in; the follow-up entry below replaces #65240's host-side scale encoder. Dropped: recurrent boundary checkpoints, DCP-replicated hooks, adaptive-verification cost profiling, the b12x load format and the fork's ParallelLMHead quantization API."
         },
         {
           "pull_request": null,
-          "title": "Prometheus metrics for the b12x row cache and prefetch",
+          "title": "DeepSeek V4.1 Engram tables served from checkpoint files",
           "inclusion": "branch",
-          "commits": 7,
-          "note": "Counters for hits, misses, residency, pool bytes and the prefetch queue, served on /metrics by vllm/v1/metrics/b12x_row_cache.py. The b12x caches are sampled on a daemon thread, never on the step path: reading them inline cost a 14 us median and a 3.6 ms worst case against the prefetch worker's lock, where the published snapshot costs 0.6 us. Totals are reported whether or not VLLM_PLE_PREFETCH is set, because the cache serves synchronous lookups either way."
+          "commits": 1,
+          "note": "Extends main's Qwen4Exp engram-config disk_offload to DeepSeek V4.1: rows are read with preadv before graph replay, so the ~196 GiB of FP8 Engram rows take no device or pinned host memory on GB10."
         },
         {
           "pull_request": null,
-          "title": "Resolve FlashInfer scale-swizzle intrinsics",
-          "inclusion": "patch",
-          "patch": "third_party/vllm_b12x_intrinsics_reference.patch",
-          "note": "Use intrinsics.reference for NVFP4 and MXFP4 linear weight preparation with the pinned FlashInfer."
+          "title": "b12x call sites moved to local-inference-lab FlashInfer APIs",
+          "inclusion": "branch",
+          "commits": 1,
+          "note": "MoE compressed scales use b12x online CSF compression (WeightPlanConstraints(scale_compression=\"csf\")) instead of the CsfScalePlanes encoder local-inference-lab removed, and the scale swizzle is read from b12x._lib.intrinsics.reference."
         },
         {
           "pull_request": null,
-          "title": "Initialize pin-memory support after torch helpers",
-          "inclusion": "patch",
-          "patch": "third_party/vllm_pin_memory_import_order.patch",
-          "note": "Fix the lunar CPU-platform circular import exposed by the image CLI smoke."
+          "title": "Qwen4Exp b12x modules import their config from transformers",
+          "inclusion": "branch",
+          "commits": 1,
+          "note": "Fixes an import break in the b12x Qwen QSA, PLE and indexer modules after the fork's config shim was removed; MTP index sharing is read from the draft model config, where main's speculative-config plumbing sets it (default off)."
+        },
+        {
+          "pull_request": null,
+          "title": "Request-boundary recurrent checkpoints for Qwen3.8-Flash-Next",
+          "inclusion": "branch",
+          "commits": 1,
+          "note": "Ports local-inference-lab's boundary checkpoint cache, admission, endpoint reservations, capture/restore and KV connector hooks onto main, so the LMCache recurrent checkpoint connector resumes follow-up turns. Checkpoint keys cover only tokens below the endpoint under main's hash lookahead. Out of scope: GLM-5-Next, Kimi-K3/KDA, DFlash replay, DCP, LoRA and the fork's prefill-policy scheduler. Also fixes b12x profiling/warm-up hooks running without b12x and an env leak in a carried test."
+        },
+        {
+          "pull_request": null,
+          "title": "GB10 decode context parallelism for DeepSeek V4.1",
+          "inclusion": "branch",
+          "commits": 4,
+          "note": "Ports local-inference-lab/vllm#764 to SM12x packed sparse attention and adds legacy GEMM warmup coverage for DSpark adaptive verification. DCP4 shards compressed KV and optionally the FP8 index, while keeping sliding-window KV and compressor state replicated."
+        },
+        {
+          "pull_request": null,
+          "title": "Opt-in RoCEnante DCP gather and reduce-scatter",
+          "inclusion": "branch",
+          "commits": 1,
+          "note": "VLLM_DCP_ROCENANTE enables prepared RoCE collectives on the DCP group. Unsupported tensors retain NCCL dispatch."
         },
         {
           "pull_request": null,
@@ -54,7 +75,7 @@
     {
       "name": "flashinfer",
       "title": "FlashInfer",
-      "branch": "refs/heads/auto/gb10-dsv41-20261120",
+      "branch": "refs/heads/cycle/monstrous-moonshine",
       "upstream": "local-inference-lab/flashinfer",
       "upstream_base": "refs/heads/main",
       "changes": [
@@ -63,14 +84,21 @@
           "title": "GB10 DSV4.1 decode split policy and NVFP4 CSF scale defaults",
           "inclusion": "branch",
           "commits": 2,
-          "note": "The two GB10-specific tips of local-inference-lab/flashinfer's karmic-kraken GB10 line, replayed clean onto auto/lil-main-20261119: 1c0f4c69f selects three DSV4.1 decode splits on the 48-SM GB10 (mla/kernel.py plus test_gb10_dsv41_split_policy.py) and 6d60ad155 enables CSF scale defaults on GB10 for the measured NVFP4 contract (fused_moe/_tuning.py plus test_gb10_nvfp4_csf_defaults.py). The rest of the four b12x-gb10-* branches is superseded: integrate/ds41-reviewed-kernels is contained in b12x-dsv41-gb10-mla-splits, and the compact-csf-inline racing commits patch the pre-October fused_moe tree this pin already moved past."
+          "note": "The two GB10-specific tips of local-inference-lab/flashinfer's karmic-kraken GB10 line, replayed clean onto main 1d76585b1: three DSV4.1 decode splits on the 48-SM GB10 (mla/kernel.py) and CSF scale defaults on GB10 for the measured NVFP4 contract (fused_moe/_tuning.py)."
         },
         {
           "pull_request": null,
           "title": "C S3-FIFO host row cache for disk PLE/Engram tables",
           "inclusion": "branch",
           "commits": 12,
-          "note": "The twelve row-cache commits developed under local-inference-lab/flashinfer#44, replayed clean onto main 598c8547b on auto/lil-main-20261119: the row-cache core, the caller-gated DiskTable.prefetch and host row-id helpers, then the prefetch telemetry commits — requests, rows queued and dropped, jobs, errors, and rows loaded or cancelled only as the worker really published or released them. The upstream pull request later grew beyond these twelve; the lock deliberately carries exactly the audited set. vLLM's prefetch hook and its metrics both need the row-cache commit or later."
+          "note": "The twelve row-cache commits developed under local-inference-lab/flashinfer#44, replayed clean onto main 1d76585b1: the row-cache core, the caller-gated DiskTable.prefetch and host row-id helpers, and the prefetch telemetry commits. The upstream pull request later grew beyond these twelve; the lock carries exactly the audited set."
+        },
+        {
+          "pull_request": null,
+          "title": "SM12x packed sparse attention partial outputs",
+          "inclusion": "branch",
+          "commits": 1,
+          "note": "Ports the log-sum-exp output contract from local-inference-lab/b12x#374 to FlashInfer's existing packed sparse attention API."
         }
       ]
     }

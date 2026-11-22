@@ -17,18 +17,37 @@ The image is built from pinned fork revisions rather than from upstream branches
 
 | Component | Change | Included as |
 | --- | --- | --- |
-| vLLM `3ab11fdec715` | Bounded shared-memory broadcast waits (no upstream pull request) | Merged into the pinned revision (1 commits) |
-| vLLM `3ab11fdec715` | Advisory disk row-cache prefetch for Qwen4Exp PLE and DeepSeek V4.1 Engram (no upstream pull request) | Merged into the pinned revision (1 commits) |
-| vLLM `3ab11fdec715` | Prometheus metrics for the b12x row cache and prefetch (no upstream pull request) | Merged into the pinned revision (7 commits) |
-| vLLM `3ab11fdec715` | Resolve FlashInfer scale-swizzle intrinsics (no upstream pull request) | Applied at build time by `third_party/vllm_b12x_intrinsics_reference.patch` |
-| vLLM `3ab11fdec715` | Initialize pin-memory support after torch helpers (no upstream pull request) | Applied at build time by `third_party/vllm_pin_memory_import_order.patch` |
-| vLLM `3ab11fdec715` | Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute (no upstream pull request) | Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch` |
-| FlashInfer `b4eef740639e` | GB10 DSV4.1 decode split policy and NVFP4 CSF scale defaults (no upstream pull request) | Merged into the pinned revision (2 commits) |
-| FlashInfer `b4eef740639e` | C S3-FIFO host row cache for disk PLE/Engram tables (no upstream pull request) | Merged into the pinned revision (12 commits) |
+| vLLM `3c2529b7985f` | [vllm-project/vllm#68445](https://github.com/vllm-project/vllm/pull/68445) Bounded shared-memory broadcast waits | Merged into the pinned revision (3 commits) |
+| vLLM `3c2529b7985f` | b12x GB10 integration ported from local-inference-lab karmic-kraken (no upstream pull request) | Merged into the pinned revision (1 commits) |
+| vLLM `3c2529b7985f` | DeepSeek V4.1 Engram tables served from checkpoint files (no upstream pull request) | Merged into the pinned revision (1 commits) |
+| vLLM `3c2529b7985f` | b12x call sites moved to local-inference-lab FlashInfer APIs (no upstream pull request) | Merged into the pinned revision (1 commits) |
+| vLLM `3c2529b7985f` | Qwen4Exp b12x modules import their config from transformers (no upstream pull request) | Merged into the pinned revision (1 commits) |
+| vLLM `3c2529b7985f` | Request-boundary recurrent checkpoints for Qwen3.8-Flash-Next (no upstream pull request) | Merged into the pinned revision (1 commits) |
+| vLLM `3c2529b7985f` | GB10 decode context parallelism for DeepSeek V4.1 (no upstream pull request) | Merged into the pinned revision (4 commits) |
+| vLLM `3c2529b7985f` | Opt-in RoCEnante DCP gather and reduce-scatter (no upstream pull request) | Merged into the pinned revision (1 commits) |
+| vLLM `3c2529b7985f` | Rewrite flash_attn.cute imports to vllm.vllm_flash_attn.cute (no upstream pull request) | Applied at build time by `third_party/vllm_flash_attn_cute_namespace.patch` |
+| FlashInfer `46932c8f0c14` | GB10 DSV4.1 decode split policy and NVFP4 CSF scale defaults (no upstream pull request) | Merged into the pinned revision (2 commits) |
+| FlashInfer `46932c8f0c14` | C S3-FIFO host row cache for disk PLE/Engram tables (no upstream pull request) | Merged into the pinned revision (12 commits) |
+| FlashInfer `46932c8f0c14` | SM12x packed sparse attention partial outputs (no upstream pull request) | Merged into the pinned revision (1 commits) |
 <!-- included-changes:end -->
 
 The retained NVFP4-CSF loader converts checkpoint scale streams to FlashInfer's
 lossless `CsfBlockPlanes` representation before preparing expert weights.
+
+For a Moonshine build that includes the native DeepSeek V4.1 MXFP4-CSF port,
+point `MODEL` to the complete checkpoint directory containing `manifest.json`,
+`build-contract.json`, `metadata/`, and `tensors/`. Set both format options
+explicitly; `CHECKPOINT=csf` alone is not sufficient with older launcher policy data:
+
+```bash
+MODEL=/models/DeepSeek-V4.1-Flash-1017-abliterated-lossless-CSF \
+TP=4 LOAD_FORMAT=mxfp4_csf QUANTIZATION=mxfp4_csf \
+vllm-image launch --profile ds41-flash --hardware native --print-config
+```
+
+The dry run should show `--load-format mxfp4_csf`, `--quantization mxfp4_csf`,
+and `--moe-backend b12x`. This checks argument selection, not GPU execution
+or whether the full checkpoint fits the chosen topology.
 
 ## Getting Started
 

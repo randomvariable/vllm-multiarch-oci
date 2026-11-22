@@ -69,6 +69,21 @@ build --repo_env=PATH=${PATH}
 build --credential_helper=index.docker.io=%workspace%/scripts/ci/dockerhub-credential-helper.py
 EOF
 
+# Keep download blobs and reusable repository trees off the per-run workspace.
+if [[ -n "${VLLMB12X_REPOSITORY_CACHE_ROOT:-}" ]]; then
+    mkdir -p "$VLLMB12X_REPOSITORY_CACHE_ROOT"/{downloads,contents}
+    printf 'common --repository_cache=%s/downloads\ncommon --repo_contents_cache=%s/contents\n' \
+        "$VLLMB12X_REPOSITORY_CACHE_ROOT" "$VLLMB12X_REPOSITORY_CACHE_ROOT" >>.bazelrc.user
+fi
+
+if [[ -n "${NORA_URL:-}" ]]; then
+    export VLLMB12X_PIP_INDEX_URL="${NORA_URL%/}/simple/"
+    export VLLMB12X_CARGO_INDEX_URL="sparse+${NORA_URL%/}/cargo/index/"
+    # Inherit by name so client arguments and the generated rc omit the URL.
+    printf '%s\n' 'common --repo_env=VLLMB12X_PIP_INDEX_URL' \
+        'common --repo_env=VLLMB12X_CARGO_INDEX_URL' >>.bazelrc.user
+fi
+
 # Local strategy: this is a host Python test, and the remote ARM64 worker
 # image carries no python3 interpreter.
 "$BAZEL" test //scripts:all --disk_cache= --test_output=errors
@@ -100,8 +115,16 @@ test -x "$BAZEL_PY" || {
 
 "$BAZEL" build //image:vllmb12x \
     --config=remote-multiarch \
+    --remote_download_regex='.*\.ccache\.statslog$' \
     --disk_cache= \
     --//platforms:vllmb12x_cache_root="$VLLMB12X_CACHE_ROOT"
+
+# One ccache counter summary per native action. A remote-cache hit replays the
+# log of the run that executed it, so these describe the producing execution.
+while IFS= read -r -d '' statslog; do
+    echo "ccache stats: ${statslog#bazel-out/}"
+    sort "$statslog" | uniq -c | sort -rn
+done < <(find -L bazel-out -name '*.ccache.statslog' -print0 2>/dev/null)
 
 # The rule defaults to --test-report $XML_OUTPUT_FILE --output junit, which
 # sends every per-test line to a file that dies with the pod. Clearing the
@@ -111,19 +134,18 @@ test -x "$BAZEL_PY" || {
 # /var/run/docker/docker.sock, not at the docker default. A remote
 # action's environment is built by Bazel, not inherited from the
 # worker's container, so the path has to be passed explicitly.
-# The GB10 contract overrides only its test action's GPU property, reusing the
-# ARM64 image build. Each profile disables test-result caching.
-for spec in \
-    "vllmb12x_contract:remote-sm120a" \
-    "vllmb12x_contract_arch:remote-sm120a" \
-    "vllmb12x_contract_sm121a:remote-sm120a" \
-    "vllmb12x_contract_sm121a_arch:remote-sm120a" \
-    "vllmb12x_contract:remote-x86_64" \
-    "vllmb12x_contract_arch:remote-x86_64"; do
-    target="${spec%%:*}"
-    config="${spec##*:}"
+# Keep the image build's top-level platform. An architecture-specific config
+# changes Bazel's baseline for transitions and invalidates the image action keys.
+for target in \
+    vllmb12x_contract \
+    vllmb12x_contract_arch \
+    vllmb12x_contract_sm121a \
+    vllmb12x_contract_sm121a_arch \
+    vllmb12x_contract_x86_64 \
+    vllmb12x_contract_x86_64_arch; do
     "$BAZEL" test "//tests/image:${target}" \
-        --config="${config}" \
+        --config=remote-multiarch \
+        --nocache_test_results \
         --disk_cache= \
         --//platforms:vllmb12x_cache_root="$VLLMB12X_CACHE_ROOT" \
         --test_output=errors \

@@ -38,6 +38,8 @@ spec:
     - {name: pull_request, value: "{{ pull_request_number }}"}
     - {name: remote_cache, value: "{{ bazel_remote_cache }}"}
     - {name: remote_executor, value: "{{ bazel_remote_executor }}"}
+    - {name: repository_cache_claim, value: "{{ bazel_repository_cache_claim }}"}
+    - {name: nora_url, value: "{{ nora_url }}"}
     - {name: image_repository, value: "{{ pull_request_image_repository }}"}
     - {name: push_secret, value: "{{ pull_request_push_secret }}"}
     - {name: build_lease, value: "{{ build_lease }}"}
@@ -66,6 +68,8 @@ spec:
       - {name: pull_request, type: string}
       - {name: remote_cache, type: string}
       - {name: remote_executor, type: string}
+      - {name: repository_cache_claim, type: string}
+      - {name: nora_url, type: string}
       - {name: image_repository, type: string}
       - {name: push_secret, type: string}
       - {name: build_lease, type: string}
@@ -108,6 +112,8 @@ spec:
             - {name: pull_request, type: string}
             - {name: remote_cache, type: string}
             - {name: remote_executor, type: string}
+            - {name: repository_cache_claim, type: string}
+            - {name: nora_url, type: string}
             - {name: image_repository, type: string}
             - {name: push_secret, type: string}
             - {name: build_lease, type: string}
@@ -132,6 +138,8 @@ spec:
                 - {name: IMAGE_REPOSITORY, value: $(params.image_repository)}
                 - {name: REMOTE_CACHE, value: $(params.remote_cache)}
                 - {name: REMOTE_EXECUTOR, value: $(params.remote_executor)}
+                - {name: NORA_URL, value: $(params.nora_url)}
+                - {name: VLLMB12X_REPOSITORY_CACHE_ROOT, value: /var/cache/bazel-repositories}
                 - {name: RESULT, value: $(workspaces.source.path)/.build-home/publish-result.json}
               computeResources:
                 requests: {cpu: "4", memory: 8Gi}
@@ -153,8 +161,12 @@ spec:
                 REF="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["reference"])' "$RESULT")"
                 printf '%s' "$REF" > "$(results.image_ref.path)"
               volumeMounts:
+                - {name: bazel-repositories, mountPath: /var/cache/bazel-repositories}
                 - {name: registry-credentials, mountPath: /var/run/vllmb12x/registry, readOnly: true}
           volumes:
+            - name: bazel-repositories
+              persistentVolumeClaim:
+                claimName: $(params.repository_cache_claim)
             - name: registry-credentials
               secret:
                 secretName: $(params.push_secret)
@@ -163,6 +175,8 @@ spec:
           - {name: pull_request, value: $(params.pull_request)}
           - {name: remote_cache, value: $(params.remote_cache)}
           - {name: remote_executor, value: $(params.remote_executor)}
+          - {name: repository_cache_claim, value: $(params.repository_cache_claim)}
+          - {name: nora_url, value: $(params.nora_url)}
           - {name: image_repository, value: $(params.image_repository)}
           - {name: push_secret, value: $(params.push_secret)}
           - {name: build_lease, value: $(params.build_lease)}

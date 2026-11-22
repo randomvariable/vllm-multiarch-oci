@@ -197,21 +197,27 @@ class LaneScriptTest(unittest.TestCase):
             self.assertLess(resolution, host_lane, "the interpreter is resolved before the lane runs")
         self.assertLess(image_build, contracts[0], "the image contract needs the built image")
         self.assertLess(contracts[-1], publisher, "the contract runs stay last but one")
-        # The two ARM runs share the server21 dependency actions: the plain
-        # contract on remote-sm120a, then the GB10 pass via the dedicated
-        # _sm121a target (which pins gpu=nvidia-gb10 on the test action only),
-        # also under remote-sm120a. The x86 lane keeps its own target and config.
+        # Both image architectures must transition from the build's baseline.
         self.assertEqual(
-            [(commands[index][1], commands[index][2]) for index in contracts],
+            [commands[index][1] for index in contracts],
             [
-                ("//tests/image:vllmb12x_contract", "--config=remote-sm120a"),
-                ("//tests/image:vllmb12x_contract_arch", "--config=remote-sm120a"),
-                ("//tests/image:vllmb12x_contract_sm121a", "--config=remote-sm120a"),
-                ("//tests/image:vllmb12x_contract_sm121a_arch", "--config=remote-sm120a"),
-                ("//tests/image:vllmb12x_contract", "--config=remote-x86_64"),
-                ("//tests/image:vllmb12x_contract_arch", "--config=remote-x86_64"),
+                "//tests/image:vllmb12x_contract",
+                "//tests/image:vllmb12x_contract_arch",
+                "//tests/image:vllmb12x_contract_sm121a",
+                "//tests/image:vllmb12x_contract_sm121a_arch",
+                "//tests/image:vllmb12x_contract_x86_64",
+                "//tests/image:vllmb12x_contract_x86_64_arch",
             ],
         )
+        for index in (image_build, *contracts):
+            self.assertEqual(
+                [arg for arg in commands[index] if arg.split("=", 1)[0] == "--config"],
+                ["--config=remote-multiarch"],
+            )
+            self.assertFalse(
+                any(arg.split("=", 1)[0] == "--platforms" for arg in commands[index]),
+                commands[index],
+            )
         # The fetch of a cargo-vendored source failed in CI because repository
         # rules run with a sanitised PATH, so the lane must declare it.
         bazelrc = (self.checkpoint / ".bazelrc.user").read_text().splitlines()

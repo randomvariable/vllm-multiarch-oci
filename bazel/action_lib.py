@@ -12,6 +12,7 @@ import shutil
 import shlex
 import subprocess
 import tarfile
+import tempfile
 import zipfile
 from pathlib import Path
 from typing import Mapping, Sequence
@@ -26,7 +27,6 @@ _VLLM_CMAKE_SOURCE_NAMES = frozenset(
         "flashkda",
         "flashmla",
         "msa",
-        "qutlass",
         "tml_fa4",
         "triton",
     }
@@ -46,7 +46,7 @@ def extract(archive: Path, destination: Path) -> None:
 
 
 def materialize_vllm_cmake_sources(
-    archives: Mapping[str, Path], work: Path, vllm_source: Path
+    archives: Mapping[str, Path], work: Path
 ) -> tuple[dict[str, str], list[str]]:
     """Extract the exact CMake FetchContent trees and return supported overrides."""
     names = set(archives)
@@ -62,8 +62,6 @@ def materialize_vllm_cmake_sources(
         extract(archives[name], destination)
         sources[name] = destination
 
-    apply_flashkda_checkpoint_patch(sources["flashkda"], vllm_source)
-
     triton_kernels = sources["triton"] / "python" / "triton_kernels" / "triton_kernels"
     if not triton_kernels.is_dir():
         raise RuntimeError(f"declared Triton source lacks triton_kernels: {triton_kernels}")
@@ -78,7 +76,6 @@ def materialize_vllm_cmake_sources(
         "FLASH_KDA_SRC_DIR": str(sources["flashkda"]),
         "FLASH_MLA_SRC_DIR": str(sources["flashmla"]),
         "FMHA_SM100_SRC_DIR": str(sources["msa"]),
-        "QUTLASS_SRC_DIR": str(sources["qutlass"]),
         "TML_FA4_SRC_DIR": str(sources["tml_fa4"]),
         "TRITON_KERNELS_SRC_DIR": str(triton_kernels),
         "VLLM_FLASH_ATTN_SRC_DIR": str(sources["flash_attn"]),
@@ -89,27 +86,6 @@ def materialize_vllm_cmake_sources(
         "-DVLLM_CUTLASS_SRC_DIR=" + str(sources["cutlass"]),
     ]
     return env, cmake_args
-
-
-def apply_flashkda_checkpoint_patch(flashkda: Path, vllm_source: Path) -> None:
-    """Apply vLLM's packed-checkpoint patch that its FLASH_KDA_SRC_DIR branch skips.
-
-    vLLM patches FlashKDA only when CMake fetches it. A caller-supplied source
-    directory stays unpatched, and vLLM then requires the packed checkpoint API
-    anyway. The patch ships inside the pinned vLLM source, so apply that exact
-    file rather than a vendored copy that would drift from the pin.
-    """
-    patch_file = (
-        vllm_source / "cmake" / "external_projects" / "patches" / "flashkda-packed-checkpoints.patch"
-    )
-    if not patch_file.is_file():
-        raise RuntimeError(f"pinned vLLM source lacks the FlashKDA patch: {patch_file}")
-
-    run(["patch", "--strip=1", "--input", str(patch_file)], cwd=flashkda)
-
-    header = flashkda / "csrc" / "flash_kda.h"
-    if "checkpoint_indptr" not in header.read_text():
-        raise RuntimeError(f"patched FlashKDA source lacks the packed checkpoint API: {header}")
 
 
 def extract_durable(archive: Path, name: str) -> Path:
@@ -478,9 +454,9 @@ def configure_compiler_cache(
     cache_dir = compiler_cache_dir()
     try:
         cache_dir.mkdir(parents=True, exist_ok=True)
-        probe = cache_dir / ".ccache-write-probe"
-        probe.touch(exist_ok=True)
-        probe.unlink()
+        # Concurrent actions share this directory; a fixed probe name races.
+        with tempfile.NamedTemporaryFile(dir=cache_dir, prefix=".ccache-write-probe-"):
+            pass
     except OSError as error:
         raise RuntimeError(f"required durable ccache is unavailable at {cache_dir}: {error}") from error
 

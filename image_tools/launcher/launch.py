@@ -783,6 +783,26 @@ def prepare_plan(plan: policy.ResolvedPlan) -> None:
     Both read the checkpoint, so they run at launch and never at ``--print-config``
     time: printing a configuration must not download anything.
     """
+    if plan.values.get("load-format") == "mxfp4_csf":
+        from image_tools.vllm_image import prepare_mxfp4_csf
+
+        model = plan.values["model"]
+        snapshot = Path(model)
+        if not snapshot.is_dir():
+            snapshot = _fetch_snapshot(
+                model, revision=plan.values.get("revision"),
+                allow_patterns=["manifest.json", "build-contract.json", "metadata/*", "tensors/*"],
+            )
+            if snapshot is None:
+                raise ConfigError(f"MXFP4-CSF checkpoint not found: {model}", EXIT_MODEL)
+        serving = str(prepare_mxfp4_csf(snapshot))
+        plan.values["model"] = serving
+        plan.values.pop("revision", None)
+        plan.values.pop("code-revision", None)
+        spec = plan.values.get("speculative-config")
+        if spec and spec.get("model") == model:
+            spec["model"] = serving
+        plan.argv = policy.make_argv(plan.values, plan.passthrough, root=data_root())
     policy.resolve_draft_subfolder(plan, _fetch_snapshot)
     policy.resolve_draft_moe_backend(plan, _fetch_file)
     if plan.cache_service:

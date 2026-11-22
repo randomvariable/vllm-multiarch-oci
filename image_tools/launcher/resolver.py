@@ -10,7 +10,7 @@ semantics (a dict or newest-first list of entries, each gating on
 kept in upstream order and upstream shape so that ``launcher_parity_test``
 and a reviewer can diff the two files side by side.
 
-The port is deliberate about three things:
+The port is deliberate about four things:
 
 * It reads the pinned upstream data files (``options.yaml``, ``schema.json``,
   ``platform-environment.json`` and its ``linux-arm64`` sibling, ``presets.yaml``,
@@ -48,6 +48,11 @@ The port is deliberate about three things:
   own cannot be swapped by ``CHECKPOINT``: a preset that names a checkpoint also
   names the settings that read it, while our recipes name only the directory
   model-sync published and let the variant choose the loader.
+* It also serves an upstream-lineage vLLM. The pinned profiles set engine
+  options only the LIL vLLM fork defines; when ``installed_upstream_vllm``
+  finds upstream's vLLM, ``adapt_to_upstream_vllm`` turns each one into the
+  upstream setting ``UPSTREAM_ENGINE_OPTIONS`` names, or drops it, before the
+  argv is built, and refuses one the operator chose that upstream cannot honour.
 """
 
 from __future__ import annotations
@@ -115,6 +120,59 @@ GLM_A4_PREFILL_UNQUALIFIED = ("GLM-5.3-Flash-NVFP4-Spark",)
 # belongs to the launcher's replicas role, so the constant is inlined here to
 # keep the resolver's import set at the standard library plus PyYAML.
 PLE_SHARED_DIRECTORY = "/dev/shm/lil-ple"
+
+
+@dataclass(frozen=True)
+class UpstreamForm:
+    """What a LIL-fork engine option becomes on an upstream-lineage vLLM.
+
+    ``json_field`` ("<json option>.<key>") or ``env`` names the upstream setting
+    the option becomes; with neither, upstream has no equivalent and the option
+    is dropped. ``values`` maps fork values to upstream ones, and a value it
+    omits becomes nothing; None passes the value through. ``folded`` is the
+    JSON field the fork's DS4.1 policy writes a control option into, which
+    upstream's config refuses. ``create`` says whether the field may start its
+    JSON option or only joins one already resolved.
+    """
+
+    json_field: str | None = None
+    env: str | None = None
+    values: dict | None = None
+    folded: str | None = None
+    create: bool = True
+
+
+UPSTREAM_ENGINE_OPTIONS: dict[str, UpstreamForm] = {
+    # Upstream reads Engram tables from the checkpoint files with disk_offload;
+    # tables held in RAM need no field.
+    "engram-table-memory": UpstreamForm(
+        json_field="engram-config.disk_offload",
+        values={"disk": True},
+        folded="engram-config.table_memory",
+    ),
+    # Adaptive verification belongs to a speculative config, so it never
+    # starts one.
+    "adaptive-verification": UpstreamForm(
+        json_field="speculative-config.enable_adaptive_verification", create=False
+    ),
+    "gdn-decode-kernel": UpstreamForm(env="VLLM_GDN_DECODE_KERNEL"),
+    "enable-flashinfer-autotune": UpstreamForm(
+        json_field="kernel-config.enable_flashinfer_autotune"
+    ),
+    "adaptive-verification-cost-scale": UpstreamForm(
+        folded="speculative-config.adaptive_verification_cost_scale"
+    ),
+    "engram-disk-resident-scales": UpstreamForm(
+        folded="engram-config.disk_resident_scales"
+    ),
+    "engram-projection-tp": UpstreamForm(folded="engram-config.projection_tp"),
+    "prefill-policy": UpstreamForm(),
+    "max-parallel-prefills": UpstreamForm(),
+    "prefill-compute-share": UpstreamForm(),
+    "prefill-compute-half-life": UpstreamForm(),
+    "decode-refill-target": UpstreamForm(),
+    "swa-block-size": UpstreamForm(),
+}
 
 
 class UniqueLoader(yaml.SafeLoader):
@@ -467,6 +525,12 @@ def installed_source(package: str, relative: str) -> str | None:
     return None
 
 
+def installed_upstream_vllm() -> bool:
+    """Detect the upstream engine, without importing vLLM or assuming it exists."""
+    source = installed_source("vllm", "engine/arg_utils.py")
+    return source is not None and "gdn_decode_kernel" not in source
+
+
 def installed_semantic_a4_prefill() -> bool:
     """Whether the installed vLLM turns hybrid A4 prefill on with
     B12X_W4A16_A4_PREFILL and picks the prefill rows itself. Images before it
@@ -530,6 +594,10 @@ def installed_csf_families() -> frozenset[str] | None:
         table = re.search(
             r"^FAMILIES\b[^=\n]*=\s*\{(.*?)^\}", source or "", re.MULTILINE | re.DOTALL
         )
+        if fmt == "mxfp4_csf" and installed_source(
+            "vllm", "models/deepseek_v41/nvidia/mxfp4_csf.py"
+        ) is not None:
+            families.add("deepseek_v41")
         if table:
             families.update(
                 re.findall(r'^\s+"([a-z][a-z0-9_]*)"\s*:', table.group(1), re.MULTILINE)
@@ -1364,6 +1432,9 @@ def resolve(
         recipe_layer
     )
     specs = read_yaml(root / "options.yaml")
+    upstream_vllm = installed_upstream_vllm()
+    if upstream_vllm:
+        specs.setdefault("kernel-config", {"type": "object", "env": []})
     common, model, hw = (
         profile("common", "common", root=root),
         profile("model", identifier, root=root),
@@ -1543,6 +1614,17 @@ def resolve(
         target[parts[-1]] = value
         origins[root_key] = "cli:json-fields"
 
+    if upstream_vllm:
+        unsupported = [
+            f"{key} from {origins[key]}"
+            for key in UPSTREAM_ENGINE_OPTIONS
+            if key in values and not origins[key].startswith(
+                ("common:", "model:", "hardware:")
+            )
+        ]
+        if unsupported:
+            raise ConfigError(f"Unsupported by upstream vLLM: {', '.join(unsupported)}")
+
     # The checkpoint variant (CHECKPOINT) chooses the checkpoint and the settings
     # that read it, replacing profile defaults only. A model naming a variant's
     # checkpoint selects that variant. Any other model or revision chosen by a
@@ -1566,7 +1648,7 @@ def resolve(
         return None
 
     checkpoint_warnings: list[str] = []
-    local_csf = None
+    local_csf = local_csf_format(values["model"])
     if "checkpoint" in values:
         variants = model.get("checkpoints", {})
         profile_level = ("common:", "model:", "hardware:")
@@ -1997,7 +2079,7 @@ def resolve(
         raise ConfigError(
             "FAIRNESS_ENGINE must be none or compute_share; micro_slicing is unsupported"
         )
-    if fairness == "none" and "prefill-compute-share" not in cli:
+    if fairness == "none" and "prefill-compute-share" not in cli and not upstream_vllm:
         values.pop("prefill-compute-share", None)
         origins.pop("prefill-compute-share", None)
 
@@ -2025,13 +2107,14 @@ def resolve(
             spec = copy.deepcopy(model["modes"][mode]["config"])
             spec["num_speculative_tokens"] = tokens
             if identifier == "ds41-flash":
-                spec.update(
-                    draft_tensor_parallel_size=values["tensor-parallel-size"],
-                    enable_adaptive_verification=values["adaptive-verification"],
-                    adaptive_verification_cost_scale=values[
-                        "adaptive-verification-cost-scale"
-                    ],
-                )
+                spec["draft_tensor_parallel_size"] = values["tensor-parallel-size"]
+                if not upstream_vllm:
+                    spec.update(
+                        enable_adaptive_verification=values["adaptive-verification"],
+                        adaptive_verification_cost_scale=values[
+                            "adaptive-verification-cost-scale"
+                        ],
+                    )
             elif identifier == "mimo26-flash":
                 spec["draft_tensor_parallel_size"] = values["tensor-parallel-size"]
             elif identifier.startswith("ds4-") and mode == "dspark":
@@ -2101,7 +2184,7 @@ def resolve(
                 "off" if values["decode-context-parallel-size"] > 1 else "6MB",
                 "derived:GLM PCIe DCP policy",
             )
-    if identifier == "ds41-flash" and "engram-config" not in values:
+    if identifier == "ds41-flash" and "engram-config" not in values and not upstream_vllm:
         derive(
             "engram-config",
             {
@@ -2209,7 +2292,31 @@ def resolve(
             "Image/video requests can use native GPU prefix caching but do not "
             "restore their recurrent state from CPU or disk."
         )
-    validate(values, environment, identifier)
+    if upstream_vllm:
+        for option, form in UPSTREAM_ENGINE_OPTIONS.items():
+            if option not in values:
+                continue
+            source = origins[option]
+            if not source.startswith(("common:", "model:", "hardware:", "derived:")):
+                raise ConfigError(f"{option} from {source} is unsupported by upstream vLLM")
+            value = values[option]
+            reason = f"upstream vLLM: {option} from {source}"
+            derive(option, value, reason)
+            values.pop(option)
+            if form.env:
+                if form.env not in explicit_env:
+                    set_env(form.env, str(value), f"derived:{reason}")
+            elif form.json_field and (form.values is None or value in form.values):
+                target, field_name = form.json_field.split(".", 1)
+                if form.create or target in values:
+                    config_value = copy.deepcopy(values.get(target, {}))
+                    if field_name not in config_value:
+                        config_value[field_name] = (
+                            form.values[value] if form.values is not None else value
+                        )
+                        derive(target, config_value, reason)
+            warnings.append(f"derived:{reason}")
+    validate(values, environment, identifier, upstream_vllm=upstream_vllm)
     command = make_argv(values, passthrough, root=root)
     return ResolvedPlan(
         profile=identifier,
@@ -2636,7 +2743,7 @@ def make_argv(
     return command
 
 
-def validate(values: dict, environment: dict, identifier: str) -> None:
+def validate(values: dict, environment: dict, identifier: str, *, upstream_vllm: bool = False) -> None:
     try:
         json.dumps(values, allow_nan=False)
     except (ValueError, TypeError) as error:
@@ -2789,7 +2896,7 @@ def validate(values: dict, environment: dict, identifier: str) -> None:
         if not isinstance(depth, int) or isinstance(depth, bool) or depth < 1:
             raise ConfigError("Speculative token count must be positive")
     if identifier == "ds41-flash":
-        if "engram-config" in values:
+        if "engram-config" in values and not upstream_vllm:
             engram = values["engram-config"]
             if (
                 engram.get("table_memory") not in {"ram", "disk"}
@@ -2798,7 +2905,7 @@ def validate(values: dict, environment: dict, identifier: str) -> None:
                 raise ConfigError(
                     "The DS4.1 profile covers RAM/disk Engram with cpu_offload=false"
                 )
-        if values["adaptive-verification-cost-scale"] <= 0:
+        if not upstream_vllm and values["adaptive-verification-cost-scale"] <= 0:
             raise ConfigError("adaptive-verification-cost-scale must be positive")
     if "OMP_NUM_THREADS" in environment:
         omp = environment["OMP_NUM_THREADS"]

@@ -292,10 +292,10 @@
     },
     "//bazel:sources.bzl%profile_sources": {
       "general": {
-        "bzlTransitiveDigest": "PlQrasKK7uhGwT44KdQxo55ORbetuJwFgpKcWztYtY4=",
-        "usagesDigest": "vdXVi/hsX+sKiyZH2raZEpAzPcwJjpeVEW7sC7MuJ64=",
+        "bzlTransitiveDigest": "XSzcTcOvJmZivwj2/hWD9i65/D03rTP30mZBZJAw5gc=",
+        "usagesDigest": "TbToXvRwiI8PsHdrsxGPuPfbejspkLY+sFzGYsHqeN4=",
         "recordedInputs": [
-          "FILE:@@//profiles/vllmb12x/profile.json f6369837d953fa8018244572e881bb8a455c4dca329f9bf68f9d923399dfc185"
+          "FILE:@@//profiles/vllmb12x/profile.json c28026e4c965c38ab69759aff6ad6113c94f2ee6250e2a6864249866f25542fb"
         ],
         "generatedRepoSpecs": {
           "vllmb12x_cutlass": {
@@ -312,8 +312,8 @@
           "vllmb12x_deepgemm": {
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
-              "remote": "https://github.com/deepseek-ai/DeepGEMM.git",
-              "commit": "a6b593d2826719dcf4892609af7b84ee23aaf32a",
+              "remote": "https://github.com/vllm-project/DeepGEMM.git",
+              "commit": "44cba7d28066182852005c59052f035ebc18e211",
               "recursive_init_submodules": true,
               "patches": [],
               "cargo_vendor": false,
@@ -335,7 +335,7 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/randomvariable/flashinfer.git",
-              "commit": "b4eef740639e7774eab4cd126242995c15d3ee6a",
+              "commit": "46932c8f0c14edfc4ff6a767206e25c8d9dbe529",
               "recursive_init_submodules": true,
               "patches": [],
               "cargo_vendor": false,
@@ -348,7 +348,9 @@
               "remote": "https://github.com/voipmonitor/InstantTensor.git",
               "commit": "49b4010afc1cae0441e71fe0b0bffc24fa05e932",
               "recursive_init_submodules": true,
-              "patches": [],
+              "patches": [
+                "@@//third_party:instanttensor_cxx20.patch"
+              ],
               "cargo_vendor": false,
               "cargo_manifest": "rust/Cargo.toml"
             }
@@ -381,7 +383,10 @@
               "remote": "https://github.com/local-inference-lab/LMCache.git",
               "commit": "820af25ff630f4c00f7faefbcc31bc5ccd7bab71",
               "recursive_init_submodules": true,
-              "patches": [],
+              "patches": [
+                "@@//third_party:lmcache_cxx20.patch",
+                "@@//third_party:lmcache_upstream_vllm_kv_api.patch"
+              ],
               "cargo_vendor": false,
               "cargo_manifest": "rust/Cargo.toml"
             }
@@ -401,7 +406,7 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/pytorch/pytorch.git",
-              "commit": "cf30153c4c131c8164ee7798e5022d810682e2cb",
+              "commit": "2b3ec34829036a65cd9d1398ea72a0167dc37470",
               "recursive_init_submodules": true,
               "patches": [],
               "cargo_vendor": false,
@@ -412,7 +417,7 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/pytorch/audio.git",
-              "commit": "34c52a67e8941bbd8e6adaca0eb0b9eabec11d78",
+              "commit": "455331b1b3bb4aabfe3228f6f911fc3f11ae93b1",
               "recursive_init_submodules": true,
               "patches": [],
               "cargo_vendor": false,
@@ -423,7 +428,7 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/pytorch/vision.git",
-              "commit": "8fb87713a24951e639c494b0f2a8a81b5f8e33a6",
+              "commit": "f12281517f1b2f6255904639b027c9436f3e5008",
               "recursive_init_submodules": true,
               "patches": [],
               "cargo_vendor": false,
@@ -434,12 +439,10 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/randomvariable/vllm.git",
-              "commit": "3ab11fdec7151d043bdbd994fc8f1b2810797fb8",
+              "commit": "3c2529b7985f77f8d85d454df70c8ececf96ca9c",
               "recursive_init_submodules": true,
               "patches": [
-                "@@//third_party:vllm_flash_attn_cute_namespace.patch",
-                "@@//third_party:vllm_pin_memory_import_order.patch",
-                "@@//third_party:vllm_b12x_intrinsics_reference.patch"
+                "@@//third_party:vllm_flash_attn_cute_namespace.patch"
               ],
               "cargo_vendor": true,
               "cargo_manifest": "rust/Cargo.toml"
@@ -459,8 +462,8 @@
           "vllmb12x_vllm_cmake_deepgemm": {
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
-              "remote": "https://github.com/deepseek-ai/DeepGEMM.git",
-              "commit": "ad1f1726aa540a76c1d26d6a120effb8de21eaa4",
+              "remote": "https://github.com/vllm-project/DeepGEMM.git",
+              "commit": "44cba7d28066182852005c59052f035ebc18e211",
               "recursive_init_submodules": true,
               "patches": [],
               "cargo_vendor": false,
@@ -482,7 +485,7 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/vllm-project/flash-attention.git",
-              "commit": "506341a143fcabd4bb79052a7605ada727d6b3f5",
+              "commit": "1b32c5caf71f5183248bdeda0855d4669b1d8744",
               "recursive_init_submodules": true,
               "patches": [],
               "cargo_vendor": false,
@@ -493,7 +496,7 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/vllm-project/FlashKDA.git",
-              "commit": "b59532f1f464fbd536272780e30df5bf6a2ccc02",
+              "commit": "9d9e928edc42475a67a523dd37814540d105f51c",
               "recursive_init_submodules": true,
               "patches": [],
               "cargo_vendor": false,
@@ -504,7 +507,7 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/vllm-project/FlashMLA.git",
-              "commit": "0eee43b12f034b657133cf2afca6a72ebb6efccf",
+              "commit": "b18ed7442d7da2fdc38eac11436e28acc04cb1e6",
               "recursive_init_submodules": false,
               "patches": [],
               "cargo_vendor": false,
@@ -515,18 +518,7 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/vllm-project/MSA.git",
-              "commit": "f355c37eb4e1413f21ee2ad8bbad25079e6bef9d",
-              "recursive_init_submodules": true,
-              "patches": [],
-              "cargo_vendor": false,
-              "cargo_manifest": "rust/Cargo.toml"
-            }
-          },
-          "vllmb12x_vllm_cmake_qutlass": {
-            "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
-            "attributes": {
-              "remote": "https://github.com/IST-DASLab/qutlass.git",
-              "commit": "e74319e3405ce6d71965732880f5dc1f52371f64",
+              "commit": "14437868b453b3efc858878e24754cb5523e7d69",
               "recursive_init_submodules": true,
               "patches": [],
               "cargo_vendor": false,
@@ -537,7 +529,7 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/vllm-project/tml-fa4.git",
-              "commit": "75765e76a9c2c012c1f6ecd64577eb646eb4d303",
+              "commit": "2133206ae50288d266dd2b82edfc7cf0cca01006",
               "recursive_init_submodules": false,
               "patches": [],
               "cargo_vendor": false,
@@ -548,7 +540,7 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/triton-lang/triton.git",
-              "commit": "0f380657dbf3ee86eb57558ff71df24f03b5d4e7",
+              "commit": "3ef5021860f07f76820cce2e4c8e92d5e834bf39",
               "recursive_init_submodules": false,
               "patches": [],
               "cargo_vendor": false,
@@ -559,7 +551,7 @@
             "repoRuleId": "@@//bazel:sources.bzl%_pinned_source_repository",
             "attributes": {
               "remote": "https://github.com/mlc-ai/xgrammar.git",
-              "commit": "2ea71da4ccb997a06928c9fb69b99f330da56697",
+              "commit": "8f9a1279fdbed47739bd75b4099d1d059a1ce3e0",
               "recursive_init_submodules": true,
               "patches": [],
               "cargo_vendor": false,

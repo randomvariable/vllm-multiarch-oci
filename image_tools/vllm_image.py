@@ -17,6 +17,7 @@ import json
 import os
 import re
 import shutil
+import tempfile
 import signal
 import socket
 import sys
@@ -306,7 +307,9 @@ def _publish(snapshot: Path, destination: Path) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def _stage_csf_serving(snapshot: Path, generated: Path) -> None:
+def _stage_csf_serving(
+    snapshot: Path, generated: Path, *, load_format: str = "nvfp4_csf"
+) -> None:
     """Build the immutable ``nvfp4_csf`` serving directory at *generated*.
 
     vLLM cannot load the CSF container directly: there is no root ``config.json``.
@@ -346,12 +349,37 @@ def _stage_csf_serving(snapshot: Path, generated: Path) -> None:
         source_qc = document.get("quantization_config")
         if not isinstance(source_qc, dict):
             raise ConfigError("CSF serving config carries no quantization_config to wrap", EXIT_MODEL)
-        document["quantization_config"] = {
-            "quant_method": "nvfp4_csf",
-            "format_version": 1,
-            "checkpoint_root": str(snapshot),
-            "source_quantization_config": source_qc,
-        }
+        if load_format == "mxfp4_csf":
+            from safetensors import safe_open
+
+            index = temporary / "model.safetensors.index.json"
+            original = json.loads(index.read_text())
+            weight_map = {}
+            for name in sorted(set(original["weight_map"].values())):
+                shard = snapshot / _CSF_TENSORS_DIR / _safe_relative(name)
+                with safe_open(shard, framework="pt", device="cpu") as handle:
+                    for key in handle.keys():
+                        if key in weight_map:
+                            raise ConfigError(f"duplicate CSF tensor: {key}", EXIT_MODEL)
+                        weight_map[key] = name
+                (temporary / name).symlink_to(shard)
+            # The source index describes reconstructed weights, not the
+            # compressed component names stored in the actual shard headers.
+            index.write_text(json.dumps({"weight_map": weight_map}))
+            document["quantization_config"] = {
+                **source_qc,
+                "quant_method": load_format,
+                "format_version": 1,
+                "checkpoint_root": str(generated),
+                "weight_scale_encoding": "csf",
+            }
+        else:
+            document["quantization_config"] = {
+                "quant_method": load_format,
+                "format_version": 1,
+                "checkpoint_root": str(snapshot),
+                "source_quantization_config": source_qc,
+            }
         config.write_text(json.dumps(document))
         if generated.is_symlink():
             generated.unlink()
@@ -359,6 +387,42 @@ def _stage_csf_serving(snapshot: Path, generated: Path) -> None:
     finally:
         if temporary.exists():
             shutil.rmtree(temporary)
+
+
+def prepare_mxfp4_csf(snapshot: Path) -> Path:
+    """Stage a complete DeepSeek V4.1 slab-CSF snapshot without copying weights."""
+    snapshot = snapshot.resolve()
+    manifest = snapshot / "manifest.json"
+    try:
+        document = json.loads(manifest.read_text())
+        contract = json.loads((snapshot / "build-contract.json").read_text())
+        index = json.loads((snapshot / "metadata/model.safetensors.index.json").read_text())
+        for obj in (document, contract):
+            if (obj["schema"], obj["family"], obj["codec"]) != (
+                "lil-mxfp4-csf-checkpoint/1", "deepseek_v41", "row-base-offset1-u24-exceptions/1"
+            ):
+                raise ValueError("expected a DeepSeek V4.1 slab MXFP4-CSF checkpoint")
+        sizes = {item["file"]: item["target_file_bytes"] for item in document["shards"]}
+        names = set(index["weight_map"].values())
+        if not names or names != sizes.keys() or index["weight_map"] != contract["source_names"]:
+            raise ValueError("manifest, contract and source index inventories disagree")
+        missing = _csf_missing(snapshot, ["metadata/config.json", "metadata/tokenizer.json", "metadata/tokenizer_config.json"])
+        if missing:
+            raise ValueError(f"missing metadata: {', '.join(missing)}")
+        for name, size in sizes.items():
+            if Path(name).name != name or not name.endswith(".safetensors"):
+                raise ValueError(f"invalid shard name: {name}")
+            if (snapshot / "tensors" / name).stat().st_size != size:
+                raise ValueError(f"unexpected shard size: {name}")
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as error:
+        raise ConfigError(f"invalid MXFP4-CSF snapshot {snapshot}: {error}", EXIT_MODEL) from error
+    identity = hashlib.sha256(os.fsencode(snapshot) + b"\0" + manifest.read_bytes()).hexdigest()
+    generated = Path(tempfile.gettempdir()) / f"vllm-mxfp4-csf-{os.getuid()}" / identity
+    generated.parent.mkdir(mode=0o700, exist_ok=True)
+    with (generated.parent / f"{identity}.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        _stage_csf_serving(snapshot, generated, load_format="mxfp4_csf")
+    return generated
 
 
 def csf_manifest_identity(manifest: Path) -> str:

@@ -1,82 +1,63 @@
 # SPDX-License-Identifier: Apache-2.0
 
 load("@container_structure_test//:defs.bzl", "container_structure_test")
+load("//bazel:contract_image.bzl", "contract_image", "x86_contract_test")
 
-_IMAGE = select({
-    "//platforms:linux_aarch64": "//image:vllmb12x_image",
-    "//platforms:linux_x86_64": "//image:vllmb12x_image",
-})
+# Match the OCI index's transitions from the same top-level configuration.
+# Selecting the image on the test's target platform would require a different
+# invocation baseline, changing the image dependencies' Bazel output paths.
+contract_image(
+    name = "contract_image_arm64",
+    image = "//image:vllmb12x_image",
+    image_platform = "//platforms:blackwell_arm64_sm12x",
+)
 
-_PLATFORM = select({
-    "//platforms:linux_aarch64": "linux/arm64",
-    "//platforms:linux_x86_64": "linux/amd64",
-})
+contract_image(
+    name = "contract_image_x86_64",
+    image = "//image:vllmb12x_image",
+    image_platform = "//platforms:blackwell_x86_64_sm120",
+)
 
-_CONFIG = select({
-    "//platforms:linux_aarch64": [
-        "vllmb12x.yaml",
-        "vllmb12x-arm64.yaml",
-    ],
-    "//platforms:linux_x86_64": [
-        "vllmb12x.yaml",
-        "vllmb12x-x86_64.yaml",
-    ],
-})
+_ARM64_EXEC = [
+    "@platforms//cpu:aarch64",
+    "@platforms//os:linux",
+]
 
+# Keep one config per test: a Docker cleanup from one config can collect
+# layers that the next config still needs. Loading the image and running its
+# assertions can exceed the default 300s timeout.
 container_structure_test(
     name = "vllmb12x_contract",
-    # Bazel's default is 300s for an untimed test. Loading a ~16GB image into
-    # the worker's daemon plus 41 assertions, several of which compile C shims
-    # in the container, exceeds that — and the load is cold after every worker
-    # roll because the daemon keeps its store in the pod. 900s leaves room
-    # without hiding a genuinely wedged run.
     timeout = "long",
-    # Two --config files in one container-structure-test process share one
-    # docker driver lifecycle: RunCommandTests defers driver.Destroy() inside
-    # its per-test loop, so every chain image committed by SetEnv is removed
-    # only when the FIRST file's command tests return — after the second file
-    # has started creating containers. containerd's layer GC then cascades
-    # onto content-addressed layers the loaded image still needs, and the
-    # whole second file fails with "Error creating container: no such image".
-    # One config per invocation keeps each file's destroys inside its own run.
-    configs = select({
-        "//platforms:linux_aarch64": ["vllmb12x.yaml"],
-        "//platforms:linux_x86_64": ["vllmb12x.yaml"],
-    }),
+    configs = ["vllmb12x.yaml"],
     driver = "docker",
-    image = _IMAGE,
-    platform = _PLATFORM,
+    exec_compatible_with = _ARM64_EXEC,
+    image = ":contract_image_arm64",
+    platform = "linux/arm64",
 )
 
 container_structure_test(
     name = "vllmb12x_contract_arch",
     timeout = "long",
-    configs = select({
-        "//platforms:linux_aarch64": ["vllmb12x-arm64.yaml"],
-        "//platforms:linux_x86_64": ["vllmb12x-x86_64.yaml"],
-    }),
+    configs = ["vllmb12x-arm64.yaml"],
     driver = "docker",
-    image = _IMAGE,
-    platform = _PLATFORM,
+    exec_compatible_with = _ARM64_EXEC,
+    image = ":contract_image_arm64",
+    platform = "linux/arm64",
 )
 
-# Run the same ARM64 image contract on GB10 without moving its build actions.
-# This checks container dependencies, not CUDA kernel correctness.
+# Route only the test action to GB10. Build the same ARM64 image with the
+# normal ARM64 execution platform. This checks container dependencies, not
+# CUDA kernel correctness.
 container_structure_test(
     name = "vllmb12x_contract_sm121a",
     timeout = "long",
-    configs = select({
-        "//platforms:linux_aarch64": ["vllmb12x.yaml"],
-        "//platforms:linux_x86_64": ["vllmb12x.yaml"],
-    }),
+    configs = ["vllmb12x.yaml"],
     driver = "docker",
+    exec_compatible_with = _ARM64_EXEC,
     exec_properties = {"gpu": "nvidia-gb10"},
-    image = _IMAGE,
-    platform = _PLATFORM,
-    target_compatible_with = [
-        "@platforms//cpu:aarch64",
-        "@platforms//os:linux",
-    ],
+    image = ":contract_image_arm64",
+    platform = "linux/arm64",
 )
 
 container_structure_test(
@@ -84,11 +65,26 @@ container_structure_test(
     timeout = "long",
     configs = ["vllmb12x-arm64.yaml"],
     driver = "docker",
+    exec_compatible_with = _ARM64_EXEC,
     exec_properties = {"gpu": "nvidia-gb10"},
-    image = _IMAGE,
-    platform = _PLATFORM,
-    target_compatible_with = [
-        "@platforms//cpu:aarch64",
-        "@platforms//os:linux",
-    ],
+    image = ":contract_image_arm64",
+    platform = "linux/arm64",
+)
+
+x86_contract_test(
+    name = "vllmb12x_contract_x86_64",
+    timeout = "long",
+    configs = ["vllmb12x.yaml"],
+    driver = "docker",
+    image = ":contract_image_x86_64",
+    platform = "linux/amd64",
+)
+
+x86_contract_test(
+    name = "vllmb12x_contract_x86_64_arch",
+    timeout = "long",
+    configs = ["vllmb12x-x86_64.yaml"],
+    driver = "docker",
+    image = ":contract_image_x86_64",
+    platform = "linux/amd64",
 )
